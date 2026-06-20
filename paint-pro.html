@@ -1,0 +1,3986 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paint Pro</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    /* Liquid glass surface tokens */
+    --glass-bg: rgba(255, 255, 255, 0.08);
+    --glass-bg-strong: rgba(255, 255, 255, 0.14);
+    --glass-bg-soft: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.18);
+    --glass-border-strong: rgba(255, 255, 255, 0.32);
+    --glass-highlight: rgba(255, 255, 255, 0.45);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+    --blur: blur(28px) saturate(190%);
+    --blur-strong: blur(40px) saturate(220%);
+
+    /* Text */
+    --text: #f4f4f8;
+    --text-dim: rgba(244, 244, 248, 0.62);
+
+    /* Accent */
+    --accent: #5b8def;
+    --accent-2: #9d5bef;
+    --accent-grad: linear-gradient(135deg, #5b8def 0%, #9d5bef 100%);
+    --accent-glow: 0 0 24px rgba(91, 141, 239, 0.55);
+    --danger: #ff5b5b;
+    --success: #2dd4a8;
+
+    /* Used by inline styles in HTML — kept as glass-friendly fallbacks */
+    --bg: transparent;
+    --bg-2: rgba(255,255,255,0.06);
+    --bg-3: rgba(255,255,255,0.10);
+    --bg-4: rgba(255,255,255,0.16);
+    --border: rgba(255,255,255,0.18);
+    --border-light: rgba(255,255,255,0.32);
+  }
+
+  /* Колоритный фон-«обои» — нужен, чтобы blur панелей было что подхватывать */
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    background:
+      radial-gradient(1100px 700px at 12% -10%, rgba(120, 90, 255, 0.55), transparent 60%),
+      radial-gradient(900px 600px at 95% 8%, rgba(255, 100, 180, 0.40), transparent 55%),
+      radial-gradient(800px 800px at 85% 110%, rgba(60, 200, 255, 0.40), transparent 60%),
+      radial-gradient(700px 600px at 5% 105%, rgba(100, 255, 180, 0.30), transparent 60%),
+      linear-gradient(135deg, #0e0c1a 0%, #1a1330 50%, #0c1024 100%);
+    background-attachment: fixed;
+    position: relative;
+  }
+
+  /* === Анимированные пузыри на фоне === */
+  .bubbles {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .bubble {
+    position: absolute;
+    border-radius: 50%;
+    bottom: -200px;
+    background: radial-gradient(circle at 30% 30%,
+      rgba(255,255,255,0.55) 0%,
+      rgba(180, 200, 255, 0.25) 35%,
+      rgba(120, 90, 255, 0.10) 70%,
+      transparent 100%);
+    box-shadow:
+      inset -8px -8px 18px rgba(255,255,255,0.18),
+      inset 6px 6px 18px rgba(255,255,255,0.35),
+      0 8px 30px rgba(120, 90, 255, 0.25);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    opacity: 0;
+    animation: bubbleRise var(--dur, 24s) ease-in-out infinite;
+    animation-delay: var(--delay, 0s);
+    will-change: transform, opacity;
+  }
+
+  .bubble::after {
+    content: '';
+    position: absolute;
+    top: 12%;
+    left: 18%;
+    width: 28%;
+    height: 22%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.85) 0%, transparent 70%);
+    filter: blur(1.5px);
+  }
+
+  @keyframes bubbleRise {
+    0%   { transform: translate(0, 0) scale(0.85); opacity: 0; }
+    8%   { opacity: 0.85; }
+    50%  { transform: translate(var(--drift, 30px), -55vh) scale(1); opacity: 0.95; }
+    92%  { opacity: 0.6; }
+    100% { transform: translate(calc(var(--drift, 30px) * -0.6), -120vh) scale(1.08); opacity: 0; }
+  }
+
+  /* Пузыри пастельных тонов */
+  .bubble.pink   { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(255,170,210,0.28) 40%, rgba(255,100,180,0.12) 75%, transparent); }
+  .bubble.cyan   { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(170,230,255,0.28) 40%, rgba(60,200,255,0.12) 75%, transparent); }
+  .bubble.green  { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(180,255,210,0.28) 40%, rgba(100,255,180,0.12) 75%, transparent); }
+  .bubble.violet { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(200,180,255,0.28) 40%, rgba(150,100,255,0.14) 75%, transparent); }
+  .bubble.gold   { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(255,225,170,0.28) 40%, rgba(255,180,80,0.12) 75%, transparent); }
+
+  /* Все базовые слои контента поднимаются над пузырями */
+  .menubar, .toolbar, .main, .statusbar, .zoom-controls { position: relative; z-index: 2; }
+
+  /* === Ripple на кнопках при клике === */
+  .ripple {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle,
+      rgba(255,255,255,0.55) 0%,
+      rgba(255,255,255,0.25) 35%,
+      rgba(120,180,255,0.10) 70%,
+      transparent 100%);
+    box-shadow: inset 0 0 12px rgba(255,255,255,0.4), 0 0 18px rgba(91,141,239,0.4);
+    transform: translate(-50%, -50%) scale(0);
+    animation: rippleGrow 0.65s ease-out forwards;
+    z-index: 5;
+  }
+  @keyframes rippleGrow {
+    0%   { transform: translate(-50%, -50%) scale(0);   opacity: 0.9; }
+    60%  { opacity: 0.5; }
+    100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+  }
+
+  /* Базовый стеклянный «слой» — миксин через утилитный класс не используется, повторяется в нужных местах */
+
+  /* === macOS Tahoe Menu Bar === */
+  /* Прозрачный, без панельного фона. Текст «парит» поверх обоев. */
+  .menubar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 28px;
+    padding: 0 12px;
+    background: transparent;
+    position: relative;
+    z-index: 5;
+    font-size: 13px;
+    -webkit-app-region: drag;
+  }
+  .menubar > * { -webkit-app-region: no-drag; }
+
+  .mb-left, .mb-right {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 100%;
+  }
+
+  .mb-apple {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    padding: 0 8px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4));
+    transition: background 0.15s ease;
+  }
+  .mb-apple:hover { background: rgba(255,255,255,0.18); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+
+  .mb-app {
+    color: white;
+    font-weight: 700;
+    padding: 0 10px 0 4px;
+    letter-spacing: 0.2px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+
+  /* Меню-пункт */
+  .mb-menu {
+    position: relative;
+    height: 100%;
+  }
+  .mb-item {
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.92);
+    padding: 0 11px;
+    height: 100%;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .mb-item:hover {
+    background: rgba(255,255,255,0.16);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .mb-menu.open .mb-item {
+    background: var(--accent);
+    color: white;
+    text-shadow: none;
+  }
+
+  /* Выпадающее меню — стеклянная панель в стиле Tahoe */
+  .mb-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 240px;
+    padding: 6px;
+    border-radius: 14px;
+    background: rgba(40, 40, 55, 0.55);
+    backdrop-filter: var(--blur-strong);
+    -webkit-backdrop-filter: var(--blur-strong);
+    border: 1px solid var(--glass-border);
+    box-shadow:
+      0 16px 48px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(255,255,255,0.05),
+      inset 0 1px 0 rgba(255,255,255,0.18);
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+    z-index: 100;
+    transform-origin: top left;
+    animation: ddOpen 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .mb-menu.open .mb-dropdown { display: flex; }
+  @keyframes ddOpen {
+    from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0)     scale(1); }
+  }
+
+  .mb-dd-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 7px 12px;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    text-align: left;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.1s ease, color 0.1s ease;
+  }
+  .mb-dd-item:hover {
+    background: var(--accent-grad);
+    color: white;
+  }
+  .mb-dd-item .kb {
+    color: var(--text-dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.3px;
+  }
+  .mb-dd-item:hover .kb { color: rgba(255,255,255,0.9); }
+
+  .mb-sep {
+    height: 1px;
+    margin: 4px 6px;
+    background: rgba(255,255,255,0.10);
+  }
+
+  .mb-right {
+    color: rgba(255,255,255,0.85);
+    font-size: 12px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    padding-right: 4px;
+  }
+  .mb-status {
+    color: var(--success);
+    margin-right: 8px;
+    text-shadow: 0 0 8px rgba(45, 212, 168, 0.6);
+  }
+  .mb-time {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  /* === Тонкий блик/specular для оставшихся стеклянных панелей === */
+  .toolbar::before, .sidebar::before, .statusbar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 35%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .toolbar > *, .sidebar > *, .statusbar > * { position: relative; z-index: 1; }
+  /* Бегущий блик только на сайдбаре — у тулбара overflow:visible нужен для тултипов */
+  .sidebar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -50%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.10) 45%, rgba(255,255,255,0.20) 50%, rgba(255,255,255,0.10) 55%, transparent 100%);
+    pointer-events: none;
+    border-radius: inherit;
+    animation: shimmer 12s linear infinite;
+    animation-delay: -8s;
+    z-index: 0;
+  }
+
+  @keyframes shimmer {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(400%); }
+  }
+
+  /* === Панель инструментов === */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    margin: 6px 10px 0 10px;
+    border-radius: 20px;
+    background: var(--glass-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+    min-height: 60px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 4;
+    /* overflow:visible — иначе тултипы (.tool::after) обрезаются по нижней кромке */
+  }
+
+  .tool-group {
+    display: flex;
+    gap: 4px;
+    padding: 5px;
+    background: var(--glass-bg-soft);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+
+  .tool {
+    width: 40px;
+    height: 40px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text);
+    border-radius: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.18s ease;
+    position: relative;
+  }
+
+  .tool:hover {
+    background: var(--glass-bg-strong);
+    border-color: var(--glass-border);
+    transform: translateY(-1px);
+  }
+
+  .tool.active {
+    background: var(--accent-grad);
+    color: white;
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+
+  .tool svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .separator {
+    width: 1px;
+    height: 36px;
+    background: linear-gradient(to bottom, transparent, var(--glass-border-strong), transparent);
+  }
+
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    background: var(--glass-bg-soft);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .control-label {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+
+  /* Стеклянный slider */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 110px;
+    height: 6px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 999px;
+    outline: none;
+    border: 1px solid var(--glass-border);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent-grad);
+    border: 1px solid rgba(255,255,255,0.5);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.5);
+    cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 1px solid rgba(255,255,255,0.5);
+    cursor: pointer;
+  }
+
+  .size-display {
+    font-size: 12px;
+    color: var(--text);
+    min-width: 32px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  /* === Палитра (в сайдбаре, вертикально) === */
+  .color-picker-container {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .color-preview {
+    width: 100%;
+    height: 44px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(255,255,255,0.4);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.5);
+  }
+  /* Глянец на превью цвета */
+  .color-preview::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.08) 45%, transparent 80%);
+    pointer-events: none;
+    border-radius: 12px;
+  }
+
+  .color-preview input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .palette {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 5px;
+    padding: 7px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--glass-border);
+    border-radius: 11px;
+  }
+
+  .color-swatch {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 7px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.25);
+    transition: transform 0.14s ease, box-shadow 0.14s ease;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 1px 2px rgba(0,0,0,0.3);
+    position: relative;
+  }
+
+  .color-swatch:hover {
+    transform: scale(1.18) translateY(-1px);
+    z-index: 2;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.55);
+  }
+
+  .color-swatch.active {
+    box-shadow: 0 0 0 2px white, 0 0 0 4px var(--accent), 0 0 18px rgba(91,141,239,0.7);
+    transform: scale(1.08);
+    z-index: 3;
+  }
+
+  /* === Основная область === */
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    padding: 10px;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .canvas-area {
+    flex: 1;
+    overflow: auto;
+    padding: 24px;
+    display: flex;
+    align-items: safe flex-start;
+    justify-content: safe center;
+    position: relative;
+    background: var(--glass-bg-soft);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+  }
+
+  .canvas-wrapper {
+    position: relative;
+    background: white;
+    box-shadow:
+      0 20px 60px rgba(0,0,0,0.55),
+      0 4px 20px rgba(91,141,239,0.18),
+      0 0 0 1px rgba(255,255,255,0.12);
+    border-radius: 10px;
+  }
+
+  #canvas, #preview-canvas {
+    display: block;
+    border-radius: 10px;
+  }
+
+  #preview-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+  }
+
+  .selection-overlay {
+    position: absolute;
+    border: 2px dashed var(--accent);
+    background: rgba(91, 141, 239, 0.10);
+    pointer-events: none;
+    display: none;
+    box-sizing: border-box;
+  }
+  /* Дочерние интерактивные элементы внутри overlay перебивают pointer-events */
+  .selection-overlay .rotate-handle,
+  .selection-overlay .resize-handle { pointer-events: auto; }
+  /* Когда пользователь активно рисует bbox (state.drawing) — скрываем handles, чтобы
+     они не перехватывали mousemove/mouseup. Иначе при tiny drag mouse оказывается на
+     handle, canvas onMove/onUp не вызывается, и selection застывает на 2 px. */
+  .selection-overlay.drawing .resize-handle,
+  .selection-overlay.drawing .rotate-handle { display: none; }
+
+
+  /* Ручки изменения размера самого холста */
+  .canvas-resize-handle {
+    position: absolute;
+    background: rgba(255,255,255,0.85);
+    border: 1.5px solid rgba(255,255,255,0.6);
+    border-radius: 4px;
+    z-index: 3;
+    transition: all 0.18s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+
+  .canvas-resize-handle:hover {
+    background: var(--accent);
+    border-color: rgba(255,255,255,0.7);
+    box-shadow: var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+
+  .canvas-resize-handle.right {
+    width: 8px;
+    height: 40px;
+    right: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: ew-resize;
+  }
+
+  .canvas-resize-handle.bottom {
+    width: 40px;
+    height: 8px;
+    bottom: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: ns-resize;
+  }
+
+  .canvas-resize-handle.corner {
+    width: 14px;
+    height: 14px;
+    right: -17px;
+    bottom: -17px;
+    cursor: nwse-resize;
+    border-radius: 2px;
+  }
+
+  /* Превью нового размера холста при drag */
+  .resize-preview {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border: 2px dashed var(--accent);
+    background: rgba(91, 141, 239, 0.08);
+    pointer-events: none;
+    display: none;
+    border-radius: 4px;
+    z-index: 2;
+  }
+
+  .resize-tooltip {
+    position: absolute;
+    background: rgba(20, 20, 30, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 9px;
+    font-size: 12px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    display: none;
+    z-index: 100;
+    white-space: nowrap;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+  }
+
+  /* === Стеклянные input/button, на которых стоят inline-стили в HTML === */
+  /* Эти классы перекрывают inline background/border/color через !important,
+     потому что в HTML стоят style="background:var(--bg-3); ..." */
+  .sidebar input[type="number"] {
+    background: rgba(255,255,255,0.08) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: var(--text) !important;
+    border-radius: 10px !important;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .sidebar input[type="number"]:focus {
+    border-color: var(--accent) !important;
+    background: rgba(255,255,255,0.12) !important;
+  }
+  .sidebar button {
+    background: var(--glass-bg-strong) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: var(--text) !important;
+    border-radius: 11px !important;
+    font-weight: 500 !important;
+    transition: all 0.18s ease;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .sidebar button:hover {
+    background: rgba(255,255,255,0.18) !important;
+    border-color: var(--glass-border-strong) !important;
+    transform: translateY(-1px);
+  }
+  .sidebar button:active { transform: translateY(0); }
+
+  /* === Zoom controls === */
+  .zoom-controls {
+    position: fixed;
+    bottom: 56px;
+    right: 252px;
+    display: flex;
+    gap: 4px;
+    background: var(--glass-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 5px;
+    z-index: 50;
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+  }
+
+  .zoom-btn {
+    width: 30px;
+    height: 30px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text);
+    border-radius: 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 600;
+    transition: all 0.15s ease;
+  }
+
+  .zoom-btn:hover {
+    background: var(--glass-bg-strong);
+    border-color: var(--glass-border);
+  }
+
+  .zoom-display {
+    min-width: 50px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  /* === Правая панель свойств === */
+  .sidebar {
+    width: 240px;
+    padding: 18px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--glass-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+    position: relative;
+  }
+
+  .sidebar-section {
+    margin-bottom: 22px;
+    padding: 14px;
+    background: var(--glass-bg-soft);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .sidebar-section:last-child { margin-bottom: 4px; }
+
+  .sidebar-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+
+  /* Панель «История изменений» */
+  .history-list {
+    max-height: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .history-list.collapsed { display: none; }
+  .hist-item {
+    flex: 0 0 auto;            /* не сжиматься во flex-колонке — иначе текст обрезается, когда записей много */
+    font-size: 12px;
+    line-height: 1.3;
+    padding: 5px 8px;
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid transparent;
+    transition: background 0.12s ease;
+  }
+  .hist-item:hover { background: rgba(255,255,255,0.08); }
+  .hist-item.current {
+    background: var(--accent, #5b8def);
+    color: #fff;
+    border-color: rgba(255,255,255,0.25);
+  }
+  .hist-item.future { opacity: 0.45; }
+
+  .shape-fill-toggle {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 11px;
+    border: 1px solid var(--glass-border);
+  }
+
+  .fill-btn {
+    flex: 1;
+    padding: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.18s ease;
+  }
+
+  .fill-btn:hover {
+    background: var(--glass-bg-strong);
+  }
+
+  .fill-btn.active {
+    background: var(--accent-grad);
+    border-color: rgba(255,255,255,0.3);
+    color: white;
+    box-shadow: var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .info-row span:last-child {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  /* === Нижняя строка состояния === */
+  .statusbar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 8px 18px;
+    margin: 0 10px 10px 10px;
+    height: 34px;
+    background: var(--glass-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .statusbar span {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* === Контекстное меню обрезки === */
+  .crop-controls {
+    position: absolute;
+    background: var(--glass-bg);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 6px;
+    display: none;
+    gap: 4px;
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+    z-index: 10;
+  }
+
+  .crop-controls button {
+    padding: 7px 14px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    border-radius: 9px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+  }
+
+  .crop-controls button:hover {
+    background: var(--glass-bg-strong);
+    border-color: var(--glass-border);
+  }
+
+  .crop-controls button.primary {
+    background: var(--accent-grad);
+    color: white;
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+
+  /* === Тултипы (рендерим на body, чтобы не упирались в stacking-context панелей) === */
+  #tip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    transform: translate(-50%, 0);
+    background: rgba(20, 20, 30, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    z-index: 9999;
+    pointer-events: none;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.12s ease;
+  }
+  #tip.show { opacity: 1; visibility: visible; }
+
+  /* === Скроллбар === */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.18);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.32); background-clip: padding-box; }
+
+  canvas {
+    cursor: default;
+  }
+
+  /* Для всех инструментов рисования курсор-круг по размеру кисти задаётся
+     инлайн через JS (updateBrushCursor). Здесь оставлены только статические
+     курсоры неравномерных инструментов. */
+  canvas.tool-picker {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'><circle cx='11' cy='11' r='3' fill='none' stroke='white' stroke-width='2'/><circle cx='11' cy='11' r='3' fill='none' stroke='black' stroke-width='1'/><circle cx='11' cy='11' r='0.8' fill='black'/></svg>") 11 11, auto;
+  }
+
+  canvas.tool-move { cursor: move; }
+  canvas.tool-text { cursor: text; }
+  canvas.tool-fill { cursor: cell; }
+  canvas.tool-cursor { cursor: default; }
+  canvas.tool-select { cursor: crosshair; }
+  canvas.tool-quad   { cursor: crosshair; }
+  canvas.tool-crop   { cursor: crosshair; }
+  canvas.tool-hand { cursor: grab; }
+  canvas.tool-hand.panning { cursor: grabbing; }
+
+  /* Плавающий объект (картинка или текст, который ещё можно двигать) */
+  .floating-frame {
+    position: absolute;
+    border: 2px dashed var(--accent);
+    pointer-events: none;
+    display: none;
+    box-sizing: border-box;
+  }
+
+  .floating-frame.active {
+    display: block;
+  }
+
+  .resize-handle {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border: 2px solid var(--accent);
+    border-radius: 3px;
+    pointer-events: auto;
+    z-index: 5;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.6);
+    transition: background .12s ease, transform .12s ease;
+  }
+  .resize-handle:hover { background: var(--accent); transform: scale(1.18); }
+  .resize-handle.nw,
+  .resize-handle.ne,
+  .resize-handle.sw,
+  .resize-handle.se { border-radius: 50%; } /* угловые — кружки, легче отличить от side */
+
+  .resize-handle.nw { top: -8px; left: -8px; cursor: nwse-resize; }
+  .resize-handle.ne { top: -8px; right: -8px; cursor: nesw-resize; }
+  .resize-handle.sw { bottom: -8px; left: -8px; cursor: nesw-resize; }
+  .resize-handle.se { bottom: -8px; right: -8px; cursor: nwse-resize; }
+  .resize-handle.n { top: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+  .resize-handle.s { bottom: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+  .resize-handle.w { left: -8px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+  .resize-handle.e { right: -8px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+  /* На повторном hover transform конфликтует с translate — задаём комбинацию */
+  .resize-handle.n:hover,
+  .resize-handle.s:hover { transform: translateX(-50%) scale(1.18); }
+  .resize-handle.w:hover,
+  .resize-handle.e:hover { transform: translateY(-50%) scale(1.18); }
+  /* На малых выделениях скрываем side-handles, чтобы они не перекрывали corner'ы */
+  .floating-frame.small-x .resize-handle.n,
+  .floating-frame.small-x .resize-handle.s,
+  .selection-overlay.small-x .resize-handle.n,
+  .selection-overlay.small-x .resize-handle.s { display: none; }
+  .floating-frame.small-y .resize-handle.w,
+  .floating-frame.small-y .resize-handle.e,
+  .selection-overlay.small-y .resize-handle.w,
+  .selection-overlay.small-y .resize-handle.e { display: none; }
+
+  /* Рукоятка поворота над верхней стороной рамки выделения / floating */
+  .rotate-handle {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    background: white;
+    border: 1.5px solid var(--accent);
+    border-radius: 50%;
+    pointer-events: auto;
+    cursor: grab;
+    z-index: 6;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  .rotate-handle::before {
+    content: '';
+    position: absolute;
+    top: 11px; left: 50%;
+    width: 1.5px; height: 16px;
+    background: var(--accent);
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .rotate-handle:hover { background: var(--accent); }
+  .rotate-handle:active { cursor: grabbing; }
+
+  /* В режиме quad-полигона: bbox-рамка чуть бледнее, resize-handles меньше и тоньше,
+     чтобы визуально отличаться от крупных quad-corners (форма) — у каждого свой смысл:
+     handles bbox = uniform scale, quad-corners = warp shape. */
+  .floating-frame.quad-mode { opacity: 0.7; border-style: dotted; border-width: 1px; }
+  .floating-frame.quad-mode .resize-handle {
+    width: 10px; height: 10px;
+    border-width: 1.5px;
+    opacity: 0.75;
+  }
+  .floating-frame.quad-mode .resize-handle.nw { top: -6px; left: -6px; }
+  .floating-frame.quad-mode .resize-handle.ne { top: -6px; right: -6px; }
+  .floating-frame.quad-mode .resize-handle.sw { bottom: -6px; left: -6px; }
+  .floating-frame.quad-mode .resize-handle.se { bottom: -6px; right: -6px; }
+  .floating-frame.quad-mode .resize-handle.n { top: -6px; }
+  .floating-frame.quad-mode .resize-handle.s { bottom: -6px; }
+  .floating-frame.quad-mode .resize-handle.w { left: -6px; }
+  .floating-frame.quad-mode .resize-handle.e { right: -6px; }
+
+  /* Угловые точки quad-инструмента, позиционируются в системе координат wrapper (без вращения) */
+  .quad-corner {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    margin-left: -9px;
+    margin-top: -9px;
+    background: rgba(255,255,255,0.95);
+    border: 2.5px solid var(--accent);
+    border-radius: 50%;
+    pointer-events: auto;
+    cursor: move;
+    z-index: 8;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.7), 0 0 0 4px rgba(91,141,239,0.18);
+    display: none;
+    transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
+  }
+  .quad-corner:hover {
+    background: var(--accent);
+    transform: scale(1.2);
+    box-shadow: 0 3px 14px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.7), 0 0 0 6px rgba(91,141,239,0.28);
+  }
+  .quad-corner.active { display: block; }
+
+  /* Контур quad — рисуется как SVG поверх canvas-wrapper, тоже marching ants */
+  .quad-outline {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 7;
+    display: none;
+  }
+  .quad-outline.active { display: block; }
+  @keyframes ants-dash { to { stroke-dashoffset: -14; } }
+  .quad-outline polygon { animation: ants-dash 0.6s linear infinite; }
+
+  /* === Текстовый редактор поверх холста === */
+  .text-editor {
+    position: absolute;
+    background: rgba(91, 141, 239, 0.06);
+    border: 1.5px dashed var(--accent);
+    outline: none;
+    padding: 4px 6px;
+    border-radius: 6px;
+    box-sizing: border-box;
+    resize: none;
+    overflow: hidden;
+    color: black;
+    min-width: 60px;
+    min-height: 30px;
+    display: none;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.2;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    z-index: 15;
+    box-shadow: 0 0 0 4px rgba(91,141,239,0.10);
+  }
+
+  .text-editor:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(91,141,239,0.18);
+  }
+
+  /* === Плавающая панель настройки текста === */
+  .text-toolbar {
+    position: absolute;
+    background: rgba(20, 20, 30, 0.72);
+    backdrop-filter: var(--blur-strong);
+    -webkit-backdrop-filter: var(--blur-strong);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 6px;
+    display: none;
+    gap: 6px;
+    align-items: center;
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+    z-index: 20;
+  }
+
+  .text-toolbar.active { display: flex; }
+
+  .text-toolbar select, .text-toolbar input[type="number"] {
+    background: rgba(255,255,255,0.10);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 9px;
+    font-size: 12px;
+    outline: none;
+  }
+  .text-toolbar select option { background: #1a1a26; color: var(--text); }
+
+  .text-toolbar select { min-width: 120px; }
+  .text-toolbar input[type="number"] { width: 60px; }
+
+  .text-toolbar button {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 9px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 30px;
+    transition: all 0.15s ease;
+  }
+
+  .text-toolbar button:hover {
+    background: rgba(255,255,255,0.16);
+  }
+
+  .text-toolbar button.active {
+    background: var(--accent-grad);
+    border-color: rgba(255,255,255,0.3);
+    color: white;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+
+  .text-toolbar .apply {
+    background: var(--accent-grad);
+    border-color: rgba(255,255,255,0.3);
+    color: white;
+    padding: 6px 12px;
+    box-shadow: var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+</style>
+</head>
+<body>
+
+<!-- Анимированные пузыри на заднем плане -->
+<div class="bubbles" aria-hidden="true">
+  <span class="bubble violet" style="left:6%;  width:140px; height:140px; --dur:26s; --delay:0s;   --drift:60px;"></span>
+  <span class="bubble pink"   style="left:18%; width:90px;  height:90px;  --dur:22s; --delay:-6s;  --drift:-40px;"></span>
+  <span class="bubble cyan"   style="left:30%; width:180px; height:180px; --dur:30s; --delay:-12s; --drift:80px;"></span>
+  <span class="bubble green"  style="left:46%; width:70px;  height:70px;  --dur:18s; --delay:-3s;  --drift:-30px;"></span>
+  <span class="bubble violet" style="left:58%; width:120px; height:120px; --dur:28s; --delay:-15s; --drift:50px;"></span>
+  <span class="bubble gold"   style="left:70%; width:100px; height:100px; --dur:24s; --delay:-9s;  --drift:-70px;"></span>
+  <span class="bubble pink"   style="left:82%; width:160px; height:160px; --dur:32s; --delay:-18s; --drift:40px;"></span>
+  <span class="bubble cyan"   style="left:92%; width:80px;  height:80px;  --dur:20s; --delay:-2s;  --drift:-50px;"></span>
+  <span class="bubble green"  style="left:14%; width:110px; height:110px; --dur:34s; --delay:-22s; --drift:90px;"></span>
+  <span class="bubble violet" style="left:38%; width:60px;  height:60px;  --dur:16s; --delay:-7s;  --drift:-25px;"></span>
+  <span class="bubble gold"   style="left:64%; width:200px; height:200px; --dur:38s; --delay:-25s; --drift:-90px;"></span>
+  <span class="bubble pink"   style="left:78%; width:55px;  height:55px;  --dur:14s; --delay:-1s;  --drift:35px;"></span>
+</div>
+
+<!-- Верхняя панель — macOS Tahoe menu bar -->
+<div class="menubar" id="menubar">
+  <div class="mb-left">
+    <button class="mb-apple" data-tip="Paint Pro" aria-label="Apple">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M17.05 12.04c-.03-3.05 2.49-4.51 2.6-4.58-1.42-2.07-3.62-2.36-4.4-2.39-1.87-.19-3.65 1.1-4.6 1.1-.95 0-2.41-1.07-3.97-1.04-2.04.03-3.93 1.19-4.98 3.01-2.13 3.69-.55 9.16 1.53 12.16 1.02 1.47 2.23 3.13 3.79 3.07 1.52-.06 2.1-.99 3.94-.99 1.84 0 2.36.99 3.97.96 1.64-.03 2.68-1.5 3.68-2.99 1.16-1.71 1.64-3.37 1.66-3.46-.04-.02-3.18-1.22-3.22-4.85zM14.22 4.21c.84-1.02 1.4-2.43 1.25-3.84-1.21.05-2.67.81-3.54 1.83-.78.91-1.46 2.36-1.28 3.74 1.35.1 2.73-.69 3.57-1.73z"/></svg>
+    </button>
+    <span class="mb-app">Paint Pro</span>
+
+    <div class="mb-menu" data-menu="file">
+      <button class="mb-item">Файл</button>
+      <div class="mb-dropdown">
+        <button class="mb-dd-item" onclick="newCanvas()"><span>Новый</span><span class="kb">Ctrl N</span></button>
+        <button class="mb-dd-item" onclick="document.getElementById('file-input').click()"><span>Открыть…</span><span class="kb">Ctrl O</span></button>
+        <div class="mb-sep"></div>
+        <button class="mb-dd-item" onclick="saveCanvas(false)"><span>Сохранить</span><span class="kb">Ctrl S</span></button>
+        <button class="mb-dd-item" onclick="saveCanvas(true)"><span>Сохранить как…</span><span class="kb">Ctrl ⇧ S</span></button>
+      </div>
+    </div>
+
+    <div class="mb-menu" data-menu="edit">
+      <button class="mb-item">Правка</button>
+      <div class="mb-dropdown">
+        <button class="mb-dd-item" onclick="undo()"><span>Отменить</span><span class="kb">Ctrl Z</span></button>
+        <button class="mb-dd-item" onclick="redo()"><span>Повторить</span><span class="kb">Ctrl Y</span></button>
+        <div class="mb-sep"></div>
+        <button class="mb-dd-item" onclick="if(state.selection||state.floating)copySelection()"><span>Копировать</span><span class="kb">Ctrl C</span></button>
+        <button class="mb-dd-item" onclick="if(state.selection||state.floating)cutSelection()"><span>Вырезать</span><span class="kb">Ctrl X</span></button>
+        <button class="mb-dd-item" onclick="pasteFromClipboard()"><span>Вставить</span><span class="kb">Ctrl V</span></button>
+        <div class="mb-sep"></div>
+        <button class="mb-dd-item" onclick="document.querySelector('[data-tool=&quot;select&quot;]').click(); commitSelection(); state.selection={x:0,y:0,w:canvas.width,h:canvas.height}; state.selectionData=ctx.getImageData(0,0,canvas.width,canvas.height); state.originalBeforeMove=ctx.getImageData(0,0,canvas.width,canvas.height); updateSelectionOverlay(); document.getElementById('sel-size').textContent=canvas.width+' × '+canvas.height"><span>Выделить всё</span><span class="kb">Ctrl A</span></button>
+      </div>
+    </div>
+
+    <div class="mb-menu" data-menu="view">
+      <button class="mb-item">Вид</button>
+      <div class="mb-dropdown">
+        <button class="mb-dd-item" onclick="zoomIn()"><span>Увеличить</span><span class="kb">Ctrl +</span></button>
+        <button class="mb-dd-item" onclick="zoomOut()"><span>Уменьшить</span><span class="kb">Ctrl −</span></button>
+        <button class="mb-dd-item" onclick="zoomReset()"><span>Реальный размер</span><span class="kb">Ctrl 0</span></button>
+      </div>
+    </div>
+
+    <div class="mb-menu" data-menu="image">
+      <button class="mb-item">Изображение</button>
+      <div class="mb-dropdown">
+        <button class="mb-dd-item" onclick="rotateCanvas()"><span>Повернуть 90°</span></button>
+        <button class="mb-dd-item" onclick="flipH()"><span>Отразить по горизонтали</span></button>
+        <button class="mb-dd-item" onclick="flipV()"><span>Отразить по вертикали</span></button>
+        <div class="mb-sep"></div>
+        <button class="mb-dd-item" onclick="clearCanvas()"><span>Очистить холст</span></button>
+      </div>
+    </div>
+
+    <div class="mb-menu" data-menu="help">
+      <button class="mb-item">Справка</button>
+      <div class="mb-dropdown">
+        <button class="mb-dd-item" onclick="alert('Paint Pro v1.0\\nГрафический редактор на HTML5 Canvas.')"><span>О программе</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-right">
+    <span class="mb-status" id="mb-status">●</span>
+    <span class="mb-time" id="mb-time">--:--</span>
+  </div>
+
+  <input type="file" id="file-input" accept="image/*" style="display:none">
+</div>
+
+<!-- Панель инструментов -->
+<div class="toolbar">
+  <!-- Инструменты рисования -->
+  <div class="tool-group">
+    <button class="tool" data-tool="hand" data-tip="Рука / Прокрутка (H)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 11.5V5a1.5 1.5 0 0 1 3 0v6.5h.5A1.5 1.5 0 0 1 14 13v.5h.5A1.5 1.5 0 0 1 16 15v.5h.5A1.5 1.5 0 0 1 18 17v2a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-4.5A1.5 1.5 0 0 1 5.5 13H6v-1.5A1.5 1.5 0 0 1 7.5 10H9v1.5z"/></svg>
+    </button>
+    <button class="tool active" data-tool="pencil" data-tip="Карандаш (P)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+    </button>
+    <button class="tool" data-tool="brush" data-tip="Кисть (B)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34c-.39-.39-1.02-.39-1.41 0L9 12.25 11.75 15l8.96-8.96c.39-.39.39-1.02 0-1.41z"/></svg>
+    </button>
+    <button class="tool" data-tool="marker" data-tip="Маркер (M)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.5 1.15C17.97 1.15 17.46 1.34 17.07 1.73L11.26 7.55L16.91 13.2L22.73 7.39C23.5 6.61 23.5 5.35 22.73 4.56L19.89 1.73C19.5 1.34 18.83 1.15 18.5 1.15M10.3 8.5L4.34 14.46C3.56 15.24 3.56 16.5 4.34 17.31L5.75 18.72L3.97 20.5L2.41 22H7.28L9.87 19.41L11.28 20.82C12.07 21.61 13.33 21.61 14.11 20.82L20.07 14.86"/></svg>
+    </button>
+    <button class="tool" data-tool="eraser" data-tip="Ластик (E)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.24 3.56l4.95 4.94c.78.79.78 2.05 0 2.84L12 20.53a4.008 4.008 0 0 1-5.66 0L2.81 17c-.78-.79-.78-2.05 0-2.84l10.6-10.6c.79-.78 2.05-.78 2.83 0M4.22 15.58l3.54 3.53c.78.79 2.04.79 2.83 0l3.53-3.53l-4.95-4.95l-4.95 4.95Z"/></svg>
+    </button>
+    <button class="tool" data-tool="fill" data-tip="Заливка (G)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 11.5s-2 2.17-2 3.5a2 2 0 0 0 4 0c0-1.33-2-3.5-2-3.5M5.21 10L10 5.21L14.79 10m1.77-1.06L7.62.94a.996.996 0 0 0-1.41 0L4.09 3.06L2.68 1.65L1.27 3.06l2.12 2.12l-1.77 1.77c-.59.59-.59 1.54 0 2.12l7.07 7.07c.29.29.68.44 1.06.44c.39 0 .77-.15 1.06-.44l7.07-7.07c.59-.57.59-1.53 0-2.11"/></svg>
+    </button>
+    <button class="tool" data-tool="picker" data-tip="Пипетка (I)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.71 5.63l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-3.12 3.12l-1.93-1.91l-1.41 1.41l1.42 1.42L3 16.25V21h4.75l8.92-8.92l1.42 1.42l1.41-1.41l-1.92-1.92l3.12-3.12c.4-.4.4-1.03.01-1.42zM6.92 19L5 17.08l8.06-8.06l1.92 1.92L6.92 19z"/></svg>
+    </button>
+    <button class="tool" data-tool="text" data-tip="Текст (T)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4v3h5.5v12h3V7H19V4z"/></svg>
+    </button>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Фигуры -->
+  <div class="tool-group">
+    <button class="tool" data-tool="line" data-tip="Линия">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+    </button>
+    <button class="tool" data-tool="rect" data-tip="Прямоугольник">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+    </button>
+    <button class="tool" data-tool="ellipse" data-tip="Эллипс">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="6"/></svg>
+    </button>
+    <button class="tool" data-tool="triangle" data-tip="Треугольник">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12,4 22,20 2,20"/></svg>
+    </button>
+    <button class="tool" data-tool="star" data-tip="Звезда">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+    </button>
+    <button class="tool" data-tool="arrow" data-tip="Стрелка">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="18" y2="6"/><polyline points="10,6 18,6 18,14"/></svg>
+    </button>
+    <button class="tool" data-tool="heart" data-tip="Сердце">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+    </button>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Выделение и обрезка -->
+  <div class="tool-group">
+    <button class="tool" data-tool="select" data-tip="Выделение (S)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"><rect x="4" y="4" width="16" height="16"/></svg>
+    </button>
+    <button class="tool" data-tool="quad" data-tip="Полигон 4 точками (Q)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 7 L20 4 L18 19 L3 17 Z" stroke-dasharray="2.5 2"/>
+        <circle cx="5" cy="7" r="2" fill="currentColor"/>
+        <circle cx="20" cy="4" r="2" fill="currentColor"/>
+        <circle cx="18" cy="19" r="2" fill="currentColor"/>
+        <circle cx="3" cy="17" r="2" fill="currentColor"/>
+      </svg>
+    </button>
+    <button class="tool" data-tool="crop" data-tip="Обрезать">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 15h2V7c0-1.1-.9-2-2-2H9v2h8v8zM7 17V1H5v4H1v2h4v10c0 1.1.9 2 2 2h10v4h2v-4h4v-2H7z"/></svg>
+    </button>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Буфер обмена -->
+  <div class="tool-group">
+    <button class="tool" onclick="copySelection()" data-tip="Копировать (Ctrl+C)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+    </button>
+    <button class="tool" onclick="cutSelection()" data-tip="Вырезать (Ctrl+X)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z"/></svg>
+    </button>
+    <button class="tool" onclick="pasteFromClipboard()" data-tip="Вставить (Ctrl+V)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>
+    </button>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Действия -->
+  <div class="tool-group">
+    <button class="tool" onclick="undo()" data-tip="Отменить (Ctrl+Z)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+    </button>
+    <button class="tool" onclick="redo()" data-tip="Повторить (Ctrl+Y)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>
+    </button>
+    <button class="tool" onclick="clearCanvas()" data-tip="Очистить">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+    </button>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Размер -->
+  <div class="control-group">
+    <span class="control-label">Размер</span>
+    <input type="range" id="size-input" min="1" max="100" value="4">
+    <span class="size-display" id="size-display">4</span>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Прозрачность -->
+  <div class="control-group">
+    <span class="control-label">Прозрачность</span>
+    <input type="range" id="opacity-input" min="1" max="100" value="100">
+    <span class="size-display" id="opacity-display">100%</span>
+  </div>
+
+</div>
+
+<!-- Основная область -->
+<div class="main">
+  <div class="canvas-area" id="canvas-area">
+    <div class="canvas-wrapper" id="canvas-wrapper">
+      <canvas id="canvas" width="900" height="600"></canvas>
+      <canvas id="preview-canvas" width="900" height="600"></canvas>
+      <div class="selection-overlay" id="selection-overlay">
+        <div class="resize-handle nw" data-handle="nw" data-on="selection"></div>
+        <div class="resize-handle n"  data-handle="n"  data-on="selection"></div>
+        <div class="resize-handle ne" data-handle="ne" data-on="selection"></div>
+        <div class="resize-handle w"  data-handle="w"  data-on="selection"></div>
+        <div class="resize-handle e"  data-handle="e"  data-on="selection"></div>
+        <div class="resize-handle sw" data-handle="sw" data-on="selection"></div>
+        <div class="resize-handle s"  data-handle="s"  data-on="selection"></div>
+        <div class="resize-handle se" data-handle="se" data-on="selection"></div>
+        <div class="rotate-handle" id="selection-rotate" title="Повернуть"></div>
+      </div>
+      <div class="resize-preview" id="resize-preview"></div>
+
+      <!-- Ручки изменения размера холста -->
+      <div class="canvas-resize-handle right" id="canvas-handle-right" title="Изменить ширину"></div>
+      <div class="canvas-resize-handle bottom" id="canvas-handle-bottom" title="Изменить высоту"></div>
+      <div class="canvas-resize-handle corner" id="canvas-handle-corner" title="Изменить размер"></div>
+
+      <!-- Рамка плавающего объекта с ручками -->
+      <div class="floating-frame" id="floating-frame">
+        <div class="resize-handle nw" data-handle="nw"></div>
+        <div class="resize-handle n" data-handle="n"></div>
+        <div class="resize-handle ne" data-handle="ne"></div>
+        <div class="resize-handle w" data-handle="w"></div>
+        <div class="resize-handle e" data-handle="e"></div>
+        <div class="resize-handle sw" data-handle="sw"></div>
+        <div class="resize-handle s" data-handle="s"></div>
+        <div class="resize-handle se" data-handle="se"></div>
+        <div class="rotate-handle" id="floating-rotate" title="Повернуть ([ / ])"></div>
+      </div>
+
+      <!-- Контур и угловые точки quad-warp (вне floating-frame, чтобы не наследовать CSS-поворот) -->
+      <svg class="quad-outline" id="quad-outline" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="" fill="rgba(91,141,239,0.10)" stroke="#5b8def" stroke-width="1.5" stroke-dasharray="4 3"/>
+      </svg>
+      <div class="quad-corner" id="quad-corner-0" data-corner="0"></div>
+      <div class="quad-corner" id="quad-corner-1" data-corner="1"></div>
+      <div class="quad-corner" id="quad-corner-2" data-corner="2"></div>
+      <div class="quad-corner" id="quad-corner-3" data-corner="3"></div>
+
+      <!-- Текстовое поле для редактирования -->
+      <div class="text-editor" id="text-editor" contenteditable="true"></div>
+
+      <!-- Плавающая панель настройки текста -->
+      <div class="text-toolbar" id="text-toolbar">
+        <select id="text-font">
+          <option value="-apple-system, 'Segoe UI', sans-serif">Sans-serif</option>
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="'Times New Roman', serif">Times New Roman</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="'Courier New', monospace">Courier New</option>
+          <option value="'Comic Sans MS', cursive">Comic Sans</option>
+          <option value="Impact, sans-serif">Impact</option>
+          <option value="Verdana, sans-serif">Verdana</option>
+        </select>
+        <input type="number" id="text-size" min="8" max="200" value="24">
+        <button id="text-bold" onclick="toggleTextStyle('bold')"><b>B</b></button>
+        <button id="text-italic" onclick="toggleTextStyle('italic')"><i>I</i></button>
+        <button id="text-underline" onclick="toggleTextStyle('underline')"><u>U</u></button>
+        <button class="apply" onclick="commitText()">✓</button>
+      </div>
+
+      <div class="crop-controls" id="crop-controls">
+        <button class="primary" onclick="applyCrop()">✓ Обрезать</button>
+        <button onclick="cancelCrop()">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Правая панель -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">Цвет</div>
+      <div class="color-picker-container">
+        <div class="color-preview" id="color-preview" style="background:#000000">
+          <input type="color" id="color-input" value="#000000">
+        </div>
+        <div class="palette" id="palette"></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Холст</div>
+      <div class="info-row"><span>Ширина</span><span id="info-width">900 px</span></div>
+      <div class="info-row"><span>Высота</span><span id="info-height">600 px</span></div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Текущий инструмент</div>
+      <div class="info-row"><span>Тип</span><span id="info-tool">Карандаш</span></div>
+      <div class="info-row"><span>Размер</span><span id="info-size">4 px</span></div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Размер холста</div>
+      <div style="display:flex; gap:6px; margin-bottom:6px;">
+        <input type="number" id="width-input" value="900" style="width:80px; padding:6px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:4px; font-size:12px;">
+        <input type="number" id="height-input" value="600" style="width:80px; padding:6px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:4px; font-size:12px;">
+      </div>
+      <button onclick="resizeCanvas()" style="width:100%; padding:8px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer; font-size:12px;">Применить</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Быстрые действия</div>
+      <button onclick="rotateCanvas()" style="width:100%; padding:8px; margin-bottom:6px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer; font-size:12px;">Повернуть 90°</button>
+      <button onclick="flipH()" style="width:100%; padding:8px; margin-bottom:6px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer; font-size:12px;">Отразить ↔</button>
+      <button onclick="flipV()" style="width:100%; padding:8px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer; font-size:12px;">Отразить ↕</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title" id="hist-toggle" onclick="toggleHistoryPanel()" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; user-select:none;">
+        <span>История изменений</span>
+        <span id="hist-caret" style="font-size:10px; opacity:0.7;">▾</span>
+      </div>
+      <div id="history-list" class="history-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Строка состояния -->
+<div class="statusbar">
+  <span>Позиция: <span id="pos">0, 0</span></span>
+  <span>Размер выделения: <span id="sel-size">—</span></span>
+  <span style="display:flex; align-items:center; gap:6px;" title="Цвет пикселя под курсором (клик — назначить)">
+    <span id="pixel-swatch" style="width:14px; height:14px; border-radius:4px; background:#ffffff; border:1px solid rgba(255,255,255,0.4); box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 3px rgba(0,0,0,0.4); cursor:pointer;"></span>
+    <span id="pixel-hex" style="font-variant-numeric: tabular-nums; min-width: 62px;">#ffffff</span>
+  </span>
+  <span style="margin-left:auto">Paint Pro v1.0</span>
+</div>
+
+<!-- Zoom controls -->
+<div class="zoom-controls">
+  <button class="zoom-btn" onclick="zoomOut()" title="Уменьшить (Ctrl -)">−</button>
+  <div class="zoom-display" id="zoom-display">100%</div>
+  <button class="zoom-btn" onclick="zoomIn()" title="Увеличить (Ctrl +)">+</button>
+  <button class="zoom-btn" onclick="zoomReset()" title="Сбросить (Ctrl 0)" style="font-size: 11px;">1:1</button>
+</div>
+
+<!-- Tooltip для отображения размеров при drag -->
+<div class="resize-tooltip" id="resize-tooltip"></div>
+
+<!-- Общий тултип (рендерится на body, не упирается в z-index панелей) -->
+<div id="tip"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const previewCanvas = document.getElementById('preview-canvas');
+const previewCtx = previewCanvas.getContext('2d');
+const wrapper = document.getElementById('canvas-wrapper');
+const selOverlay = document.getElementById('selection-overlay');
+const cropControls = document.getElementById('crop-controls');
+const floatingFrame = document.getElementById('floating-frame');
+const floatingRotateHandle = document.getElementById('floating-rotate');
+const selectionRotateHandle = document.getElementById('selection-rotate');
+const quadOutline = document.getElementById('quad-outline');
+const quadOutlinePoly = quadOutline.querySelector('polygon');
+const quadCornerEls = [0,1,2,3].map(i => document.getElementById('quad-corner-' + i));
+const textEditor = document.getElementById('text-editor');
+const textToolbar = document.getElementById('text-toolbar');
+
+// Состояние
+let state = {
+  tool: 'pencil',
+  color: '#000000',
+  size: 4,
+  brushSize: 4,
+  eraserSize: 20,
+  opacity: 1,
+  fillMode: 'outline',
+  drawing: false,
+  startX: 0,
+  startY: 0,
+  lastX: 0,
+  lastY: 0,
+  history: [],
+  historyIndex: -1,
+  selection: null, // {x, y, w, h}
+  selectionData: null, // ImageData для перемещения
+  movingSelection: false,
+  moveOffsetX: 0,
+  moveOffsetY: 0,
+  cropping: false,
+  cropRect: null,
+  clipboard: null,
+  // Плавающий объект на холсте (картинка или текст) - поддерживает прозрачность
+  // {type: 'image'|'text', canvas: HTMLCanvasElement, x, y, w, h, ...textProps}
+  floating: null,
+  draggingFloating: false,
+  resizingFloating: false,
+  resizeHandle: null,
+  dragOffsetX: 0,
+  dragOffsetY: 0,
+  // Поворот floating-объекта: угол в радианах живёт прямо в state.floating.rotation,
+  // здесь только эпhemerа сессии drag'а: исходные углы и rotation на момент mousedown.
+  rotatingFloating: false,
+  rotationStart: null, // {initialMouseAngle, initialRotation}
+  // Quad-warp (perspective): state.floating.quad === [{x,y}×4] в координатах канваса,
+  // tl/tr/br/bl (по часовой). Если quad != null — floating рендерится с clip-маской.
+  warpingQuad: false,
+  warpCornerIdx: null,
+  warpStart: null,
+  // Двухфазный quad-инструмент: phase 1 — рисуем bbox прямоугольником, phase 2 — таскаем углы.
+  quadPhase: 'idle' // 'idle' | 'drawing' | 'warping'
+};
+
+// Глубина истории отмен. Снимки — полные PNG холста, поэтому не задираем до тысяч,
+// но 150 шагов — это «намного длиннее» прежних 50.
+const MAX_HISTORY = 150;
+
+// Инициализация белого фона
+function fillWhite() {
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+fillWhite();
+saveHistory('Исходное состояние');
+
+// Палитра цветов
+const colors = [
+  '#000000','#434343','#666666','#999999','#b7b7b7','#cccccc','#d9d9d9','#efefef','#f3f3f3','#ffffff',
+  '#980000','#ff0000','#ff9900','#ffff00','#00ff00','#00ffff','#4a86e8','#0000ff','#9900ff','#ff00ff',
+  '#e6b8af','#f4cccc','#fce5cd','#fff2cc','#d9ead3','#d0e0e3','#c9daf8','#cfe2f3','#d9d2e9','#ead1dc',
+  '#cc4125','#e06666','#f6b26b','#ffd966','#93c47d','#76a5af','#6d9eeb','#6fa8dc','#8e7cc3','#c27ba0'
+];
+
+const palette = document.getElementById('palette');
+colors.forEach(c => {
+  const s = document.createElement('div');
+  s.className = 'color-swatch';
+  s.style.background = c;
+  s.onclick = () => setColor(c);
+  palette.appendChild(s);
+});
+
+function setColor(c) {
+  state.color = c;
+  document.getElementById('color-preview').style.background = c;
+  document.getElementById('color-input').value = c;
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.style.backgroundColor === hexToRgb(c));
+  });
+}
+
+// ============ PIXEL PREVIEW В СТАТУСБАРЕ ============
+// Читать каждый pixel из getImageData дорого, потому что getImageData форсит
+// flush GPU→CPU. Throttle через rAF — максимум один sample за кадр.
+let pixelPreviewPending = false;
+let pixelPreviewLastX = 0, pixelPreviewLastY = 0;
+let pixelPreviewCurrentHex = '#ffffff';
+function schedulePixelPreview(x, y) {
+  pixelPreviewLastX = x;
+  pixelPreviewLastY = y;
+  if (pixelPreviewPending) return;
+  pixelPreviewPending = true;
+  requestAnimationFrame(samplePixelPreview);
+}
+function samplePixelPreview() {
+  pixelPreviewPending = false;
+  const x = Math.floor(pixelPreviewLastX);
+  const y = Math.floor(pixelPreviewLastY);
+  if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
+  try {
+    const d = ctx.getImageData(x, y, 1, 1).data;
+    const hex = '#' + [d[0], d[1], d[2]].map(c => c.toString(16).padStart(2, '0')).join('');
+    pixelPreviewCurrentHex = hex;
+    const sw = document.getElementById('pixel-swatch');
+    const hx = document.getElementById('pixel-hex');
+    if (sw) sw.style.background = hex;
+    if (hx) hx.textContent = hex;
+  } catch (_) { /* security в кросс-доменных canvas невозможен — игнорируем */ }
+}
+// Клик по swatch = назначить как текущий цвет (быстрый eyedropper)
+window.addEventListener('DOMContentLoaded', () => {
+  const sw = document.getElementById('pixel-swatch');
+  if (sw) sw.addEventListener('click', () => setColor(pixelPreviewCurrentHex));
+});
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+document.getElementById('color-input').addEventListener('input', (e) => {
+  setColor(e.target.value);
+});
+
+// Инструменты
+const toolNames = {
+  hand: 'Рука',
+  pencil: 'Карандаш', brush: 'Кисть', marker: 'Маркер', eraser: 'Ластик',
+  fill: 'Заливка', picker: 'Пипетка', text: 'Текст',
+  line: 'Линия', rect: 'Прямоугольник', ellipse: 'Эллипс',
+  triangle: 'Треугольник', star: 'Звезда', arrow: 'Стрелка', heart: 'Сердце',
+  select: 'Выделение', quad: 'Полигон 4 точками', crop: 'Обрезка'
+};
+
+const DRAWING_TOOLS = ['pencil','brush','marker','eraser','line','rect','ellipse','triangle','star','arrow','heart'];
+
+// Генерируем SVG-курсор-круг по размеру кисти. Радиус учитывает зум, потому
+// что пользователь видит мазок именно в экранных пикселях. У браузерных
+// курсоров есть потолок (~128px в Chromium) - выше клампим, чтобы курсор не
+// пропал. Минимум 8px - чтобы при размере 1 круг был видим.
+function updateBrushCursor() {
+  if (!DRAWING_TOOLS.includes(state.tool)) {
+    canvas.style.cursor = '';
+    return;
+  }
+  const zoom = state.zoom || 1;
+  const screenD = Math.max(8, Math.min(96, state.size * zoom));
+  const pad = 3;
+  const sz = Math.ceil(screenD + pad * 2);
+  const c = sz / 2;
+  const r = (screenD / 2).toFixed(2);
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${sz}' height='${sz}' viewBox='0 0 ${sz} ${sz}'>`
+    + `<circle cx='${c}' cy='${c}' r='${r}' fill='none' stroke='white' stroke-width='2.4'/>`
+    + `<circle cx='${c}' cy='${c}' r='${r}' fill='none' stroke='black' stroke-width='1'/>`
+    + `</svg>`;
+  canvas.style.cursor = `url("data:image/svg+xml;utf8,${svg}") ${c} ${c}, crosshair`;
+}
+
+document.querySelectorAll('[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    // Если был активный floating (кроме select/quad) - применяем.
+    // quad оставляет floating живым, чтобы можно было дальше тащить углы.
+    if (state.floating && btn.dataset.tool !== 'select' && btn.dataset.tool !== 'quad') {
+      commitFloating();
+    }
+    // Если был активный текст - применяем
+    if (textEditor.style.display === 'block') {
+      commitText();
+    }
+    document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.tool = btn.dataset.tool;
+    document.getElementById('info-tool').textContent = toolNames[state.tool];
+    syncSizeForTool();
+    // Сброс обычного выделения при смене
+    if (state.tool !== 'select' && state.tool !== 'crop' && state.tool !== 'quad') {
+      commitSelection();
+      hideSelection();
+    }
+    if (state.tool !== 'crop') {
+      state.cropping = false;
+      cropControls.style.display = 'none';
+    }
+    // Сбрасываем inline-курсор, чтобы CSS-класс мог сработать для нерисующих
+    // инструментов. Для рисующих updateBrushCursor() поставит свой кружок.
+    canvas.style.cursor = '';
+    canvas.className = 'tool-' + state.tool;
+    updateBrushCursor();
+  });
+});
+
+// Размер.
+// brushSize - общий размер для рисующих/фигурных инструментов, чтобы при
+// переключении ластик -> фигура не "залипал" размер ластика. Ластик хранит
+// свой размер отдельно (eraserSize).
+const BRUSH_GROUP = ['pencil','brush','marker','line','rect','ellipse','triangle','star','arrow','heart'];
+
+const sizeInput = document.getElementById('size-input');
+sizeInput.addEventListener('input', (e) => {
+  state.size = parseInt(e.target.value);
+  if (state.tool === 'eraser') state.eraserSize = state.size;
+  else if (BRUSH_GROUP.includes(state.tool)) state.brushSize = state.size;
+  document.getElementById('size-display').textContent = state.size;
+  document.getElementById('info-size').textContent = state.size + ' px';
+  updateBrushCursor();
+});
+
+function syncSizeForTool() {
+  let v;
+  if (state.tool === 'eraser') v = state.eraserSize;
+  else if (BRUSH_GROUP.includes(state.tool)) v = state.brushSize;
+  else {
+    updateBrushCursor();
+    return;
+  }
+  state.size = v;
+  sizeInput.value = v;
+  document.getElementById('size-display').textContent = v;
+  document.getElementById('info-size').textContent = v + ' px';
+  updateBrushCursor();
+}
+
+// Прозрачность
+document.getElementById('opacity-input').addEventListener('input', (e) => {
+  state.opacity = parseInt(e.target.value) / 100;
+  document.getElementById('opacity-display').textContent = e.target.value + '%';
+});
+
+// Режим заливки фигур: UI убран, оставляем безопасный сеттер на случай вызова из меню
+function setFillMode(m) {
+  if (!['outline', 'solid', 'both'].includes(m)) return;
+  state.fillMode = m;
+  document.querySelectorAll('.fill-btn').forEach(b => {
+    b.classList.toggle('active', b.id === 'fill-' + m);
+  });
+}
+
+// Координаты
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+// Мышь
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onUp);
+canvas.addEventListener('mouseleave', onUp);
+
+function onDown(e) {
+  if (state.tool === 'hand') return;
+  const {x, y} = getPos(e);
+  state.startX = x;
+  state.startY = y;
+  state.lastX = x;
+  state.lastY = y;
+
+  const t = state.tool;
+
+  // Выделение - проверка, кликнул ли внутри
+  if ((t === 'select' || t === 'crop' || t === 'quad') && state.floating && hitFloating(x, y)) {
+    ensureOriginalQuadErased();
+    state.draggingFloating = true;
+    state.dragOffsetX = x - state.floating.x;
+    state.dragOffsetY = y - state.floating.y;
+    return;
+  }
+  if ((t === 'select' || t === 'crop' || t === 'quad') && state.floating) {
+    // Клик вне floating - применяем
+    commitFloating();
+  }
+  if ((t === 'select' || t === 'crop') && state.selection) {
+    const s = state.selection;
+    if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) {
+      if (t === 'select' && state.selectionData) {
+        // Поднимаем выделение в floating (drawImage = композитинг с прозрачностью),
+        // чтобы двигалось только нарисованное, без белой подложки.
+        const f = promoteSelectionToFloating();
+        if (f) {
+          state.draggingFloating = true;
+          state.dragOffsetX = x - f.x;
+          state.dragOffsetY = y - f.y;
+        }
+        return;
+      }
+    } else {
+      commitSelection();
+      hideSelection();
+    }
+  }
+
+  // При других инструментах, если есть floating - применяем.
+  // Пипетка - исключение: сэмплит из композита (canvas + floating), сам
+  // floating оставляет нетронутым, иначе клик пипеткой бы рушил вставленную
+  // картинку.
+  if (state.floating && t !== 'select' && t !== 'crop' && t !== 'quad' && t !== 'picker') {
+    commitFloating();
+  }
+
+  state.drawing = true;
+  // На время рисования bbox прячем handles в selection-overlay — иначе при tiny drag
+  // курсор попадает на handle, события не доходят до canvas, и selection застывает.
+  if (t === 'select' || t === 'quad' || t === 'crop') {
+    selOverlay.classList.add('drawing');
+  }
+
+  if (t === 'pencil' || t === 'brush') {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    applyBrushStyle();
+    ctx.lineTo(x + 0.01, y + 0.01);
+    ctx.stroke();
+  } else if (t === 'marker') {
+    // Маркер рисуем на previewCanvas при alpha=1, чтобы перекрытия round-cap
+    // в стыках сегментов не складывались в тёмные точки. Полупрозрачность
+    // даём через CSS opacity слоя, и одним drawImage переносим на холст в onUp.
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    previewCtx.strokeStyle = state.color;
+    previewCtx.lineCap = 'round';
+    previewCtx.lineJoin = 'round';
+    previewCtx.lineWidth = state.size * 1.5;
+    previewCtx.globalAlpha = 1;
+    previewCanvas.style.opacity = String(state.opacity * 0.4);
+    previewCtx.beginPath();
+    previewCtx.moveTo(x, y);
+    previewCtx.lineTo(x + 0.01, y + 0.01);
+    previewCtx.stroke();
+  } else if (t === 'eraser') {
+    // Ластик рисует белым - как в классическом Paint. Так нет проблем с
+    // полупрозрачными пикселями и сохранение в PNG/JPEG даёт ожидаемый
+    // белый фон.
+    ctx.save();
+    ctx.fillStyle = 'white';
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(x, y, state.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } else if (t === 'fill') {
+    floodFill(Math.floor(x), Math.floor(y), state.color);
+    state.drawing = false;
+    saveHistory('Заливка');
+  } else if (t === 'picker') {
+    // Сэмплим из композита: основной холст + текущий floating сверху. Так
+    // пользователь подбирает цвет ровно того, что видит, не теряя плавающий
+    // объект.
+    let sampleCtx = ctx;
+    if (state.floating) {
+      const composite = document.createElement('canvas');
+      composite.width = canvas.width;
+      composite.height = canvas.height;
+      const cc = composite.getContext('2d');
+      cc.drawImage(canvas, 0, 0);
+      const f = state.floating;
+      cc.drawImage(f.canvas, f.x, f.y, f.w, f.h);
+      sampleCtx = cc;
+    }
+    const pixel = sampleCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+    const hex = '#' + [pixel[0], pixel[1], pixel[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+    setColor(hex);
+    state.drawing = false;
+  } else if (t === 'text') {
+    // Применяем предыдущий текст, если был
+    if (textEditor.style.display === 'block') commitText();
+    startTextEdit(x, y);
+    state.drawing = false;
+  }
+}
+
+function onMove(e) {
+  const {x, y} = getPos(e);
+  document.getElementById('pos').textContent = `${Math.round(x)}, ${Math.round(y)}`;
+  // Pixel preview только когда не идёт активный drag — getImageData дорогой
+  if (!state.drawing && !state.draggingFloating && !state.resizingFloating &&
+      !state.rotatingFloating && !state.warpingQuad && !state.movingSelection) {
+    schedulePixelPreview(x, y);
+  }
+
+  // Перетаскивание floating объекта (для quad — сдвигаем и все 4 угла вместе)
+  if (state.draggingFloating && state.floating) {
+    const nx = x - state.dragOffsetX;
+    const ny = y - state.dragOffsetY;
+    if (state.floating.quad) {
+      const dx = nx - state.floating.x;
+      const dy = ny - state.floating.y;
+      state.floating.quad.forEach(p => { p.x += dx; p.y += dy; });
+    }
+    state.floating.x = nx;
+    state.floating.y = ny;
+    renderFloating();
+    return;
+  }
+
+  // Resize floating
+  if (state.resizingFloating && state.floating) {
+    resizeFloating(x, y);
+    return;
+  }
+
+  // В режиме выделения: показываем move-cursor когда мышь над активным floating
+  if (state.tool === 'select' || state.tool === 'quad') {
+    if (state.floating && hitFloating(x, y)) {
+      canvas.style.cursor = 'move';
+    } else if (!state.drawing) {
+      canvas.style.cursor = 'crosshair';
+    }
+  }
+
+  // Перемещение старого выделения
+  if (state.movingSelection && state.selectionData) {
+    const nx = x - state.moveOffsetX;
+    const ny = y - state.moveOffsetY;
+    ctx.putImageData(state.originalBeforeMove, 0, 0);
+    ctx.putImageData(state.selectionData, nx, ny);
+    state.selection.x = nx;
+    state.selection.y = ny;
+    updateSelectionOverlay();
+    return;
+  }
+
+  if (!state.drawing) return;
+
+  const t = state.tool;
+
+  if (t === 'pencil' || t === 'brush') {
+    applyBrushStyle();
+    ctx.beginPath();
+    ctx.moveTo(state.lastX, state.lastY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    state.lastX = x;
+    state.lastY = y;
+  } else if (t === 'marker') {
+    previewCtx.beginPath();
+    previewCtx.moveTo(state.lastX, state.lastY);
+    previewCtx.lineTo(x, y);
+    previewCtx.stroke();
+    state.lastX = x;
+    state.lastY = y;
+  } else if (t === 'eraser') {
+    // Плавное "стирание" - рисуем белой линией между предыдущей и текущей точкой
+    ctx.save();
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = state.size;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.moveTo(state.lastX, state.lastY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.restore();
+    state.lastX = x;
+    state.lastY = y;
+  } else if (['line','rect','ellipse','triangle','star','arrow','heart'].includes(t)) {
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    drawShape(previewCtx, t, state.startX, state.startY, x, y);
+  } else if (t === 'select' || t === 'crop' || t === 'quad') {
+    const sx = Math.min(state.startX, x);
+    const sy = Math.min(state.startY, y);
+    const sw = Math.abs(x - state.startX);
+    const sh = Math.abs(y - state.startY);
+    state.selection = {x: sx, y: sy, w: sw, h: sh};
+    updateSelectionOverlay();
+    document.getElementById('sel-size').textContent = `${Math.round(sw)} × ${Math.round(sh)}`;
+  }
+}
+
+function onUp(e) {
+  if (state.draggingFloating) {
+    state.draggingFloating = false;
+    return;
+  }
+  if (state.resizingFloating) {
+    state.resizingFloating = false;
+    state.resizeHandle = null;
+    return;
+  }
+  if (state.movingSelection) {
+    state.movingSelection = false;
+    return;
+  }
+
+  if (!state.drawing) return;
+  state.drawing = false;
+  selOverlay.classList.remove('drawing');
+
+  const t = state.tool;
+
+  if (['pencil','brush','eraser'].includes(t)) {
+    saveHistory(t === 'eraser' ? 'Ластик' : 'Штрих');
+  } else if (t === 'marker') {
+    // Сливаем буфер-маркер на холст одним drawImage с marker-альфой
+    ctx.save();
+    ctx.globalAlpha = state.opacity * 0.4;
+    ctx.drawImage(previewCanvas, 0, 0);
+    ctx.restore();
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    previewCanvas.style.opacity = '';
+    saveHistory('Маркер');
+  } else if (['line','rect','ellipse','triangle','star','arrow','heart'].includes(t)) {
+    const {x, y} = getPos(e);
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    drawShape(ctx, t, state.startX, state.startY, x, y);
+    saveHistory('Фигура');
+  } else if (t === 'select') {
+    if (state.selection && state.selection.w > 2 && state.selection.h > 2) {
+      // Помечаем, что выделение готово к перемещению. Сам подъём пикселей и стирание
+      // фона происходят при клике внутрь (promoteSelectionToFloating), а не сейчас —
+      // так холст не трогается, пока пользователь не начал двигать.
+      state.selectionData = ctx.getImageData(
+        state.selection.x, state.selection.y,
+        state.selection.w, state.selection.h
+      );
+      state.originalBeforeMove = null;
+    }
+  } else if (t === 'crop') {
+    if (state.selection && state.selection.w > 2 && state.selection.h > 2) {
+      state.cropping = true;
+      showCropControls();
+    }
+  } else if (t === 'quad') {
+    // Polygon-selection. promote БЕЗ стирания bbox — pickup идентичен canvas,
+    // визуально нет «дырки». originalQuad НЕ сохраняем сразу — он будет сделан
+    // как snapshot ТЕКУЩЕЙ формы при первом translate/scale/rotate. Так пользователь
+    // может свободно менять форму corner-drag без побочного стирания canvas.
+    if (state.selection && state.selection.w >= 20 && state.selection.h >= 20) {
+      const f = promoteSelectionToFloating({ eraseBbox: false });
+      if (f) {
+        f.quad = [
+          { x: f.x,       y: f.y       },
+          { x: f.x + f.w, y: f.y       },
+          { x: f.x + f.w, y: f.y + f.h },
+          { x: f.x,       y: f.y + f.h }
+        ];
+        f.originalQuad = null; // snapshot будет сделан в ensureOriginalQuadErased
+        renderFloating();
+      }
+    } else {
+      hideSelection();
+    }
+  }
+}
+
+function applyBrushStyle() {
+  ctx.strokeStyle = state.color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = state.opacity;
+
+  if (state.tool === 'pencil') {
+    ctx.lineWidth = Math.max(1, state.size * 0.5);
+  } else if (state.tool === 'brush') {
+    ctx.lineWidth = state.size;
+  }
+  // marker рисуется через previewCanvas — стили задаются в onDown
+}
+
+function drawShape(context, type, x1, y1, x2, y2) {
+  context.strokeStyle = state.color;
+  context.fillStyle = state.color;
+  context.lineWidth = state.size;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.globalAlpha = state.opacity;
+
+  const doFill = state.fillMode === 'solid' || state.fillMode === 'both';
+  const doStroke = state.fillMode === 'outline' || state.fillMode === 'both';
+
+  context.beginPath();
+
+  if (type === 'line') {
+    context.moveTo(x1, y1);
+    context.lineTo(x2, y2);
+    context.stroke();
+  } else if (type === 'rect') {
+    const x = Math.min(x1, x2), y = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+    context.rect(x, y, w, h);
+    if (doFill) context.fill();
+    if (doStroke) context.stroke();
+  } else if (type === 'ellipse') {
+    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+    const rx = Math.abs(x2 - x1) / 2, ry = Math.abs(y2 - y1) / 2;
+    context.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    if (doFill) context.fill();
+    if (doStroke) context.stroke();
+  } else if (type === 'triangle') {
+    const x = Math.min(x1, x2), y = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+    context.moveTo(x + w / 2, y);
+    context.lineTo(x, y + h);
+    context.lineTo(x + w, y + h);
+    context.closePath();
+    if (doFill) context.fill();
+    if (doStroke) context.stroke();
+  } else if (type === 'star') {
+    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+    const r = Math.min(Math.abs(x2 - x1), Math.abs(y2 - y1)) / 2;
+    drawStar(context, cx, cy, 5, r, r * 0.4);
+    if (doFill) context.fill();
+    if (doStroke) context.stroke();
+  } else if (type === 'arrow') {
+    const headLen = Math.max(15, state.size * 3);
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    context.moveTo(x1, y1);
+    context.lineTo(x2, y2);
+    context.lineTo(x2 - headLen * Math.cos(angle - Math.PI/6), y2 - headLen * Math.sin(angle - Math.PI/6));
+    context.moveTo(x2, y2);
+    context.lineTo(x2 - headLen * Math.cos(angle + Math.PI/6), y2 - headLen * Math.sin(angle + Math.PI/6));
+    context.stroke();
+  } else if (type === 'heart') {
+    const x = Math.min(x1, x2), y = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+    drawHeart(context, x, y, w, h);
+    if (doFill) context.fill();
+    if (doStroke) context.stroke();
+  }
+}
+
+function drawStar(c, cx, cy, spikes, outer, inner) {
+  let rot = Math.PI / 2 * 3;
+  const step = Math.PI / spikes;
+  c.moveTo(cx, cy - outer);
+  for (let i = 0; i < spikes; i++) {
+    c.lineTo(cx + Math.cos(rot) * outer, cy + Math.sin(rot) * outer);
+    rot += step;
+    c.lineTo(cx + Math.cos(rot) * inner, cy + Math.sin(rot) * inner);
+    rot += step;
+  }
+  c.lineTo(cx, cy - outer);
+  c.closePath();
+}
+
+function drawHeart(c, x, y, w, h) {
+  const topCurveHeight = h * 0.3;
+  c.moveTo(x + w / 2, y + topCurveHeight);
+  c.bezierCurveTo(x + w / 2, y, x, y, x, y + topCurveHeight);
+  c.bezierCurveTo(x, y + (h + topCurveHeight) / 2, x + w / 2, y + (h + topCurveHeight) / 1.3, x + w / 2, y + h);
+  c.bezierCurveTo(x + w / 2, y + (h + topCurveHeight) / 1.3, x + w, y + (h + topCurveHeight) / 2, x + w, y + topCurveHeight);
+  c.bezierCurveTo(x + w, y, x + w / 2, y, x + w / 2, y + topCurveHeight);
+  c.closePath();
+}
+
+// Заливка (flood fill) с учётом прозрачности
+function floodFill(x, y, fillHex) {
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = img.data;
+  const w = canvas.width, h = canvas.height;
+  const alpha = state.opacity;
+
+  const target = getPixel(data, x, y, w);
+  const fillRgb = hexToRgbArr(fillHex);
+
+  // Если цвет заливки такой же как целевой при непрозрачности 100% - выходим
+  if (alpha >= 1 && colorsMatch(target, fillRgb)) return;
+
+  const stack = [[x, y]];
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
+    const p = getPixel(data, cx, cy, w);
+    if (!colorsMatch(p, target)) continue;
+    // Смешиваем с учётом прозрачности: new = bg * (1-a) + fill * a
+    const r = Math.round(p[0] * (1 - alpha) + fillRgb[0] * alpha);
+    const g = Math.round(p[1] * (1 - alpha) + fillRgb[1] * alpha);
+    const b = Math.round(p[2] * (1 - alpha) + fillRgb[2] * alpha);
+    setPixel(data, cx, cy, w, [r, g, b]);
+    stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function getPixel(d, x, y, w) {
+  const i = (y * w + x) * 4;
+  return [d[i], d[i+1], d[i+2], d[i+3]];
+}
+
+function setPixel(d, x, y, w, c) {
+  const i = (y * w + x) * 4;
+  d[i] = c[0]; d[i+1] = c[1]; d[i+2] = c[2]; d[i+3] = 255;
+}
+
+function colorsMatch(a, b, tol = 2) {
+  return Math.abs(a[0] - b[0]) <= tol && Math.abs(a[1] - b[1]) <= tol && Math.abs(a[2] - b[2]) <= tol;
+}
+
+function hexToRgbArr(hex) {
+  return [parseInt(hex.slice(1,3), 16), parseInt(hex.slice(3,5), 16), parseInt(hex.slice(5,7), 16)];
+}
+
+// Выделение UI
+function updateSelectionOverlay() {
+  if (!state.selection) { hideSelection(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+  const wPx = state.selection.w * scaleX;
+  const hPx = state.selection.h * scaleY;
+  selOverlay.style.display = 'block';
+  selOverlay.style.left = (state.selection.x * scaleX) + 'px';
+  selOverlay.style.top = (state.selection.y * scaleY) + 'px';
+  selOverlay.style.width = wPx + 'px';
+  selOverlay.style.height = hPx + 'px';
+  // На малых выделениях скрываем side-handles, чтобы corner'ы не наезжали друг на друга
+  selOverlay.classList.toggle('small-x', wPx < 50);
+  selOverlay.classList.toggle('small-y', hPx < 50);
+}
+
+function hideSelection() {
+  selOverlay.style.display = 'none';
+  state.selection = null;
+  state.selectionData = null;
+  document.getElementById('sel-size').textContent = '—';
+}
+
+function commitSelection() {
+  state.selectionData = null;
+  state.originalBeforeMove = null;
+}
+
+function showCropControls() {
+  if (!state.selection) return;
+  cropControls.style.display = 'flex';
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+  cropControls.style.left = (state.selection.x * scaleX) + 'px';
+  cropControls.style.top = ((state.selection.y + state.selection.h) * scaleY + 8) + 'px';
+}
+
+function applyCrop() {
+  if (!state.selection) return;
+  // Сначала зафиксировать плавающий объект, чтобы он попал в обрезку, а не
+  // потерялся вне новых границ.
+  if (state.floating) commitFloating();
+  const s = state.selection;
+  const cropped = ctx.getImageData(s.x, s.y, s.w, s.h);
+  canvas.width = s.w;
+  canvas.height = s.h;
+  previewCanvas.width = s.w;
+  previewCanvas.height = s.h;
+  ctx.putImageData(cropped, 0, 0);
+  updateCanvasInfo();
+  hideSelection();
+  cropControls.style.display = 'none';
+  state.cropping = false;
+  saveHistory('Обрезка');
+}
+
+function cancelCrop() {
+  hideSelection();
+  cropControls.style.display = 'none';
+  state.cropping = false;
+}
+
+// История undo/redo. Каждая запись — { url, label }: url для восстановления,
+// label для списка в панели «История изменений».
+function saveHistory(label) {
+  state.history = state.history.slice(0, state.historyIndex + 1);
+  state.history.push({ url: canvas.toDataURL(), label: label || 'Изменение' });
+  if (state.history.length > MAX_HISTORY) state.history.shift();
+  state.historyIndex = state.history.length - 1;
+  renderHistoryPanel();
+}
+
+function undo() {
+  if (state.historyIndex > 0) {
+    state.historyIndex--;
+    restoreHistory();
+    renderHistoryPanel();
+  }
+}
+
+function redo() {
+  if (state.historyIndex < state.history.length - 1) {
+    state.historyIndex++;
+    restoreHistory();
+    renderHistoryPanel();
+  }
+}
+
+// Прыжок в произвольную точку истории (клик по строке в панели).
+function jumpHistory(index) {
+  if (index < 0 || index >= state.history.length || index === state.historyIndex) return;
+  state.historyIndex = index;
+  restoreHistory();
+  renderHistoryPanel();
+}
+
+// Перерисовать список истории: текущая позиция подсвечена, «будущие» (для повтора) приглушены.
+function renderHistoryPanel() {
+  const list = document.getElementById('history-list');
+  if (!list) return;
+  list.innerHTML = '';
+  for (let i = 0; i < state.history.length; i++) {
+    const entry = state.history[i];
+    const label = (i === 0) ? 'Исходное состояние'
+                            : ((entry && entry.label) ? entry.label : 'Изменение');
+    const div = document.createElement('div');
+    div.className = 'hist-item' + (i === state.historyIndex ? ' current' : '')
+                                + (i > state.historyIndex ? ' future' : '');
+    div.textContent = label;
+    div.title = label;
+    div.addEventListener('click', () => jumpHistory(i));
+    list.appendChild(div);
+  }
+  const cur = list.querySelector('.hist-item.current');
+  if (cur) cur.scrollIntoView({ block: 'nearest' });
+}
+
+// Свернуть/развернуть панель истории.
+function toggleHistoryPanel() {
+  const list = document.getElementById('history-list');
+  const caret = document.getElementById('hist-caret');
+  if (!list) return;
+  const collapsed = list.classList.toggle('collapsed');
+  if (caret) caret.textContent = collapsed ? '▸' : '▾';
+}
+
+function restoreHistory() {
+  // Активный floating-объект относится к "до-undo" моменту, после restoreHistory
+  // его не должно остаться (иначе drag/rotate ссылается на отсутствующую дырку).
+  cancelFloating();
+  hideSelection();
+  const img = new Image();
+  img.onload = () => {
+    const sizeChanged = canvas.width !== img.width || canvas.height !== img.height;
+    if (sizeChanged) {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      previewCanvas.width = img.width;
+      previewCanvas.height = img.height;
+      updateCanvasInfo();
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    if (sizeChanged && typeof applyZoom === 'function') applyZoom();
+  };
+  const entry = state.history[state.historyIndex];
+  img.src = (entry && entry.url) ? entry.url : entry;
+}
+
+// Файлы
+document.getElementById('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      // Если картинка больше холста - расширяем холст под неё
+      if (img.width > canvas.width || img.height > canvas.height) {
+        const newW = Math.max(canvas.width, img.width + 40);
+        const newH = Math.max(canvas.height, img.height + 40);
+        const old = document.createElement('canvas');
+        old.width = canvas.width;
+        old.height = canvas.height;
+        old.getContext('2d').drawImage(canvas, 0, 0);
+        canvas.width = newW;
+        canvas.height = newH;
+        previewCanvas.width = newW;
+        previewCanvas.height = newH;
+        fillWhite();
+        ctx.drawImage(old, 0, 0);
+        updateCanvasInfo();
+      }
+      createFloatingFromImage(img, 20, 20);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  // Сбросить, чтобы можно было загрузить тот же файл снова
+  e.target.value = '';
+});
+
+// ============ ПЛАВАЮЩИЙ ОБЪЕКТ (floating) ============
+// Используем отдельный canvas, который рендерится поверх основного через
+// CSS-позиционирование. drawImage поддерживает прозрачность, в отличие от putImageData.
+//
+// Поворот и quad-полигон хранятся прямо на state.floating:
+//   - rotation: угол в радианах вокруг центра bbox (f.x+f.w/2, f.y+f.h/2)
+//   - quad: null или [{x,y}×4] (tl,tr,br,bl) в координатах канваса. Если quad —
+//     полигон работает как clipping-маска поверх pickup'а; изображение НЕ
+//     деформируется. Это polygon-selection: можно вырезать треугольник
+//     (две точки совпадают), ромб, трапецию — пиксели остаются на месте.
+
+function createFloatingFromCanvas(srcCanvas, x, y, w, h, type = 'image') {
+  commitFloating(); // сначала применить предыдущий, если был
+  state.floating = {
+    type: type,
+    canvas: srcCanvas,
+    x: x, y: y,
+    w: w || srcCanvas.width,
+    h: h || srcCanvas.height,
+    naturalW: srcCanvas.width,
+    naturalH: srcCanvas.height,
+    rotation: 0,
+    quad: null
+  };
+  renderFloating();
+  // Переключаемся на select для перемещения, если был активный другой tool
+  if (state.tool !== 'select' && state.tool !== 'quad') {
+    document.querySelector('[data-tool="select"]').click();
+  }
+}
+
+function createFloatingFromImage(img, x, y) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  c.getContext('2d').drawImage(img, 0, 0);
+  createFloatingFromCanvas(c, x, y);
+}
+
+// Поднять текущее обычное выделение в floating. Используется при rotate/scale/quad
+// без явного pickup. НЕ вызывает saveHistory: это промежуточная операция (как pickup
+// при cursor-tool), окончательный snapshot создаётся при commitFloating.
+//
+// opts.eraseBbox = true (default) — стираем bbox-область на canvas, оставляем pickup
+//   во floating. При cancel preCanvas восстанавливает оригинал.
+// opts.eraseBbox = false — НЕ стираем canvas. Используется для quad-полигона:
+//   при commit мы стираем только polygon-форму (originalQuad), а bbox остаётся целым.
+// Сделать белый фон холста прозрачным на pickup-картинке. Тогда при перемещении
+// выделения двигается только нарисованное, а не белый прямоугольник, перекрывающий
+// то, что под ним. drawImage (в renderFloating/commitFloating) уважает прозрачность.
+function keyOutWhite(cnv, tol) {
+  tol = (tol == null) ? 8 : tol;
+  const g = cnv.getContext('2d');
+  const id = g.getImageData(0, 0, cnv.width, cnv.height);
+  const d = id.data;
+  const lo = 255 - tol;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    if (d[i] >= lo && d[i + 1] >= lo && d[i + 2] >= lo) d[i + 3] = 0;
+  }
+  g.putImageData(id, 0, 0);
+}
+
+function promoteSelectionToFloating(opts) {
+  opts = opts || {};
+  const eraseBbox = opts.eraseBbox !== false;
+  if (!state.selection) return null;
+  const s = state.selection;
+  if (s.w < 2 || s.h < 2) return null;
+  const pickup = document.createElement('canvas');
+  pickup.width = Math.round(s.w);
+  pickup.height = Math.round(s.h);
+  pickup.getContext('2d').drawImage(canvas, s.x, s.y, s.w, s.h, 0, 0, pickup.width, pickup.height);
+  // Прямоугольное выделение поднимаем «без белого»: фон становится прозрачным.
+  // Для quad (eraseBbox=false) форму задаёт сам полигон-клип, кеинг не нужен.
+  if (eraseBbox) keyOutWhite(pickup);
+  const backup = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  if (eraseBbox) {
+    ctx.fillStyle = 'white';
+    ctx.fillRect(s.x, s.y, s.w, s.h);
+  }
+  state.floating = {
+    type: 'image',
+    canvas: pickup,
+    x: s.x, y: s.y, w: s.w, h: s.h,
+    naturalW: pickup.width, naturalH: pickup.height,
+    rotation: 0,
+    quad: null,
+    preCanvas: backup
+  };
+  hideSelection();
+  renderFloating();
+  return state.floating;
+}
+
+// Рисует pickup-картинку, обрезанную полигоном из 4 точек.
+// Pickup рисуется в (drawX, drawY) размером (drawW, drawH) и НЕ деформируется под
+// форму quad'а — quad работает как clip-маска. Однако drawW/drawH позволяют scale
+// (через resize-handles bbox'а), а rotation — равномерно повернуть pickup вокруг
+// центра bbox. Так resize/rotate действуют на pickup ВМЕСТЕ с маской, а drag
+// одного quad-corner — только на маску.
+function drawClippedQuad(g, img, quad, drawX, drawY, drawW, drawH, rotation) {
+  g.save();
+  g.beginPath();
+  g.moveTo(quad[0].x, quad[0].y);
+  g.lineTo(quad[1].x, quad[1].y);
+  g.lineTo(quad[2].x, quad[2].y);
+  g.lineTo(quad[3].x, quad[3].y);
+  g.closePath();
+  g.clip();
+  if (rotation) {
+    const cx = drawX + drawW / 2;
+    const cy = drawY + drawH / 2;
+    g.translate(cx, cy);
+    g.rotate(rotation);
+    g.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+  } else {
+    g.drawImage(img, drawX, drawY, drawW, drawH);
+  }
+  g.restore();
+}
+
+function renderFloating() {
+  if (!state.floating) {
+    floatingFrame.classList.remove('active', 'quad-mode');
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    hideQuadControls();
+    return;
+  }
+  const f = state.floating;
+  previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  if (f.quad) {
+    drawClippedQuad(previewCtx, f.canvas, f.quad, f.x, f.y, f.w, f.h, f.rotation || 0);
+  } else if (f.rotation) {
+    previewCtx.save();
+    previewCtx.translate(f.x + f.w / 2, f.y + f.h / 2);
+    previewCtx.rotate(f.rotation);
+    previewCtx.drawImage(f.canvas, -f.w / 2, -f.h / 2, f.w, f.h);
+    previewCtx.restore();
+  } else {
+    previewCtx.drawImage(f.canvas, f.x, f.y, f.w, f.h);
+  }
+  updateFloatingFrame();
+}
+
+function updateFloatingFrame() {
+  if (!state.floating) {
+    floatingFrame.classList.remove('active', 'quad-mode');
+    hideQuadControls();
+    return;
+  }
+  const f = state.floating;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+
+  // Общая часть: позиция и размер bbox + опциональный CSS-поворот рамки.
+  // Resize-handles и rotate-handle висят внутри frame'а и поворачиваются вместе с ним.
+  const wPx = f.w * scaleX;
+  const hPx = f.h * scaleY;
+  floatingFrame.classList.add('active');
+  floatingFrame.classList.toggle('quad-mode', !!f.quad);
+  floatingFrame.classList.toggle('rotated', !!f.rotation);
+  floatingFrame.classList.toggle('small-x', wPx < 50);
+  floatingFrame.classList.toggle('small-y', hPx < 50);
+  floatingFrame.style.left = (f.x * scaleX) + 'px';
+  floatingFrame.style.top = (f.y * scaleY) + 'px';
+  floatingFrame.style.width = wPx + 'px';
+  floatingFrame.style.height = hPx + 'px';
+  floatingFrame.style.transformOrigin = '50% 50%';
+  floatingFrame.style.transform = f.rotation ? `rotate(${f.rotation}rad)` : '';
+
+  if (f.quad) {
+    showQuadControls(f.quad, scaleX, scaleY);
+  } else {
+    hideQuadControls();
+  }
+}
+
+function showQuadControls(quad, scaleX, scaleY) {
+  // Перерисовать SVG-контур и позиции точек. SVG растягиваем под canvas (в screen-px).
+  const rect = canvas.getBoundingClientRect();
+  quadOutline.classList.add('active');
+  quadOutline.setAttribute('width', rect.width);
+  quadOutline.setAttribute('height', rect.height);
+  quadOutline.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+  quadOutline.style.width = rect.width + 'px';
+  quadOutline.style.height = rect.height + 'px';
+  const pts = quad.map(p => `${p.x * scaleX},${p.y * scaleY}`).join(' ');
+  quadOutlinePoly.setAttribute('points', pts);
+  quadCornerEls.forEach((el, i) => {
+    el.classList.add('active');
+    el.style.left = (quad[i].x * scaleX) + 'px';
+    el.style.top = (quad[i].y * scaleY) + 'px';
+  });
+}
+
+function hideQuadControls() {
+  quadOutline.classList.remove('active');
+  quadCornerEls.forEach(el => el.classList.remove('active'));
+}
+
+// Стереть исходную область quad на main canvas. Lazy: вызывается при первом
+// translate/scale/rotate. Snapshot ТЕКУЩЕЙ формы quad сохраняется в originalQuad,
+// и стирается именно она (не bbox!). Так пользователь может corner-drag'ом сделать
+// треугольник, затем move — и на canvas останется "всё минус треугольник", а не
+// "всё минус прямоугольник bbox".
+function ensureOriginalQuadErased() {
+  const f = state.floating;
+  if (!f || !f.quad || f.originalQuadErased) return;
+  // Snapshot текущей формы quad как originalQuad — стираем именно её
+  f.originalQuad = f.quad.map(p => ({ x: p.x, y: p.y }));
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(f.originalQuad[0].x, f.originalQuad[0].y);
+  for (let i = 1; i < 4; i++) ctx.lineTo(f.originalQuad[i].x, f.originalQuad[i].y);
+  ctx.closePath();
+  ctx.fillStyle = 'white';
+  ctx.fill();
+  ctx.restore();
+  f.originalQuadErased = true;
+}
+
+function commitFloating() {
+  if (!state.floating) return;
+  const f = state.floating;
+  // Для quad: гарантируем что текущая shape стёрта (если был idle commit без translate).
+  // Если квад был перенесён/изменён до commit — стирание уже произошло раньше.
+  if (f.quad) ensureOriginalQuadErased();
+  ctx.save();
+  ctx.globalAlpha = 1;
+  if (f.quad) {
+    drawClippedQuad(ctx, f.canvas, f.quad, f.x, f.y, f.w, f.h, f.rotation || 0);
+  } else if (f.rotation) {
+    ctx.translate(f.x + f.w / 2, f.y + f.h / 2);
+    ctx.rotate(f.rotation);
+    ctx.drawImage(f.canvas, -f.w / 2, -f.h / 2, f.w, f.h);
+  } else {
+    ctx.drawImage(f.canvas, f.x, f.y, f.w, f.h);
+  }
+  ctx.restore();
+  state.floating = null;
+  previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  floatingFrame.classList.remove('active', 'quad-mode');
+  floatingFrame.style.transform = '';
+  hideQuadControls();
+  saveHistory('Перемещение');
+}
+
+function cancelFloating() {
+  // Если есть backup (promote из selection) — возвращаем canvas в дополитное состояние
+  if (state.floating && state.floating.preCanvas) {
+    ctx.putImageData(state.floating.preCanvas, 0, 0);
+  }
+  state.floating = null;
+  previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  floatingFrame.classList.remove('active', 'quad-mode');
+  floatingFrame.style.transform = '';
+  hideQuadControls();
+}
+
+// Проверка, попал ли клик в floating (с учётом rotation и quad).
+function hitFloating(x, y) {
+  if (!state.floating) return null;
+  const f = state.floating;
+  if (f.quad) {
+    return pointInPolygon(x, y, f.quad) ? 'body' : null;
+  }
+  if (!f.rotation) {
+    return (x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.h) ? 'body' : null;
+  }
+  // Поворачиваем точку в локальную систему floating
+  const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+  const cos = Math.cos(-f.rotation), sin = Math.sin(-f.rotation);
+  const lx = cos * (x - cx) - sin * (y - cy) + f.w / 2;
+  const ly = sin * (x - cx) + cos * (y - cy) + f.h / 2;
+  return (lx >= 0 && lx <= f.w && ly >= 0 && ly <= f.h) ? 'body' : null;
+}
+
+// Ray casting test для произвольного polygon
+function pointInPolygon(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// ============ RESIZE FLOATING ============
+// Anchor-based math: противоположная ручке точка фиксирована в мировой системе,
+// мышь приводится к локальной системе (-rotation), считаются новые w/h, центр
+// возвращается обратно в мир (+rotation). Это работает для любого угла поворота
+// и для quad — точки масштабируются вокруг того же якоря.
+
+function resizeFloating(x, y) {
+  const f = state.floating;
+  const h = state.resizeHandle;
+  if (!f || !h) return;
+
+  const orig = state.floatingOriginal;
+  const shift = state.shiftKey || false;
+  const rot = orig.rotation || 0;
+  const cosR = Math.cos(rot), sinR = Math.sin(rot);
+  const cosNeg = Math.cos(-rot), sinNeg = Math.sin(-rot);
+
+  // 1) anchor в локальной системе bbox: противоположная ручке точка
+  let axL, ayL;
+  if (h.includes('w')) axL = orig.w; else if (h.includes('e')) axL = 0; else axL = orig.w / 2;
+  if (h.includes('n')) ayL = orig.h; else if (h.includes('s')) ayL = 0; else ayL = orig.h / 2;
+
+  // 2) anchor в мировой системе: поворачиваем вектор от центра bbox
+  const origCx = orig.x + orig.w / 2;
+  const origCy = orig.y + orig.h / 2;
+  const vx = axL - orig.w / 2;
+  const vy = ayL - orig.h / 2;
+  const axW = origCx + cosR * vx - sinR * vy;
+  const ayW = origCy + sinR * vx + cosR * vy;
+
+  // 3) локальная позиция мыши относительно anchor (поворот -rot)
+  const dxW = x - axW;
+  const dyW = y - ayW;
+  const lx = cosNeg * dxW - sinNeg * dyW;
+  const ly = sinNeg * dxW + cosNeg * dyW;
+
+  // 4) новые размеры в локальной системе (знак зависит от того, по какую сторону anchor)
+  let newW, newH;
+  if (h.includes('w')) newW = Math.max(10, -lx);
+  else if (h.includes('e')) newW = Math.max(10, lx);
+  else newW = orig.w;
+  if (h.includes('n')) newH = Math.max(10, -ly);
+  else if (h.includes('s')) newH = Math.max(10, ly);
+  else newH = orig.h;
+
+  // 5) shift = пропорция (для угловых ручек)
+  if (shift && h.length === 2) {
+    const ratio = orig.w / orig.h;
+    if (newW / newH > ratio) newW = newH * ratio;
+    else newH = newW / ratio;
+  }
+
+  // 6) новый центр floating в мире: anchor + повернутый локальный вектор к центру
+  let lcx, lcy;
+  if (h.includes('w')) lcx = -newW / 2;
+  else if (h.includes('e')) lcx = newW / 2;
+  else lcx = 0;
+  if (h.includes('n')) lcy = -newH / 2;
+  else if (h.includes('s')) lcy = newH / 2;
+  else lcy = 0;
+  const newCx = axW + cosR * lcx - sinR * lcy;
+  const newCy = ayW + sinR * lcx + cosR * lcy;
+
+  // 7) если quad — scale 4 точки относительно anchor world (в локальной системе)
+  if (orig.quad) {
+    const sx = newW / orig.w;
+    const sy = newH / orig.h;
+    f.quad = orig.quad.map(p => {
+      const px = p.x - axW;
+      const py = p.y - ayW;
+      const plx = cosNeg * px - sinNeg * py;
+      const ply = sinNeg * px + cosNeg * py;
+      const splx = plx * sx;
+      const sply = ply * sy;
+      const wx = cosR * splx - sinR * sply;
+      const wy = sinR * splx + cosR * sply;
+      return { x: axW + wx, y: ayW + wy };
+    });
+  }
+
+  f.x = newCx - newW / 2;
+  f.y = newCy - newH / 2;
+  f.w = newW;
+  f.h = newH;
+  renderFloating();
+}
+
+// Обработчики ручек resize — только во floating-frame (на selection-overlay их нет,
+// чтобы не перехватывать клик пользователя по canvas при создании нового выделения).
+// Для resize обычного select сначала нажимай rotate-handle (promote → floating),
+// и дальше уже full pixel-resize.
+document.querySelectorAll('.resize-handle').forEach(h => {
+  h.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    // Handle на selection-overlay: сначала promote во floating (без вращения),
+    // потом стартуем обычный resize. Это и есть «масштабирование выделения».
+    if (h.dataset.on === 'selection' && !state.floating) {
+      if (!state.selection || !state.selectionData) return;
+      const f = promoteSelectionToFloating();
+      if (!f) return;
+    }
+    if (!state.floating) return;
+    ensureOriginalQuadErased();
+    state.resizingFloating = true;
+    state.resizeHandle = h.dataset.handle;
+    state.floatingOriginal = {
+      x: state.floating.x, y: state.floating.y,
+      w: state.floating.w, h: state.floating.h,
+      rotation: state.floating.rotation || 0,
+      quad: state.floating.quad ? state.floating.quad.map(p => ({ x: p.x, y: p.y })) : null
+    };
+  });
+});
+
+// Обработчик rotate handle на floating-frame
+floatingRotateHandle.addEventListener('mousedown', (e) => {
+  if (!state.floating) return;
+  e.stopPropagation();
+  e.preventDefault();
+  startRotateDrag(e);
+});
+
+// Обработчик rotate handle на selection-overlay: если есть только selection (без floating),
+// поднимаем её во floating и начинаем поворот сразу.
+selectionRotateHandle.addEventListener('mousedown', (e) => {
+  e.stopPropagation();
+  e.preventDefault();
+  if (!state.floating) {
+    if (!state.selection || !state.selectionData) return;
+    const f = promoteSelectionToFloating();
+    if (!f) return;
+  }
+  startRotateDrag(e);
+});
+
+
+function startRotateDrag(e) {
+  ensureOriginalQuadErased();
+  const f = state.floating;
+  const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+  const { x, y } = getPos(e);
+  state.rotatingFloating = true;
+  state.rotationStart = {
+    initialMouseAngle: Math.atan2(y - cy, x - cx),
+    initialRotation: f.rotation || 0,
+    centerX: cx,
+    centerY: cy,
+    // Запоминаем исходные quad-точки для поворота от того же центра без накопления ошибок
+    origQuad: f.quad ? f.quad.map(p => ({ x: p.x, y: p.y })) : null
+  };
+}
+
+// Drag угловой точки quad. НЕ стираем оригинал — corner-drag меняет форму clip-маски,
+// но pickup остаётся на месте, и canvas под ним нетронут. Стирание происходит только
+// при translate/scale/rotate (operations что реально двигают/трансформируют pickup).
+quadCornerEls.forEach(el => {
+  el.addEventListener('mousedown', (e) => {
+    if (!state.floating || !state.floating.quad) return;
+    e.stopPropagation();
+    e.preventDefault();
+    state.warpingQuad = true;
+    state.warpCornerIdx = parseInt(el.dataset.corner, 10);
+  });
+});
+
+// Глобальные mousemove/mouseup для всех drag-операций над floating
+document.addEventListener('mousemove', (e) => {
+  if (state.resizingFloating) {
+    const { x, y } = getPos(e);
+    state.shiftKey = e.shiftKey;
+    resizeFloating(x, y);
+    return;
+  }
+  if (state.rotatingFloating && state.floating) {
+    const f = state.floating;
+    const rs = state.rotationStart;
+    const cx = rs.centerX, cy = rs.centerY;
+    const { x, y } = getPos(e);
+    const angle = Math.atan2(y - cy, x - cx);
+    let next = rs.initialRotation + (angle - rs.initialMouseAngle);
+    if (e.shiftKey) {
+      const step = Math.PI / 12;
+      next = Math.round(next / step) * step;
+    }
+    f.rotation = next;
+    // Если активен quad — поворачиваем 4 точки от исходных позиций вокруг (cx,cy)
+    if (rs.origQuad) {
+      const delta = next - rs.initialRotation;
+      const c = Math.cos(delta), s = Math.sin(delta);
+      f.quad = rs.origQuad.map(p => ({
+        x: cx + c * (p.x - cx) - s * (p.y - cy),
+        y: cy + s * (p.x - cx) + c * (p.y - cy)
+      }));
+    }
+    renderFloating();
+    return;
+  }
+  if (state.warpingQuad && state.floating && state.floating.quad) {
+    const { x, y } = getPos(e);
+    state.floating.quad[state.warpCornerIdx] = { x, y };
+    renderFloating();
+    return;
+  }
+});
+document.addEventListener('mouseup', () => {
+  if (state.resizingFloating) {
+    state.resizingFloating = false;
+    state.resizeHandle = null;
+  }
+  if (state.rotatingFloating) {
+    state.rotatingFloating = false;
+    state.rotationStart = null;
+  }
+  if (state.warpingQuad) {
+    state.warpingQuad = false;
+    state.warpCornerIdx = null;
+  }
+  if (state.draggingFloating) {
+    state.draggingFloating = false;
+  }
+});
+
+// ============ ТЕКСТОВЫЙ РЕДАКТОР ============
+
+let currentTextX = 0, currentTextY = 0;
+
+function startTextEdit(x, y) {
+  currentTextX = x;
+  currentTextY = y;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+
+  textEditor.innerHTML = '';
+  textEditor.style.display = 'block';
+  textEditor.style.left = (x * scaleX) + 'px';
+  textEditor.style.top = (y * scaleY) + 'px';
+  textEditor.style.color = state.color;
+  textEditor.style.opacity = state.opacity;
+  const fontSize = clampTextSize(document.getElementById('text-size').value);
+  textEditor.style.fontSize = fontSize + 'px';
+  textEditor.style.fontFamily = document.getElementById('text-font').value;
+  textEditor.style.minWidth = '80px';
+  textEditor.style.minHeight = (fontSize * 1.3) + 'px';
+
+  // Применяем активные стили
+  document.querySelectorAll('#text-bold, #text-italic, #text-underline').forEach(b => {
+    textEditor.style[b.id === 'text-bold' ? 'fontWeight' : b.id === 'text-italic' ? 'fontStyle' : 'textDecoration'] =
+      b.classList.contains('active') ?
+        (b.id === 'text-bold' ? 'bold' : b.id === 'text-italic' ? 'italic' : 'underline') :
+        'normal';
+  });
+
+  // Показываем тулбар
+  textToolbar.classList.add('active');
+  positionTextToolbar();
+
+  // Фокус
+  setTimeout(() => textEditor.focus(), 10);
+}
+
+function positionTextToolbar() {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+  textToolbar.style.left = (currentTextX * scaleX) + 'px';
+  textToolbar.style.top = Math.max(0, currentTextY * scaleY - 50) + 'px';
+}
+
+function commitText() {
+  if (textEditor.style.display !== 'block') return;
+  const text = textEditor.innerText.trim();
+  if (text) {
+    const fontSize = clampTextSize(document.getElementById('text-size').value);
+    const fontFamily = document.getElementById('text-font').value;
+    const bold = document.getElementById('text-bold').classList.contains('active');
+    const italic = document.getElementById('text-italic').classList.contains('active');
+    const underline = document.getElementById('text-underline').classList.contains('active');
+
+    let fontStr = '';
+    if (italic) fontStr += 'italic ';
+    if (bold) fontStr += 'bold ';
+    fontStr += fontSize + 'px ' + fontFamily;
+
+    ctx.save();
+    ctx.font = fontStr;
+    ctx.fillStyle = state.color;
+    ctx.globalAlpha = state.opacity;
+    ctx.textBaseline = 'top';
+
+    // Многострочный текст
+    const lines = text.split('\n');
+    const lineHeight = fontSize * 1.2;
+    // textEditor padding = 4 6
+    const offX = 6;
+    const offY = 4;
+    lines.forEach((line, i) => {
+      ctx.fillText(line, currentTextX + offX, currentTextY + offY + i * lineHeight);
+      if (underline) {
+        const metrics = ctx.measureText(line);
+        const yLine = currentTextY + offY + i * lineHeight + fontSize + 2;
+        ctx.fillRect(currentTextX + offX, yLine, metrics.width, Math.max(1, fontSize / 20));
+      }
+    });
+    ctx.restore();
+    saveHistory('Текст');
+  }
+  textEditor.style.display = 'none';
+  textEditor.innerHTML = '';
+  textToolbar.classList.remove('active');
+}
+
+function toggleTextStyle(style) {
+  const btn = document.getElementById('text-' + style);
+  btn.classList.toggle('active');
+  if (textEditor.style.display === 'block') {
+    const active = btn.classList.contains('active');
+    if (style === 'bold') textEditor.style.fontWeight = active ? 'bold' : 'normal';
+    if (style === 'italic') textEditor.style.fontStyle = active ? 'italic' : 'normal';
+    if (style === 'underline') textEditor.style.textDecoration = active ? 'underline' : 'none';
+    textEditor.focus();
+  }
+}
+
+// Динамическое обновление стилей во время редактирования
+document.getElementById('text-font').addEventListener('change', (e) => {
+  if (textEditor.style.display === 'block') {
+    textEditor.style.fontFamily = e.target.value;
+    textEditor.focus();
+  }
+});
+// Зажимаем введённый размер в [8..200]. На 'input' применяем превью без записи
+// обратно в поле (иначе пользователь не сможет дотипить "12": первый "1"
+// мгновенно расширится до 8). На 'change' (blur/Enter) - пишем клампленное
+// значение обратно в поле, чтобы оно совпадало с фактически применённым.
+const TEXT_SIZE_MIN = 8;
+const TEXT_SIZE_MAX = 200;
+function clampTextSize(raw) {
+  let v = parseInt(raw, 10);
+  if (!Number.isFinite(v) || v < TEXT_SIZE_MIN) v = TEXT_SIZE_MIN;
+  if (v > TEXT_SIZE_MAX) v = TEXT_SIZE_MAX;
+  return v;
+}
+const textSizeInput = document.getElementById('text-size');
+textSizeInput.addEventListener('input', (e) => {
+  const v = clampTextSize(e.target.value);
+  if (textEditor.style.display === 'block') {
+    textEditor.style.fontSize = v + 'px';
+    textEditor.focus();
+  }
+});
+textSizeInput.addEventListener('change', (e) => {
+  e.target.value = clampTextSize(e.target.value);
+});
+
+// Enter без Shift добавляет перенос строки, Escape отменяет, клик вне = применить
+textEditor.addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    textEditor.style.display = 'none';
+    textEditor.innerHTML = '';
+    textToolbar.classList.remove('active');
+  }
+});
+
+// Клик вне редактора = применить текст
+// e.target !== canvas: canvas onDown сам обрабатывает commit/start логику для text tool;
+// без этого исключения document-level listener срабатывает после bubbling и сразу закрывает только что открытый редактор.
+document.addEventListener('mousedown', (e) => {
+  if (textEditor.style.display === 'block' &&
+      !textEditor.contains(e.target) &&
+      !textToolbar.contains(e.target) &&
+      e.target !== canvas) {
+    commitText();
+  }
+});
+
+
+// Копирование выделенной области (с прозрачностью)
+function copySelection() {
+  // Если активен floating - копируем его
+  if (state.floating) {
+    const f = state.floating;
+    const c = document.createElement('canvas');
+    c.width = Math.round(f.w);
+    c.height = Math.round(f.h);
+    c.getContext('2d').drawImage(f.canvas, 0, 0, c.width, c.height);
+    state.clipboard = c;
+    return true;
+  }
+  if (!state.selection || state.selection.w < 2 || state.selection.h < 2) return false;
+  const s = state.selection;
+  // Копируем область с холста в отдельный canvas (с прозрачностью)
+  const c = document.createElement('canvas');
+  c.width = Math.round(s.w);
+  c.height = Math.round(s.h);
+  c.getContext('2d').drawImage(canvas, s.x, s.y, s.w, s.h, 0, 0, s.w, s.h);
+  state.clipboard = c;
+  return true;
+}
+
+// Вырезание
+function cutSelection() {
+  if (state.floating) {
+    copySelection();
+    cancelFloating();
+    return;
+  }
+  if (!copySelection()) return;
+  const s = state.selection;
+  // Очищаем область - прозрачность
+  ctx.clearRect(s.x, s.y, s.w, s.h);
+  // Восстанавливаем белый фон под вырезанным
+  ctx.fillStyle = 'white';
+  ctx.fillRect(s.x, s.y, s.w, s.h);
+  hideSelection();
+  saveHistory('Вырезание');
+}
+
+// Вставка из внутреннего буфера
+function pasteFromClipboard() {
+  if (!state.clipboard) return false;
+  // Создаём копию, чтобы можно было вставлять многократно
+  const c = document.createElement('canvas');
+  c.width = state.clipboard.width;
+  c.height = state.clipboard.height;
+  c.getContext('2d').drawImage(state.clipboard, 0, 0);
+
+  createFloatingFromCanvas(c, 20, 20);
+  return true;
+}
+
+// Вставка из системного буфера обмена (файлы, скриншоты)
+document.addEventListener('paste', (e) => {
+  // Если курсор в текстовом редакторе - не перехватываем
+  if (document.activeElement === textEditor) return;
+
+  const items = e.clipboardData ? e.clipboardData.items : [];
+  let handled = false;
+  for (let item of items) {
+    if (item.type.startsWith('image/')) {
+      const blob = item.getAsFile();
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          createFloatingFromImage(img, 20, 20);
+          // Запомним в clipboard тоже
+          const c = document.createElement('canvas');
+          c.width = img.width;
+          c.height = img.height;
+          c.getContext('2d').drawImage(img, 0, 0);
+          state.clipboard = c;
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(blob);
+      handled = true;
+      break;
+    }
+  }
+  if (!handled) {
+    pasteFromClipboard();
+  }
+});
+
+function newCanvas() {
+  if (!confirm('Создать новый холст? Несохранённые изменения будут потеряны.')) return;
+  fillWhite();
+  hideSelection();
+  saveHistory('Новый холст');
+}
+
+function saveCanvas(saveAs = false) {
+  const dataUrl = canvas.toDataURL('image/png');
+  const defaultName = state.currentFileName || 'paint-pro-' + Date.now() + '.png';
+
+  // Electron: используем нативный диалог
+  if (window.electronAPI) {
+    window.electronAPI.saveFile(dataUrl, defaultName, saveAs).then(result => {
+      if (result.success) {
+        state.currentFileName = result.filePath.split(/[\\/]/).pop();
+        document.title = 'Paint Pro — ' + state.currentFileName;
+      } else if (result.error) {
+        alert('Ошибка сохранения: ' + result.error);
+      }
+    });
+    return;
+  }
+
+  // Браузер: классическое скачивание
+  const link = document.createElement('a');
+  link.download = defaultName;
+  link.href = dataUrl;
+  link.click();
+}
+
+function clearCanvas() {
+  if (!confirm('Очистить холст?')) return;
+  // Сначала сбрасываем все "слои" поверх canvas — иначе очистка визуально не сработает:
+  //  - floating живёт на previewCanvas (drawImage поверх), не очистится через fillWhite
+  //  - selectionData/originalBeforeMove восстановит старые пиксели при следующем move
+  // Используем cancelFloating вместо commitFloating, чтобы НЕ применять pickup на canvas
+  // перед заливкой белым — иначе после clear на canvas был бы виден последний pickup.
+  if (state.floating) {
+    // Подавляем preCanvas restore — мы намеренно очищаем всё, не возвращаем дыру.
+    state.floating.preCanvas = null;
+    cancelFloating();
+  }
+  hideSelection();
+  state.originalBeforeMove = null;
+  fillWhite();
+  saveHistory('Очистка холста');
+}
+
+function resizeCanvas() {
+  const w = parseInt(document.getElementById('width-input').value);
+  const h = parseInt(document.getElementById('height-input').value);
+  if (!w || !h || w < 10 || h < 10) return;
+  if (state.floating) commitFloating();
+  const old = document.createElement('canvas');
+  old.width = canvas.width;
+  old.height = canvas.height;
+  old.getContext('2d').drawImage(canvas, 0, 0);
+  canvas.width = w;
+  canvas.height = h;
+  previewCanvas.width = w;
+  previewCanvas.height = h;
+  fillWhite();
+  ctx.drawImage(old, 0, 0);
+  updateCanvasInfo();
+  saveHistory('Размер холста');
+}
+
+function rotateCanvas() {
+  if (state.floating) commitFloating();
+  const tmp = document.createElement('canvas');
+  tmp.width = canvas.height;
+  tmp.height = canvas.width;
+  const tctx = tmp.getContext('2d');
+  tctx.translate(tmp.width / 2, tmp.height / 2);
+  tctx.rotate(Math.PI / 2);
+  tctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+  canvas.width = tmp.width;
+  canvas.height = tmp.height;
+  previewCanvas.width = tmp.width;
+  previewCanvas.height = tmp.height;
+  ctx.drawImage(tmp, 0, 0);
+  updateCanvasInfo();
+  saveHistory('Поворот 90°');
+}
+
+function flipH() {
+  if (state.floating) commitFloating();
+  // Снимок текущего холста в офскрин, потом рисуем его зеркально обратно.
+  const tmp = document.createElement('canvas');
+  tmp.width = canvas.width;
+  tmp.height = canvas.height;
+  tmp.getContext('2d').drawImage(canvas, 0, 0);
+  ctx.save();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(tmp, 0, 0);
+  ctx.restore();
+  saveHistory('Отражение ↔');
+}
+
+function flipV() {
+  if (state.floating) commitFloating();
+  const tmp = document.createElement('canvas');
+  tmp.width = canvas.width;
+  tmp.height = canvas.height;
+  tmp.getContext('2d').drawImage(canvas, 0, 0);
+  ctx.save();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(0, canvas.height);
+  ctx.scale(1, -1);
+  ctx.drawImage(tmp, 0, 0);
+  ctx.restore();
+  saveHistory('Отражение ↕');
+}
+
+function updateCanvasInfo() {
+  document.getElementById('info-width').textContent = canvas.width + ' px';
+  document.getElementById('info-height').textContent = canvas.height + ' px';
+  document.getElementById('width-input').value = canvas.width;
+  document.getElementById('height-input').value = canvas.height;
+}
+
+// Горячие клавиши
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  // Не перехватываем хоткеи при редактировании текста
+  if (e.target === textEditor || textEditor.contains(e.target)) {
+    // Разрешаем только Escape - он обработан в keydown самого редактора
+    return;
+  }
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'z') { e.preventDefault(); undo(); }
+    else if (e.key === 'y') { e.preventDefault(); redo(); }
+    else if (e.key === 's') { e.preventDefault(); saveCanvas(); }
+    else if (e.key === 'c') {
+      if ((state.selection || state.floating) && copySelection()) e.preventDefault();
+    }
+    else if (e.key === 'x') {
+      if (state.selection || state.floating) { e.preventDefault(); cutSelection(); }
+    }
+    else if (e.key === 'a') {
+      // Ctrl+A - выделить всё
+      e.preventDefault();
+      document.querySelector('[data-tool="select"]').click();
+      commitSelection();
+      state.selection = {x: 0, y: 0, w: canvas.width, h: canvas.height};
+      state.selectionData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      state.originalBeforeMove = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      updateSelectionOverlay();
+      document.getElementById('sel-size').textContent = `${canvas.width} × ${canvas.height}`;
+    }
+    else if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
+    else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
+    else if (e.key === '0') { e.preventDefault(); zoomReset(); }
+    return;
+  }
+  const map = {s:'select', h:'hand', p:'pencil', b:'brush', m:'marker', e:'eraser', g:'fill', i:'picker', t:'text', q:'quad'};
+  if (map[e.key.toLowerCase()]) {
+    document.querySelector(`[data-tool="${map[e.key.toLowerCase()]}"]`).click();
+  }
+  // [ / ] — поворот выделения на ±90° (Shift = ±15°). Если есть selection — поднимаем в floating.
+  // Для quad-полигона поворачиваем и f.rotation (для pickup), и 4 точки вокруг центра bbox.
+  if (e.key === '[' || e.key === ']') {
+    if (!state.floating && state.selection && state.selectionData) {
+      promoteSelectionToFloating();
+    }
+    if (state.floating) {
+      e.preventDefault();
+      ensureOriginalQuadErased();
+      const f = state.floating;
+      const step = e.shiftKey ? Math.PI / 12 : Math.PI / 2;
+      const delta = (e.key === ']' ? step : -step);
+      const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+      f.rotation = (f.rotation || 0) + delta;
+      if (f.quad) {
+        const c = Math.cos(delta), s = Math.sin(delta);
+        f.quad = f.quad.map(p => ({
+          x: cx + c * (p.x - cx) - s * (p.y - cy),
+          y: cy + s * (p.x - cx) + c * (p.y - cy)
+        }));
+      }
+      renderFloating();
+    }
+  }
+  if (e.key === 'Delete') {
+    if (state.floating) {
+      e.preventDefault();
+      cancelFloating();
+      return;
+    }
+    if (state.selection) {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(state.selection.x, state.selection.y, state.selection.w, state.selection.h);
+      hideSelection();
+      saveHistory('Удаление');
+    }
+  }
+  if (e.key === 'Escape') {
+    if (state.floating) {
+      // Escape при плавающем = применить
+      commitFloating();
+      return;
+    }
+    commitSelection();
+    hideSelection();
+    cropControls.style.display = 'none';
+    state.cropping = false;
+    if (textEditor.style.display === 'block') {
+      textEditor.style.display = 'none';
+      textEditor.innerHTML = '';
+      textToolbar.classList.remove('active');
+    }
+  }
+  if (e.key === 'Enter' && state.floating && !e.ctrlKey) {
+    // Enter при плавающем = применить
+    if (document.activeElement !== textEditor) {
+      commitFloating();
+    }
+  }
+});
+
+// Перемасштабирование overlay при скролле
+document.getElementById('canvas-area').addEventListener('scroll', () => {
+  updateSelectionOverlay();
+  updateFloatingFrame();
+  if (textEditor.style.display === 'block') positionTextToolbar();
+});
+window.addEventListener('resize', () => {
+  updateSelectionOverlay();
+  updateFloatingFrame();
+});
+
+// ============ МАСШТАБИРОВАНИЕ ХОЛСТА (RESIZE) ============
+// Перетаскивание правой/нижней/угловой ручки меняет размер холста визуально.
+// Контент сохраняется, пустое добавленное пространство заливается белым.
+
+const resizePreview = document.getElementById('resize-preview');
+const resizeTooltip = document.getElementById('resize-tooltip');
+
+let canvasResizeState = null;
+
+function startCanvasResize(direction, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  // Применить floating и текст, если активны
+  if (state.floating) commitFloating();
+  if (textEditor.style.display === 'block') commitText();
+
+  canvasResizeState = {
+    direction: direction,
+    startMouseX: e.clientX,
+    startMouseY: e.clientY,
+    startW: canvas.width,
+    startH: canvas.height,
+    curW: canvas.width,
+    curH: canvas.height
+  };
+
+  // Показываем превью - размер текущего холста
+  const rect = canvas.getBoundingClientRect();
+  resizePreview.style.display = 'block';
+  resizePreview.style.width = rect.width + 'px';
+  resizePreview.style.height = rect.height + 'px';
+
+  resizeTooltip.style.display = 'block';
+  updateResizeTooltip(e, canvas.width, canvas.height);
+
+  document.body.style.cursor = direction === 'right' ? 'ew-resize' :
+                                direction === 'bottom' ? 'ns-resize' : 'nwse-resize';
+}
+
+function onCanvasResizeMove(e) {
+  if (!canvasResizeState) return;
+  e.preventDefault();
+
+  const dx = e.clientX - canvasResizeState.startMouseX;
+  const dy = e.clientY - canvasResizeState.startMouseY;
+  // Учитываем текущий zoom - тянем в "экранных" пикселях, но меняем реальный размер холста
+  const scale = state.zoom || 1;
+
+  let newW = canvasResizeState.startW;
+  let newH = canvasResizeState.startH;
+
+  if (canvasResizeState.direction === 'right' || canvasResizeState.direction === 'corner') {
+    newW = Math.max(50, Math.round(canvasResizeState.startW + dx / scale));
+  }
+  if (canvasResizeState.direction === 'bottom' || canvasResizeState.direction === 'corner') {
+    newH = Math.max(50, Math.round(canvasResizeState.startH + dy / scale));
+  }
+
+  // Shift = пропорции
+  if (e.shiftKey && canvasResizeState.direction === 'corner') {
+    const ratio = canvasResizeState.startW / canvasResizeState.startH;
+    if (newW / newH > ratio) newW = Math.round(newH * ratio);
+    else newH = Math.round(newW / ratio);
+  }
+
+  canvasResizeState.curW = newW;
+  canvasResizeState.curH = newH;
+
+  // Обновляем превью-рамку (в экранных пикселях)
+  resizePreview.style.width = (newW * scale) + 'px';
+  resizePreview.style.height = (newH * scale) + 'px';
+
+  updateResizeTooltip(e, newW, newH);
+}
+
+function updateResizeTooltip(e, w, h) {
+  resizeTooltip.textContent = `${w} × ${h} px`;
+  resizeTooltip.style.left = (e.clientX + 16) + 'px';
+  resizeTooltip.style.top = (e.clientY + 16) + 'px';
+}
+
+function finishCanvasResize() {
+  if (!canvasResizeState) return;
+  const newW = canvasResizeState.curW;
+  const newH = canvasResizeState.curH;
+  const oldW = canvasResizeState.startW;
+  const oldH = canvasResizeState.startH;
+
+  if (newW !== oldW || newH !== oldH) {
+    // Сохраняем текущий контент
+    const old = document.createElement('canvas');
+    old.width = oldW;
+    old.height = oldH;
+    old.getContext('2d').drawImage(canvas, 0, 0);
+
+    canvas.width = newW;
+    canvas.height = newH;
+    previewCanvas.width = newW;
+    previewCanvas.height = newH;
+
+    // Заливаем белым (новое пространство)
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, newW, newH);
+    // Рисуем старый контент поверх (если уменьшили - обрежется)
+    ctx.drawImage(old, 0, 0);
+
+    updateCanvasInfo();
+    saveHistory('Размер холста');
+  }
+
+  canvasResizeState = null;
+  resizePreview.style.display = 'none';
+  resizeTooltip.style.display = 'none';
+  document.body.style.cursor = '';
+  applyZoom();
+}
+
+// Навешиваем обработчики на три ручки
+['right', 'bottom', 'corner'].forEach(dir => {
+  const el = document.getElementById('canvas-handle-' + dir);
+  el.addEventListener('mousedown', (e) => startCanvasResize(dir, e));
+});
+
+document.addEventListener('mousemove', onCanvasResizeMove);
+document.addEventListener('mouseup', finishCanvasResize);
+
+// ============ HAND TOOL (перетаскивание холста) ============
+state.panX = 0;
+state.panY = 0;
+
+function applyPan() {
+  wrapper.style.transform = `translate(${state.panX}px, ${state.panY}px)`;
+  updateSelectionOverlay();
+  updateFloatingFrame();
+  if (textEditor.style.display === 'block') positionTextToolbar();
+}
+
+function resetPan() {
+  state.panX = 0;
+  state.panY = 0;
+  applyPan();
+}
+
+(function() {
+  const area = document.getElementById('canvas-area');
+  let panning = false;
+  let startMouseX = 0, startMouseY = 0;
+  let startPanX = 0, startPanY = 0;
+  let startScrollX = 0, startScrollY = 0;
+
+  area.addEventListener('mousedown', (e) => {
+    if (state.tool !== 'hand') return;
+    if (e.button !== 0) return;
+    panning = true;
+    startMouseX = e.clientX;
+    startMouseY = e.clientY;
+    startPanX = state.panX;
+    startPanY = state.panY;
+    startScrollX = area.scrollLeft;
+    startScrollY = area.scrollTop;
+    canvas.classList.add('panning');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!panning) return;
+    const dx = e.clientX - startMouseX;
+    const dy = e.clientY - startMouseY;
+    // Сначала пытаемся прокрутить — если есть overflow
+    const maxScrollX = area.scrollWidth - area.clientWidth;
+    const maxScrollY = area.scrollHeight - area.clientHeight;
+    let newScrollX = startScrollX - dx;
+    let newScrollY = startScrollY - dy;
+    let clampedX = Math.max(0, Math.min(maxScrollX, newScrollX));
+    let clampedY = Math.max(0, Math.min(maxScrollY, newScrollY));
+    area.scrollLeft = clampedX;
+    area.scrollTop  = clampedY;
+    // Остаток — двигаем через transform
+    const overshootX = newScrollX - clampedX; // отрицательное если ушли влево, положительное если вправо
+    const overshootY = newScrollY - clampedY;
+    state.panX = startPanX - overshootX;
+    state.panY = startPanY - overshootY;
+    applyPan();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!panning) return;
+    panning = false;
+    canvas.classList.remove('panning');
+  });
+})();
+
+// ============ ZOOM (масштаб отображения холста) ============
+// Меняет CSS transform canvas-wrapper, не трогает реальные размеры
+
+state.zoom = 1;
+const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8];
+
+function applyZoom() {
+  const z = state.zoom;
+  // Используем transform: scale на canvas и preview-canvas, но wrapper "рос бы" размером
+  // Проще - меняем CSS ширину/высоту canvas элементов
+  canvas.style.width = (canvas.width * z) + 'px';
+  canvas.style.height = (canvas.height * z) + 'px';
+  previewCanvas.style.width = (canvas.width * z) + 'px';
+  previewCanvas.style.height = (canvas.height * z) + 'px';
+  document.getElementById('zoom-display').textContent = Math.round(z * 100) + '%';
+  // Обновляем overlays
+  updateSelectionOverlay();
+  updateFloatingFrame();
+  if (textEditor.style.display === 'block') positionTextToolbar();
+  // Курсор-кружок зависит от зума (пиксели холста × зум = пиксели экрана)
+  if (typeof updateBrushCursor === 'function') updateBrushCursor();
+}
+
+function zoomIn() {
+  const cur = state.zoom;
+  const next = ZOOM_STEPS.find(s => s > cur + 0.001);
+  if (next) { state.zoom = next; applyZoom(); }
+}
+
+function zoomOut() {
+  const cur = state.zoom;
+  const reversed = [...ZOOM_STEPS].reverse();
+  const next = reversed.find(s => s < cur - 0.001);
+  if (next) { state.zoom = next; applyZoom(); }
+}
+
+function zoomReset() {
+  state.zoom = 1;
+  applyZoom();
+}
+
+// Ctrl + колёсико мыши = зум
+document.getElementById('canvas-area').addEventListener('wheel', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    if (e.deltaY < 0) zoomIn();
+    else zoomOut();
+  }
+}, { passive: false });
+
+// ============ ИНТЕГРАЦИЯ С ELECTRON ============
+if (window.electronAPI) {
+  // Загружаем изображение из dataUrl (при открытии через меню, ассоциацию, drag&drop)
+  function loadImageFromDataUrl(dataUrl, fileName) {
+    const img = new Image();
+    img.onload = () => {
+      // Если картинка больше холста - расширяем
+      if (img.width > canvas.width || img.height > canvas.height) {
+        canvas.width = Math.max(canvas.width, img.width);
+        canvas.height = Math.max(canvas.height, img.height);
+        previewCanvas.width = canvas.width;
+        previewCanvas.height = canvas.height;
+        fillWhite();
+        updateCanvasInfo();
+      }
+      createFloatingFromImage(img, 20, 20);
+      if (fileName) {
+        state.currentFileName = fileName;
+        document.title = 'Paint Pro — ' + fileName;
+      }
+    };
+    img.src = dataUrl;
+  }
+
+  // Получаем файл через меню "Файл → Открыть"
+  window.electronAPI.onOpenFile((data) => {
+    if (data && data.dataUrl) {
+      loadImageFromDataUrl(data.dataUrl, data.fileName);
+    }
+  });
+
+  // Обрабатываем действия нативного меню
+  window.electronAPI.onMenuAction((action) => {
+    switch (action) {
+      case 'new': newCanvas(); break;
+      case 'save': saveCanvas(false); break;
+      case 'save-as': saveCanvas(true); break;
+      case 'undo': undo(); break;
+      case 'redo': redo(); break;
+      case 'copy':
+        if (state.selection || state.floating) copySelection();
+        break;
+      case 'cut':
+        if (state.selection || state.floating) cutSelection();
+        break;
+      case 'paste':
+        pasteFromClipboard();
+        break;
+      case 'select-all':
+        document.querySelector('[data-tool="select"]').click();
+        commitSelection();
+        state.selection = {x: 0, y: 0, w: canvas.width, h: canvas.height};
+        state.selectionData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        state.originalBeforeMove = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        updateSelectionOverlay();
+        document.getElementById('sel-size').textContent = `${canvas.width} × ${canvas.height}`;
+        break;
+      case 'zoom-in': zoomIn(); break;
+      case 'zoom-out': zoomOut(); break;
+      case 'zoom-reset': zoomReset(); break;
+    }
+  });
+
+  // Drag & Drop файлов из проводника
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.outline = '3px dashed var(--accent)';
+    document.body.style.outlineOffset = '-6px';
+  });
+
+  document.addEventListener('dragleave', (e) => {
+    if (e.target === document.body || !e.relatedTarget) {
+      document.body.style.outline = '';
+    }
+  });
+
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.outline = '';
+
+    const files = Array.from(e.dataTransfer.files || []);
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      const filePath = window.electronAPI.getFilePath(file);
+      if (filePath) {
+        const result = await window.electronAPI.readDroppedFile(filePath);
+        if (result && result.dataUrl) {
+          loadImageFromDataUrl(result.dataUrl, result.fileName);
+          break; // Открываем только первый файл
+        }
+      } else {
+        // Fallback через FileReader
+        const reader = new FileReader();
+        reader.onload = (ev) => loadImageFromDataUrl(ev.target.result, file.name);
+        reader.readAsDataURL(file);
+        break;
+      }
+    }
+  });
+
+  // Убираем обычное поведение Ctrl+O (браузерный диалог) - заменяем на Electron
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+      e.preventDefault();
+      window.electronAPI.openFileDialog().then(data => {
+        if (data && data.dataUrl) loadImageFromDataUrl(data.dataUrl, data.fileName);
+      });
+    }
+  });
+
+  // Перекрываем пункт «Открыть…» в меню «Файл»
+  const openBtn = document.querySelector('.mb-dd-item[onclick*="file-input"]');
+  if (openBtn) {
+    openBtn.onclick = async () => {
+      const data = await window.electronAPI.openFileDialog();
+      if (data && data.dataUrl) loadImageFromDataUrl(data.dataUrl, data.fileName);
+    };
+  }
+}
+
+setColor('#000000');
+applyZoom();
+// Начальный инструмент - карандаш (выставлен в HTML через class="active"),
+// показываем соответствующий курсор-круг.
+canvas.className = 'tool-' + state.tool;
+updateBrushCursor();
+
+// ============ macOS MENU BAR — DROPDOWNS + ЧАСЫ ============
+(function setupMenuBar() {
+  const menus = document.querySelectorAll('.mb-menu');
+  if (!menus.length) return;
+
+  function closeAll() {
+    menus.forEach(m => m.classList.remove('open'));
+  }
+
+  menus.forEach(menu => {
+    const btn = menu.querySelector('.mb-item');
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wasOpen = menu.classList.contains('open');
+      closeAll();
+      if (!wasOpen) menu.classList.add('open');
+    });
+    btn.addEventListener('mouseenter', () => {
+      // Если уже открыто другое меню — переключаемся, как в macOS
+      const anyOpen = document.querySelector('.mb-menu.open');
+      if (anyOpen && anyOpen !== menu) {
+        closeAll();
+        menu.classList.add('open');
+      }
+    });
+  });
+
+  // Клик по пункту dropdown — закрыть
+  document.querySelectorAll('.mb-dd-item').forEach(it => {
+    it.addEventListener('click', () => setTimeout(closeAll, 0));
+  });
+
+  // Клик вне меню / Escape — закрыть
+  document.addEventListener('mousedown', (e) => {
+    if (!e.target.closest('.mb-menu')) closeAll();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAll();
+  });
+
+  // Часы справа
+  const timeEl = document.getElementById('mb-time');
+  function tick() {
+    if (!timeEl) return;
+    const d = new Date();
+    const days = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    timeEl.textContent = `${days[d.getDay()]}  ${hh}:${mm}`;
+  }
+  tick();
+  setInterval(tick, 30000);
+})();
+
+// ============ RIPPLE НА КНОПКАХ ============
+(function setupRipples() {
+  function spawnRipple(target, clientX, clientY) {
+    const rect = target.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height) * 1.4;
+    const r = document.createElement('span');
+    r.className = 'ripple';
+    r.style.width = size + 'px';
+    r.style.height = size + 'px';
+    r.style.left = (clientX - rect.left) + 'px';
+    r.style.top  = (clientY - rect.top)  + 'px';
+    // НЕ ставим overflow:hidden на target — это бы обрезало тултипы (.tool::after).
+    // Ripple имеет мягкий radial-fade, лёгкий выход за края выглядит как glow.
+    const prevPos = target.style.position;
+    if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
+    target.appendChild(r);
+
+    setTimeout(() => {
+      if (r.parentNode) r.remove();
+      if (prevPos === '') target.style.position = prevPos;
+    }, 700);
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const t = e.target.closest('.tool, .zoom-btn, .sidebar button, .text-toolbar button, .crop-controls button, .mb-dd-item, .menu-btn, .mb-item');
+    if (!t) return;
+    // Не даём кнопкам забирать фокус — иначе горячие клавиши уходят на нажатую
+    // ранее кнопку и не доходят до document-level обработчика.
+    e.preventDefault();
+    spawnRipple(t, e.clientX, e.clientY);
+  });
+})();
+
+// ============ ТУЛТИПЫ (data-tip) ============
+(function setupTooltips() {
+  const tip = document.getElementById('tip');
+  if (!tip) return;
+  let current = null;
+
+  function show(target) {
+    const text = target.getAttribute('data-tip');
+    if (!text) return;
+    current = target;
+    tip.textContent = text;
+    tip.classList.add('show');
+    position(target);
+  }
+  function position(target) {
+    const r = target.getBoundingClientRect();
+    const left = r.left + r.width / 2;
+    const top = r.bottom + 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  function hide() {
+    current = null;
+    tip.classList.remove('show');
+  }
+
+  document.addEventListener('mouseover', (e) => {
+    const t = e.target.closest('[data-tip]');
+    if (!t) return;
+    if (t === current) return;
+    show(t);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const t = e.target.closest('[data-tip]');
+    if (!t) return;
+    const to = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-tip]');
+    if (to === t) return;
+    hide();
+  });
+  // Прячем при кликах/прокрутке/смене окна — чтобы не «висел» над открытым меню
+  document.addEventListener('mousedown', hide, true);
+  window.addEventListener('scroll', hide, true);
+  window.addEventListener('blur', hide);
+})();
+</script>
+</body>
+</html>
