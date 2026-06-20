@@ -1,0 +1,49 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS / Rider
+.vs/
+.idea/
+*.DotSettings.user
+
+# Logs
+*.log
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+coverage.*.xml
+
+# Rider / VS Code
+.vscode/
+*.code-workspace
+
+# Mac
+.DS_Store
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Electron node modules / build output (build/ keeps icon assets — not ignored)
+paint-pro-electron/node_modules/
+paint-pro-electron/dist/
+paint-pro-electron/build-output/
+
+# Distributable binaries (compiled artifacts, ~150 MB — do not commit)
+dist/
+*.exe
+paint-pro-electron.zip
+
+# Local tooling state
+.remember/

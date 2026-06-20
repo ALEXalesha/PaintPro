@@ -1,0 +1,106 @@
+using PaintPro.Services;
+using SkiaSharp;
+
+namespace PaintPro.Models;
+
+/// <summary>
+/// Temporary "lifted" layer used while pixels are being moved, scaled or rotated.
+/// Rendered on top of the document during the transformation; on commit its pixels
+/// merge back into the active layer.
+///
+/// Holds two coordinate systems:
+///   • <see cref="SourceBitmap"/> + <see cref="OriginalBBox"/> — the captured pixels and where they came from.
+///   • <see cref="X"/>/<see cref="Y"/>/<see cref="Width"/>/<see cref="Height"/>/<see cref="Rotation"/>
+///     — the current placement (after the user's drags).
+///
+/// For polygon (quad) pickups, <see cref="Quad"/> holds 4 corner points in document coords.
+/// Content is NOT warped; the quad acts as a <see cref="SKPath"/> clip when rendering.
+/// </summary>
+public sealed class FloatingPickup : IDisposable
+{
+    /// <summary>Captured pixels from the active layer at promote time.</summary>
+    public SKBitmap SourceBitmap { get; }
+
+    /// <summary>Where the pickup was captured from on the active layer (in document coords).</summary>
+    public SKRect OriginalBBox { get; }
+
+    // Current placement (these change as the user drags handles).
+    public float X { get; set; }
+    public float Y { get; set; }
+    public float Width { get; set; }
+    public float Height { get; set; }
+
+    /// <summary>Rotation in radians around the centre of the current bbox.</summary>
+    public float Rotation { get; set; }
+
+    /// <summary>
+    /// For polygon pickups: the 4 corners in document coords. Null for rectangular pickups.
+    /// Quad corners can be dragged independently; this changes the clip shape, not the pixels.
+    /// </summary>
+    public SKPoint[]? Quad { get; set; }
+
+    /// <summary>
+    /// Snapshot of the polygon shape at the moment of the FIRST translate/scale/rotate.
+    /// Used by the lazy-erase logic so the original area is erased as a polygon,
+    /// not as the bbox — see REWRITE_PROMPT_CSHARP.md §"6. Pickup for polygon ...".
+    /// </summary>
+    public SKPoint[]? OriginalQuad { get; set; }
+
+    /// <summary>True once lazy-erase has run; prevents erasing the source area twice.</summary>
+    public bool OriginalAreaErased { get; set; }
+
+    /// <summary>
+    /// Full active-layer snapshot captured when the pixels were lifted, used to build an
+    /// undoable diff when the move/resize/rotate is committed. Null for pickups that don't
+    /// record undo (e.g. paste, which carries its own command). Owned by the pickup.
+    /// </summary>
+    public SKBitmap? PreEditSnapshot { get; set; }
+
+    public FloatingPickup(SKBitmap sourceBitmap, SKRect originalBBox)
+    {
+        SourceBitmap = sourceBitmap;
+        OriginalBBox = originalBBox;
+        X = originalBBox.Left;
+        Y = originalBBox.Top;
+        Width = originalBBox.Width;
+        Height = originalBBox.Height;
+    }
+
+    public SKRect CurrentBBox => new(X, Y, X + Width, Y + Height);
+    public SKPoint Center => new(X + Width / 2f, Y + Height / 2f);
+
+    /// <summary>
+    /// Apply an anchor-based resize given which handle the user is dragging
+    /// and the current mouse position in world (document) coords.
+    /// Re-uses <see cref="GeometryMath.ResizeRotated"/> which handles arbitrary rotation.
+    /// </summary>
+    public void ApplyResize(ResizeHandle handle, SKPoint mouseWorld)
+    {
+        var r = GeometryMath.ResizeRotated(X, Y, Width, Height, Rotation, handle, mouseWorld);
+        // If we have a quad, scale its corners around the same anchor so the polygon clip
+        // tracks the resize. Quad corner-drag is a different op (changes shape, not size).
+        if (Quad is { } q)
+        {
+            float sx = r.Width  / Width;
+            float sy = r.Height / Height;
+            var anchorLocal = GeometryMath.LocalHandlePosition(X, Y, Width, Height, GeometryMath.Opposite(handle));
+            for (int i = 0; i < 4; i++)
+            {
+                var dx = q[i].X - anchorLocal.X;
+                var dy = q[i].Y - anchorLocal.Y;
+                q[i] = new SKPoint(anchorLocal.X + dx * sx, anchorLocal.Y + dy * sy);
+            }
+        }
+        X = r.X; Y = r.Y; Width = r.Width; Height = r.Height;
+    }
+
+    /// <summary>Set rotation angle (radians) around the bbox centre.</summary>
+    public void SetRotation(float radians) => Rotation = radians;
+
+    public void Dispose()
+    {
+        SourceBitmap.Dispose();
+        PreEditSnapshot?.Dispose();
+        PreEditSnapshot = null;
+    }
+}

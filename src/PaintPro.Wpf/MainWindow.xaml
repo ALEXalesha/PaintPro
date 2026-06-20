@@ -1,0 +1,556 @@
+<Window x:Class="PaintPro.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:PaintPro.ViewModels"
+        xmlns:views="clr-namespace:PaintPro.Views"
+        xmlns:conv="clr-namespace:PaintPro.Converters"
+        xmlns:models="clr-namespace:PaintPro.Models"
+        Title="Paint Pro"
+        Width="1380" Height="860"
+        MinWidth="900" MinHeight="600"
+        Background="{StaticResource WindowBg}"
+        Foreground="{StaticResource TextPrimary}"
+        FontFamily="Segoe UI"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        UseLayoutRounding="True"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
+
+    <Window.Resources>
+        <conv:ToolKindToBoolConverter x:Key="ToolToBool"/>
+    </Window.Resources>
+
+    <!-- Global hotkeys — see antipattern #3: bound on Window so focus on buttons can't steal them. -->
+    <Window.InputBindings>
+        <KeyBinding Key="P"      Command="{Binding SelectToolCommand}" CommandParameter="Pencil"/>
+        <KeyBinding Key="B"      Command="{Binding SelectToolCommand}" CommandParameter="Brush"/>
+        <KeyBinding Key="M"      Command="{Binding SelectToolCommand}" CommandParameter="Marker"/>
+        <KeyBinding Key="E"      Command="{Binding SelectToolCommand}" CommandParameter="Eraser"/>
+        <KeyBinding Key="G"      Command="{Binding SelectToolCommand}" CommandParameter="Fill"/>
+        <KeyBinding Key="I"      Command="{Binding SelectToolCommand}" CommandParameter="Picker"/>
+        <KeyBinding Key="T"      Command="{Binding SelectToolCommand}" CommandParameter="Text"/>
+        <KeyBinding Key="L"      Command="{Binding SelectToolCommand}" CommandParameter="Line"/>
+        <KeyBinding Key="R"      Command="{Binding SelectToolCommand}" CommandParameter="Rect"/>
+        <KeyBinding Key="O"      Command="{Binding SelectToolCommand}" CommandParameter="Ellipse"/>
+        <KeyBinding Key="S"      Command="{Binding SelectToolCommand}" CommandParameter="Select"/>
+        <KeyBinding Key="Q"      Command="{Binding SelectToolCommand}" CommandParameter="Quad"/>
+        <KeyBinding Key="H"      Command="{Binding SelectToolCommand}" CommandParameter="Hand"/>
+        <KeyBinding Key="C"      Command="{Binding SelectToolCommand}" CommandParameter="Crop"/>
+
+        <KeyBinding Key="Z"      Modifiers="Ctrl" Command="{Binding UndoCommand}"/>
+        <KeyBinding Key="Y"      Modifiers="Ctrl" Command="{Binding RedoCommand}"/>
+        <KeyBinding Key="Z"      Modifiers="Ctrl+Shift" Command="{Binding RedoCommand}"/>
+
+        <KeyBinding Key="S"      Modifiers="Ctrl" Command="{Binding SaveCommand}"/>
+        <KeyBinding Key="S"      Modifiers="Ctrl+Shift" Command="{Binding SaveAsCommand}"/>
+        <KeyBinding Key="O"      Modifiers="Ctrl" Command="{Binding OpenCommand}"/>
+        <KeyBinding Key="N"      Modifiers="Ctrl" Command="{Binding NewDocumentCommand}"/>
+
+        <KeyBinding Key="C"      Modifiers="Ctrl" Command="{Binding CopySelectionCommand}"/>
+        <KeyBinding Key="X"      Modifiers="Ctrl" Command="{Binding CutSelectionCommand}"/>
+        <KeyBinding Key="V"      Modifiers="Ctrl" Command="{Binding PasteCommand}"/>
+        <KeyBinding Key="A"      Modifiers="Ctrl" Command="{Binding SelectAllCommand}"/>
+        <KeyBinding Key="D"      Modifiers="Ctrl" Command="{Binding DeselectCommand}"/>
+
+        <KeyBinding Key="Delete" Command="{Binding DeleteSelectionCommand}"/>
+        <KeyBinding Key="Escape" Command="{Binding CancelFloatingCommand}"/>
+        <KeyBinding Key="Enter"  Command="{Binding CommitFloatingCommand}"/>
+
+        <KeyBinding Key="OemPlus"  Modifiers="Ctrl" Command="{Binding ZoomInCommand}"/>
+        <KeyBinding Key="Add"      Modifiers="Ctrl" Command="{Binding ZoomInCommand}"/>
+        <KeyBinding Key="OemMinus" Modifiers="Ctrl" Command="{Binding ZoomOutCommand}"/>
+        <KeyBinding Key="Subtract" Modifiers="Ctrl" Command="{Binding ZoomOutCommand}"/>
+        <KeyBinding Key="D0"       Modifiers="Ctrl" Command="{Binding ZoomResetCommand}"/>
+        <KeyBinding Key="NumPad0"  Modifiers="Ctrl" Command="{Binding ZoomResetCommand}"/>
+    </Window.InputBindings>
+
+    <Grid AllowDrop="True" x:Name="RootGrid">
+        <!-- Coloured glow blobs behind everything — gives Liquid Glass surfaces something to refract.
+             Each blob has a drifting Storyboard on the compositor thread (not DispatcherTimer). -->
+        <Canvas IsHitTestVisible="False" ClipToBounds="True">
+            <Canvas.Resources>
+                <!-- Reusable storyboard maker would be nicer; inlining for readability. -->
+            </Canvas.Resources>
+            <Ellipse Width="1100" Height="700" Canvas.Left="-180" Canvas.Top="-220" Opacity="0.55" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform><TranslateTransform x:Name="Blob1Move"/></Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Offset="0"   Color="#9D5BFF"/>
+                        <GradientStop Offset="1"   Color="#009D5BFF"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                <DoubleAnimation Storyboard.TargetName="Blob1Move" Storyboard.TargetProperty="Y"
+                                                 From="-30" To="60" Duration="0:0:18">
+                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="Blob1Move" Storyboard.TargetProperty="X"
+                                                 From="0" To="40" Duration="0:0:22">
+                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Ellipse.Triggers>
+            </Ellipse>
+            <Ellipse Width="900" Height="600" Canvas.Right="-100" Canvas.Top="50" Opacity="0.40" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform><TranslateTransform x:Name="Blob2Move"/></Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Offset="0" Color="#FF64B4"/>
+                        <GradientStop Offset="1" Color="#00FF64B4"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                <DoubleAnimation Storyboard.TargetName="Blob2Move" Storyboard.TargetProperty="Y"
+                                                 From="0" To="-50" Duration="0:0:24">
+                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="Blob2Move" Storyboard.TargetProperty="X"
+                                                 From="0" To="-30" Duration="0:0:19">
+                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Ellipse.Triggers>
+            </Ellipse>
+            <Ellipse Width="800" Height="800" Canvas.Right="-200" Canvas.Bottom="-200" Opacity="0.40" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform><TranslateTransform x:Name="Blob3Move"/></Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Offset="0" Color="#3CC8FF"/>
+                        <GradientStop Offset="1" Color="#003CC8FF"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                <DoubleAnimation Storyboard.TargetName="Blob3Move" Storyboard.TargetProperty="Y"
+                                                 From="0" To="-40" Duration="0:0:26">
+                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="Blob3Move" Storyboard.TargetProperty="X"
+                                                 From="0" To="40" Duration="0:0:30">
+                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Ellipse.Triggers>
+            </Ellipse>
+            <Ellipse Width="700" Height="600" Canvas.Left="-100" Canvas.Bottom="-150" Opacity="0.30" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform><TranslateTransform x:Name="Blob4Move"/></Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Offset="0" Color="#64FFB4"/>
+                        <GradientStop Offset="1" Color="#0064FFB4"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                <DoubleAnimation Storyboard.TargetName="Blob4Move" Storyboard.TargetProperty="Y"
+                                                 From="0" To="50" Duration="0:0:21">
+                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="Blob4Move" Storyboard.TargetProperty="X"
+                                                 From="0" To="-30" Duration="0:0:28">
+                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Ellipse.Triggers>
+            </Ellipse>
+        </Canvas>
+
+        <DockPanel LastChildFill="True">
+
+            <!-- ───── Menu bar ───── -->
+            <Menu DockPanel.Dock="Top" Background="Transparent" Margin="6,4,6,0">
+                <MenuItem Header="_Файл">
+                    <MenuItem Header="Создать"   InputGestureText="Ctrl+N" Command="{Binding NewDocumentCommand}"/>
+                    <MenuItem Header="Открыть…"  InputGestureText="Ctrl+O" Command="{Binding OpenCommand}"/>
+                    <MenuItem Header="Сохранить" InputGestureText="Ctrl+S" Command="{Binding SaveCommand}"/>
+                    <MenuItem Header="Сохранить как…" InputGestureText="Ctrl+Shift+S" Command="{Binding SaveAsCommand}"/>
+                    <Separator/>
+                    <MenuItem Header="Выход" Click="OnExitClick"/>
+                </MenuItem>
+                <MenuItem Header="_Правка">
+                    <MenuItem Header="Отменить" InputGestureText="Ctrl+Z" Command="{Binding UndoCommand}"/>
+                    <MenuItem Header="Повторить" InputGestureText="Ctrl+Y" Command="{Binding RedoCommand}"/>
+                    <Separator/>
+                    <MenuItem Header="Вырезать" InputGestureText="Ctrl+X" Command="{Binding CutSelectionCommand}"/>
+                    <MenuItem Header="Копировать" InputGestureText="Ctrl+C" Command="{Binding CopySelectionCommand}"/>
+                    <MenuItem Header="Вставить"  InputGestureText="Ctrl+V" Command="{Binding PasteCommand}"/>
+                    <MenuItem Header="Удалить"   InputGestureText="Delete" Command="{Binding DeleteSelectionCommand}"/>
+                    <MenuItem Header="Выделить всё" InputGestureText="Ctrl+A" Command="{Binding SelectAllCommand}"/>
+                    <MenuItem Header="Снять выделение" InputGestureText="Ctrl+D" Command="{Binding DeselectCommand}"/>
+                </MenuItem>
+                <MenuItem Header="_Вид">
+                    <MenuItem Header="Увеличить"  InputGestureText="Ctrl+=" Command="{Binding ZoomInCommand}"/>
+                    <MenuItem Header="Уменьшить" InputGestureText="Ctrl+-" Command="{Binding ZoomOutCommand}"/>
+                    <MenuItem Header="Сбросить масштаб" InputGestureText="Ctrl+0" Command="{Binding ZoomResetCommand}"/>
+                </MenuItem>
+                <MenuItem Header="_Изображение">
+                    <MenuItem Header="Изменить размер холста…" Command="{Binding ResizeCanvasCommand}"/>
+                    <MenuItem Header="Повернуть 90° по часовой"   Command="{Binding Rotate90Command}"/>
+                    <MenuItem Header="Повернуть 90° против часовой" Command="{Binding RotateMinus90Command}"/>
+                    <MenuItem Header="Отразить горизонтально" Command="{Binding FlipHorizontalCommand}"/>
+                    <MenuItem Header="Отразить вертикально"   Command="{Binding FlipVerticalCommand}"/>
+                </MenuItem>
+                <MenuItem Header="_Справка">
+                    <MenuItem Header="О программе" Click="OnAboutClick"/>
+                </MenuItem>
+            </Menu>
+
+            <!-- ───── Status bar (bottom) ───── -->
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource GlassPanel}" Margin="8,4,8,8" Padding="14,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="StatusPos"   Grid.Column="0" Text="—" Foreground="{StaticResource TextDim}"/>
+                    <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="12,0">
+                        <Border Width="14" Height="14" CornerRadius="3"
+                                BorderBrush="{StaticResource GlassBorder}" BorderThickness="1"
+                                Background="{Binding PrimaryColorBrush}"/>
+                        <TextBlock x:Name="StatusHex" Text=" #000000" Margin="6,0,0,0" Foreground="{StaticResource TextDim}"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="2" Margin="12,0"
+                               Text="{Binding Zoom, StringFormat={}{0:P0}}"
+                               Foreground="{StaticResource TextDim}"/>
+                    <TextBlock Grid.Column="3" Margin="12,0"
+                               Text="Paint Pro 1.0"
+                               Foreground="{StaticResource TextDim}"/>
+                </Grid>
+            </Border>
+
+            <!-- ───── Left toolbar ───── -->
+            <Border DockPanel.Dock="Left" Style="{StaticResource GlassPanel}" Padding="8" Width="74">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- Drawing tools -->
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Карандаш (P)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Pencil, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Pencil">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Pencil}"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Кисть (B)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Brush, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Brush">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Brush}"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Маркер (M)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Marker, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Marker">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Marker}"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Ластик (E)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Eraser, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Eraser">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Eraser}"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Заливка (G)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Fill, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Fill">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Fill}"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Пипетка (I)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Picker, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Picker">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Picker}"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Текст (T)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Text, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Text">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Text}"/>
+                        </ToggleButton>
+
+                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="6,8" />
+
+                        <!-- Shape tools -->
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Линия (L)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Line, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Line">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Line}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Прямоугольник (R)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Rect, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Rect">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Rect}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Эллипс (O)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Ellipse, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Ellipse">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Ellipse}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Треугольник"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Triangle, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Triangle">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Triangle}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Звезда"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Star, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Star">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Star}"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Стрелка"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Arrow, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Arrow">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Arrow}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Сердце"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Heart, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Heart">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Heart}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
+
+                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="6,8"/>
+
+                        <!-- Selection / navigation -->
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Прямоугольное выделение (S)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Select, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Select">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Select}"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Полигон-выделение (Q)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Quad, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Quad">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Quad}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Кадрирование (C)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Crop, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Crop">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Crop}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
+                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Рука / панорама (H)"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Hand, Mode=OneWay}"
+                                Click="OnToolClick" Tag="Hand">
+                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Hand}"/>
+                        </ToggleButton>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- ───── Right side panel: color, size, opacity, layers, quick actions ───── -->
+            <Border DockPanel.Dock="Right" Style="{StaticResource GlassPanel}" Width="280" Padding="14">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- Active colour preview + custom picker -->
+                        <TextBlock Text="ЦВЕТ" FontSize="11" Opacity="0.6" Margin="0,0,0,6"/>
+                        <Border CornerRadius="10" Height="40"
+                                BorderBrush="{StaticResource GlassBorder}" BorderThickness="1"
+                                Background="{Binding PrimaryColorBrush}"
+                                MouseLeftButtonDown="OnPickCustomColorClick"
+                                Cursor="Hand"
+                                Margin="0,0,0,8"/>
+
+                        <!-- 40-colour palette -->
+                        <ItemsControl ItemsSource="{Binding Palette}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource ColorSwatch}"
+                                            Background="{Binding Brush}"
+                                            Click="OnPaletteClick" Tag="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Text="ПОСЛЕДНИЕ" FontSize="11" Opacity="0.6" Margin="0,12,0,4"/>
+                        <ItemsControl ItemsSource="{Binding RecentColors}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource ColorSwatch}"
+                                            Background="{Binding Brush}"
+                                            Click="OnPaletteClick" Tag="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+
+                        <TextBlock Text="РАЗМЕР" FontSize="11" Opacity="0.6"/>
+                        <Slider Style="{StaticResource GlassSlider}" Minimum="1" Maximum="100"
+                                Value="{Binding ToolSize}" TickFrequency="1"/>
+                        <TextBlock Text="{Binding ToolSize, StringFormat={}{0} px}" Opacity="0.8"/>
+
+                        <TextBlock Text="ПРОЗРАЧНОСТЬ" FontSize="11" Opacity="0.6" Margin="0,8,0,0"/>
+                        <Slider Style="{StaticResource GlassSlider}" Minimum="0" Maximum="1"
+                                Value="{Binding Opacity}" SmallChange="0.05" LargeChange="0.1"/>
+                        <TextBlock Text="{Binding Opacity, StringFormat={}{0:P0}}" Opacity="0.8"/>
+
+                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+
+                        <TextBlock Text="ХОЛСТ" FontSize="11" Opacity="0.6"/>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Document.CanvasWidth, StringFormat='W={0}'}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Document.CanvasHeight, StringFormat='H={0}'}"/>
+                        </Grid>
+                        <Button Style="{StaticResource GhostButton}" Margin="0,6,0,0"
+                                Content="Изменить размер…" Command="{Binding ResizeCanvasCommand}"/>
+
+                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+
+                        <TextBlock Text="БЫСТРЫЕ ДЕЙСТВИЯ" FontSize="11" Opacity="0.6"/>
+                        <UniformGrid Columns="2" Margin="0,4,0,0">
+                            <Button Style="{StaticResource GhostButton}" Content="↻ 90°"   Command="{Binding Rotate90Command}"/>
+                            <Button Style="{StaticResource GhostButton}" Content="↺ 90°" Command="{Binding RotateMinus90Command}"/>
+                            <Button Style="{StaticResource GhostButton}" Content="↔ Flip"  Command="{Binding FlipHorizontalCommand}"/>
+                            <Button Style="{StaticResource GhostButton}" Content="↕ Flip"  Command="{Binding FlipVerticalCommand}"/>
+                        </UniformGrid>
+
+                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+
+                        <!-- Layer panel -->
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="СЛОИ" FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Style="{StaticResource GhostButton}"
+                                    Content="+ слой" Padding="6,2" FontSize="11"
+                                    Command="{Binding AddLayerCommand}"/>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding LayerItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,2" Padding="6" CornerRadius="8"
+                                            BorderThickness="1" BorderBrush="{StaticResource GlassBorder}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{StaticResource GlassBg}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource GlassBgStrong}"/>
+                                                        <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0"
+                                                      IsChecked="{Binding Visible, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" Margin="0,0,8,0"
+                                                      Foreground="{StaticResource TextPrimary}"
+                                                      ToolTip="Видимость"/>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextPrimary}"
+                                                           MouseLeftButtonDown="OnLayerNameClick" Cursor="Hand"/>
+                                                <Slider Minimum="0" Maximum="1" Value="{Binding Opacity, Mode=TwoWay}"
+                                                        Style="{StaticResource GlassSlider}" Height="16"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="2" Style="{StaticResource GhostButton}"
+                                                    Content="×" FontSize="14" Padding="4,0"
+                                                    Click="OnLayerDeleteClick" Tag="{Binding}"
+                                                    ToolTip="Удалить слой"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+
+                        <!-- Expandable change history: click any row to roll back/forward to it -->
+                        <Expander IsExpanded="True" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,4">
+                            <Expander.Header>
+                                <TextBlock Text="ИСТОРИЯ ИЗМЕНЕНИЙ" FontSize="11" Opacity="0.6"/>
+                            </Expander.Header>
+                            <Border Margin="0,6,0,0" CornerRadius="8" Padding="2"
+                                    Background="{StaticResource GlassBg}"
+                                    BorderBrush="{StaticResource GlassBorder}" BorderThickness="1">
+                                <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding HistoryItems}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button HorizontalContentAlignment="Left"
+                                                        Padding="8,4" Margin="0,1" Cursor="Hand"
+                                                        BorderThickness="0" FontSize="12"
+                                                        Foreground="{StaticResource TextPrimary}"
+                                                        Command="{Binding DataContext.JumpToHistoryCommand,
+                                                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" CornerRadius="6"
+                                                                    Background="Transparent"
+                                                                    Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+                                                                </Trigger>
+                                                                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsFuture}" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+                                                                </DataTrigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+                        </Expander>
+
+                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+
+                        <UniformGrid Columns="3">
+                            <Button Style="{StaticResource GhostButton}" Content="−" Command="{Binding ZoomOutCommand}"/>
+                            <Button Style="{StaticResource GhostButton}" Content="1:1" Command="{Binding ZoomResetCommand}"/>
+                            <Button Style="{StaticResource GhostButton}" Content="+" Command="{Binding ZoomInCommand}"/>
+                        </UniformGrid>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- ───── Centre canvas ───── -->
+            <Border Style="{StaticResource GlassPanel}" Padding="0">
+                <views:CanvasView x:Name="Canvas" />
+            </Border>
+        </DockPanel>
+    </Grid>
+</Window>

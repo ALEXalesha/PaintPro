@@ -1,0 +1,91 @@
+{
+  "name": "paint-pro",
+  "version": "1.0.0",
+  "description": "Paint Pro - полноценный графический редактор",
+  "main": "main.js",
+  "author": "Paint Pro",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable --x64",
+    "build-installer": "electron-builder --win nsis --x64",
+    "build-all": "electron-builder --win portable nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.paintpro.app",
+    "productName": "Paint Pro",
+    "files": [
+      "main.js",
+      "preload.js",
+      "paint-pro.html",
+      "build/**/*"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "fileAssociations": [
+        {
+          "ext": "png",
+          "name": "PNG Image",
+          "description": "Изображение PNG",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        },
+        {
+          "ext": "jpg",
+          "name": "JPEG Image",
+          "description": "Изображение JPEG",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        },
+        {
+          "ext": "jpeg",
+          "name": "JPEG Image",
+          "description": "Изображение JPEG",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        },
+        {
+          "ext": "bmp",
+          "name": "BMP Image",
+          "description": "Изображение BMP",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        },
+        {
+          "ext": "gif",
+          "name": "GIF Image",
+          "description": "Изображение GIF",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        },
+        {
+          "ext": "webp",
+          "name": "WebP Image",
+          "description": "Изображение WebP",
+          "icon": "build/icon.ico",
+          "role": "Editor"
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "PaintPro-${version}-portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Paint Pro"
+    }
+  }
+}

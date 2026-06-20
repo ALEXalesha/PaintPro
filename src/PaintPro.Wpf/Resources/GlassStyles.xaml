@@ -1,0 +1,141 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- Glass panel = translucent rounded rectangle with subtle border and drop shadow. -->
+    <Style x:Key="GlassPanel" TargetType="Border">
+        <Setter Property="Background"      Value="{StaticResource GlassBg}"/>
+        <Setter Property="BorderBrush"     Value="{StaticResource GlassBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="18"/>
+        <Setter Property="Margin"          Value="8"/>
+        <Setter Property="Padding"         Value="10"/>
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect BlurRadius="32" ShadowDepth="8" Opacity="0.35" Color="Black"/>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Small ghost button used across toolbars. -->
+    <Style x:Key="GhostButton" TargetType="Button">
+        <Setter Property="Background"  Value="Transparent"/>
+        <Setter Property="Foreground"  Value="{StaticResource TextPrimary}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="Cursor"  Value="Hand"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="10">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgHover}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource GlassBorder}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.35"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Tool button = 44×44 square in the left toolbar. Click toggles ActiveTool. -->
+    <Style x:Key="ToolButton" TargetType="ToggleButton">
+        <Setter Property="Background"  Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="Foreground"  Value="{StaticResource TextPrimary}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Width"  Value="44"/>
+        <Setter Property="Height" Value="44"/>
+        <Setter Property="Margin" Value="3"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment"   Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="12">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgHover}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource GlassBorder}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentGrad}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource GlassBorderStrong}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Colour swatch square in palette + recent rows. -->
+    <Style x:Key="ColorSwatch" TargetType="Button">
+        <Setter Property="Width"  Value="22"/>
+        <Setter Property="Height" Value="22"/>
+        <Setter Property="Margin" Value="2"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="{StaticResource GlassBorder}"/>
+        <Setter Property="Cursor"      Value="Hand"/>
+        <Setter Property="Focusable"   Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Slider with thin glass track. -->
+    <Style x:Key="GlassSlider" TargetType="Slider">
+        <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+        <Setter Property="Background" Value="{StaticResource GlassBg}"/>
+        <Setter Property="IsMoveToPointEnabled" Value="True"/>
+        <Setter Property="Focusable" Value="False"/>
+    </Style>
+
+    <Style TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+    </Style>
+    <Style TargetType="Label">
+        <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+        <Setter Property="FontSize" Value="11"/>
+    </Style>
+    <Style TargetType="Menu">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    </Style>
+    <Style TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    </Style>
+</ResourceDictionary>
