@@ -19,10 +19,12 @@ public sealed class PickerTool : ITool
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
-        if (ctx.Document.ActiveLayer is not PixelLayer pl) return;
+        var doc = ctx.Document;
         int x = (int)position.X, y = (int)position.Y;
-        if (x < 0 || y < 0 || x >= pl.Width || y >= pl.Height) return;
-        var picked = pl.Bitmap.GetPixel(x, y);
+        if (x < 0 || y < 0 || x >= doc.CanvasWidth || y >= doc.CanvasHeight) return;
+        // Sample the composite, not the active layer: picking a colour you can see should
+        // work regardless of which layer happens to be selected.
+        var picked = doc.SampleComposite(x, y);
         ctx.PrimaryColor = picked;
         ColorPicked?.Invoke(picked);
     }

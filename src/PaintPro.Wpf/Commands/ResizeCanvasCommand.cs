@@ -37,6 +37,17 @@ public sealed class ResizeCanvasCommand : IDocumentCommand
 
     public string DisplayName => "Resize canvas";
 
+    public long ApproximateBytes
+    {
+        get
+        {
+            if (_previousLayers is null) return 0;
+            long sum = 0;
+            foreach (var b in _previousLayers) sum += (long)b.RowBytes * b.Height;
+            return sum;
+        }
+    }
+
     public void Execute(Document doc)
     {
         _previousWidth = doc.CanvasWidth;

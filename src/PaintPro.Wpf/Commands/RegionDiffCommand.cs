@@ -1,4 +1,4 @@
-using PaintPro.Models;
+﻿using PaintPro.Models;
 using SkiaSharp;
 
 namespace PaintPro.Commands;
@@ -29,6 +29,10 @@ public sealed class RegionDiffCommand : IDocumentCommand
     }
 
     public string DisplayName { get; }
+
+    public long ApproximateBytes => Bytes(_before) + Bytes(_after);
+
+    private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
 
     public void Execute(Document doc) => Blit(doc, _after);
     public void Undo(Document doc) => Blit(doc, _before);

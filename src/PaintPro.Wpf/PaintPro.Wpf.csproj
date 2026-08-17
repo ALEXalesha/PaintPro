@@ -21,8 +21,8 @@
     <Product>Paint Pro</Product>
     <Company>Paint Pro</Company>
     <Copyright>Paint Pro</Copyright>
-    <Version>1.1.0</Version>
-    <FileVersion>1.1.0.0</FileVersion>
+    <Version>1.2.0</Version>
+    <FileVersion>1.2.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

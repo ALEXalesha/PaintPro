@@ -17,6 +17,23 @@ public partial class MainWindow : Window
         // Drag-and-drop file open.
         AllowDrop = true;
         Drop += OnDrop;
+        Closing += OnClosing;
+    }
+
+    /// <summary>
+    /// Closing the window used to discard unsaved work without a word. Ask first, and let
+    /// the user back out — including when they cancel the save dialog itself.
+    /// </summary>
+    private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !vm.IsDirty) return;
+
+        var answer = MessageBox.Show(
+            "Рисунок изменён. Сохранить перед выходом?",
+            "Paint Pro", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+
+        if (answer == MessageBoxResult.Cancel) { e.Cancel = true; return; }
+        if (answer == MessageBoxResult.Yes && !vm.TrySaveForClose()) e.Cancel = true;
     }
 
     private MainViewModel Vm => (MainViewModel)DataContext;

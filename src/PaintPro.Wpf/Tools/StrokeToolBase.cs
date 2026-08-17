@@ -114,7 +114,7 @@ public abstract class StrokeToolBase : ITool
                     dest:   new SKRect(0, 0, bbox.Width, bbox.Height));
             }
 
-            var cmd = new DrawStrokeCommand(cropped, bbox, _paint.BlendMode, _strokeAlpha);
+            var cmd = new DrawStrokeCommand(cropped, bbox, MergeBlendMode(ctx), _strokeAlpha);
             ctx.History.ExecuteAndPush(cmd, ctx.Document);
         }
 
@@ -138,6 +138,18 @@ public abstract class StrokeToolBase : ITool
 
     /// <summary>Subclasses set Color, StrokeWidth, BlendMode here.</summary>
     protected abstract void ConfigurePaint(SKPaint paint, ToolContext ctx);
+
+    /// <summary>
+    /// Blend mode used when the finished stroke is merged into the layer. Separate from
+    /// the paint's own mode, which applies while drawing into the offscreen buffer — the
+    /// eraser needs to draw a normal opaque shape there and carve it out only at merge.
+    /// </summary>
+    protected virtual SKBlendMode MergeBlendMode(ToolContext ctx) => SKBlendMode.SrcOver;
+
+    /// <summary>True when the tool is painting on the document's bottom (opaque) layer.</summary>
+    protected static bool OnBottomLayer(ToolContext ctx)
+        => ctx.Document.Layers.Count > 0
+           && ReferenceEquals(ctx.Document.Layers[0], ctx.Document.ActiveLayer);
 }
 
 /// <summary>Thin line. Width = size * 0.5, no smoothing pass.</summary>
@@ -162,15 +174,25 @@ public sealed class BrushTool : StrokeToolBase
     }
 }
 
-/// <summary>Eraser — paints solid white (Paint-classic, non-transparent).</summary>
+/// <summary>
+/// Eraser. On the bottom layer it paints solid white, Paint-classic style — that layer
+/// IS the paper. On any layer above it erases to transparency instead: painting white
+/// there would punch an opaque hole straight through everything underneath.
+/// </summary>
 public sealed class EraserTool : StrokeToolBase
 {
     public override string Name => "Eraser";
+
     protected override void ConfigurePaint(SKPaint paint, ToolContext ctx)
     {
         paint.Color = SKColors.White;
         paint.StrokeWidth = MathF.Max(1f, ctx.ToolSize);
     }
+
+    // DstOut keeps the destination only where the stroke is transparent, i.e. the stroke
+    // shape is subtracted from the layer.
+    protected override SKBlendMode MergeBlendMode(ToolContext ctx)
+        => OnBottomLayer(ctx) ? SKBlendMode.SrcOver : SKBlendMode.DstOut;
 }
 
 /// <summary>Marker — translucent stroke, capped at 40% so it always reads as a highlighter.</summary>

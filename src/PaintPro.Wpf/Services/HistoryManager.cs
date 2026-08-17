@@ -28,6 +28,13 @@ public partial class HistoryManager : ObservableObject
     /// <summary>Cap on history depth; oldest entries are dropped past this.</summary>
     public int MaxDepth { get; set; } = 1000;
 
+    /// <summary>
+    /// Cap on the pixel data the timeline holds, in bytes. Depth alone is a bad proxy:
+    /// a rotate on a 12-megapixel document keeps two full-canvas bitmaps, about 96 MB,
+    /// so twenty of them would be 2 GB while sitting nowhere near <see cref="MaxDepth"/>.
+    /// </summary>
+    public long MaxBytes { get; set; } = 768L * 1024 * 1024;
+
     /// <summary>All recorded commands in chronological order (applied + redoable).</summary>
     public IReadOnlyList<IDocumentCommand> Commands => _commands;
 
@@ -129,10 +136,26 @@ public partial class HistoryManager : ObservableObject
     private void Trim()
     {
         int overflow = _commands.Count - MaxDepth;
-        if (overflow <= 0) return;
-        // Drop the oldest commands; shift the cursor to keep pointing at the same edit.
-        _commands.RemoveRange(0, overflow);
-        _cursor = Math.Max(0, _cursor - overflow);
+        if (overflow > 0) Drop(overflow);
+
+        // Then trim by memory. Never drop the newest entry, however heavy it is — losing
+        // the undo for the edit that was just made would be worse than the memory.
+        long total = 0;
+        foreach (var c in _commands) total += c.ApproximateBytes;
+        int dropped = 0;
+        while (total > MaxBytes && _commands.Count - dropped > 1)
+        {
+            total -= _commands[dropped].ApproximateBytes;
+            dropped++;
+        }
+        if (dropped > 0) Drop(dropped);
+    }
+
+    /// <summary>Drop the oldest <paramref name="count"/> commands, keeping the cursor on the same edit.</summary>
+    private void Drop(int count)
+    {
+        _commands.RemoveRange(0, count);
+        _cursor = Math.Max(0, _cursor - count);
     }
 
     private void Notify()

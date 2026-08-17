@@ -430,6 +430,9 @@ public partial class CanvasView : UserControl
     private void OnSkiaMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (_vm is null) return;
+        // MouseDown fires for every button. Without this a right-click would run the
+        // active tool — with a brush selected that means a stray dot plus a history entry.
+        if (e.ChangedButton != MouseButton.Left) return;
         Skia.CaptureMouse();
         _captured = true;
         var pos = ToDoc(e.GetPosition(Skia));
@@ -453,8 +456,7 @@ public partial class CanvasView : UserControl
             else
             {
                 PixelPositionChanged?.Invoke(pos);
-                if (_vm.Document.ActiveLayer is PixelLayer pl)
-                    PixelColorChanged?.Invoke(pl.Bitmap.GetPixel((int)pos.X, (int)pos.Y));
+                PixelColorChanged?.Invoke(_vm.Document.SampleComposite((int)pos.X, (int)pos.Y));
             }
         }
         if (e.LeftButton == MouseButtonState.Pressed)
@@ -468,6 +470,7 @@ public partial class CanvasView : UserControl
     private void OnSkiaMouseUp(object sender, MouseButtonEventArgs e)
     {
         if (_vm is null) return;
+        if (e.ChangedButton != MouseButton.Left) return;
         if (_captured) { Skia.ReleaseMouseCapture(); _captured = false; }
         var pos = ToDoc(e.GetPosition(Skia));
         _vm.ActiveToolInstance.OnPointerUp(pos, _vm.ToolContext);

@@ -162,7 +162,13 @@ public partial class Document : ObservableObject
             // "Before" comes from the pre-lift snapshot when there is one (the layer has
             // already been lazily erased by then); for a paste there is no snapshot and the
             // layer is still untouched, so the current pixels are the correct "before".
-            var dirty = ComputeDirtyRect(pickup, target.Width, target.Height);
+            // Only worth recording if the pickup actually did something. A click that
+            // promotes a selection and a click that puts it straight back down leave the
+            // layer as it was, and OriginalAreaErased is the flag that says a transform
+            // happened at all (a paste sets it up front, since its pixels are new).
+            var dirty = pickup.OriginalAreaErased
+                ? ComputeDirtyRect(pickup, target.Width, target.Height)
+                : SKRectI.Empty;
             SKBitmap? before = null;
             if (!dirty.IsEmpty)
             {
@@ -243,6 +249,30 @@ public partial class Document : ObservableObject
     /// <summary>Layer a pickup belongs to: the one it was lifted from, falling back to the active layer.</summary>
     private PixelLayer? TargetLayer(FloatingPickup pickup)
         => FindPixelLayer(pickup.SourceLayerId) ?? ActiveLayer as PixelLayer;
+
+    /// <summary>
+    /// Colour of one pixel as the user sees it: white paper with every visible layer
+    /// composited over it. The eyedropper and the status bar both need this — reading the
+    /// active layer alone reports transparent wherever that layer happens to be empty.
+    /// </summary>
+    public SKColor SampleComposite(int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= CanvasWidth || y >= CanvasHeight) return SKColors.Transparent;
+
+        float r = 255f, g = 255f, b = 255f; // start from the white the canvas is cleared to
+        foreach (var layer in Layers)
+        {
+            if (layer is not PixelLayer pl || !pl.Visible) continue;
+            if (x >= pl.Width || y >= pl.Height) continue;
+            var px = pl.Bitmap.GetPixel(x, y);
+            float a = px.Alpha / 255f * Math.Clamp(pl.Opacity, 0f, 1f);
+            if (a <= 0f) continue;
+            r = px.Red * a + r * (1 - a);
+            g = px.Green * a + g * (1 - a);
+            b = px.Blue * a + b * (1 - a);
+        }
+        return new SKColor((byte)MathF.Round(r), (byte)MathF.Round(g), (byte)MathF.Round(b));
+    }
 
     /// <summary>Composite a pickup (rotation + optional quad clip) onto a bitmap.</summary>
     public static void DrawPickup(SKBitmap destination, FloatingPickup pickup)

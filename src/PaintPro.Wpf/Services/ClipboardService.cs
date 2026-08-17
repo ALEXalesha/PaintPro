@@ -12,22 +12,31 @@ namespace PaintPro.Services;
 /// </summary>
 public sealed class ClipboardService
 {
-    /// <summary>Returns the selection rect inside <paramref name="doc"/>, or the full canvas if no selection.</summary>
+    /// <summary>
+    /// The selection rect inside <paramref name="doc"/>, or the full canvas if there is no
+    /// selection — flattened. Copy takes what the user can see; reading the active layer
+    /// alone put an unexpectedly empty or partial image on the clipboard as soon as the
+    /// document had more than one layer.
+    /// </summary>
     private static SKBitmap ExtractSelectedRegion(Document doc)
     {
-        if (doc.ActiveLayer is not PixelLayer pl)
-            return new SKBitmap(1, 1);
+        var canvasRect = new SKRectI(0, 0, doc.CanvasWidth, doc.CanvasHeight);
+        SKRectI rect = doc.Selection switch
+        {
+            RectSelection rs => SKRectI.Round(rs.Rect),
+            PolygonSelection poly => SKRectI.Round(poly.BoundingBox),
+            _ => canvasRect,
+        };
+        rect = SKRectI.Intersect(rect, canvasRect);
+        if (rect.IsEmpty) return new SKBitmap(1, 1);
 
-        SKRectI rect;
-        if (doc.Selection is RectSelection rs)
-            rect = SKRectI.Round(rs.Rect);
-        else if (doc.Selection is PolygonSelection poly)
-            rect = SKRectI.Round(poly.BoundingBox);
-        else
-            rect = new SKRectI(0, 0, pl.Width, pl.Height);
-
-        rect = SKRectI.Intersect(rect, new SKRectI(0, 0, pl.Width, pl.Height));
-        return pl.ExtractRegion(rect);
+        using var flat = FileService.Flatten(doc);
+        var dst = new SKBitmap(rect.Width, rect.Height, flat.ColorType, flat.AlphaType);
+        using var canvas = new SKCanvas(dst);
+        canvas.DrawBitmap(flat,
+            source: new SKRect(rect.Left, rect.Top, rect.Right, rect.Bottom),
+            dest: new SKRect(0, 0, rect.Width, rect.Height));
+        return dst;
     }
 
     /// <summary>Copy the current selection (or whole canvas) to the OS clipboard.</summary>

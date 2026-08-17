@@ -118,12 +118,9 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void AddLayer()
     {
-        var layer = new PixelLayer(Document.CanvasWidth, Document.CanvasHeight, SKColors.Transparent)
-        {
-            Name = $"Layer {Document.Layers.Count}",
-        };
-        Document.Layers.Add(layer);
-        Document.ActiveLayerIndex = Document.Layers.Count - 1;
+        Document.CommitFloating();
+        Document.History.ExecuteAndPush(
+            LayerStackCommand.Add(Document, $"Layer {Document.Layers.Count}"), Document);
         InvalidateCanvas?.Invoke();
     }
 
@@ -131,11 +128,9 @@ public partial class MainViewModel : ObservableObject
     private void RemoveLayer(LayerListItemViewModel? item)
     {
         if (item is null || Document.Layers.Count <= 1) return;
-        var idx = Document.Layers.IndexOf(item.Layer);
-        if (idx < 0) return;
-        item.Layer.Dispose();
-        Document.Layers.RemoveAt(idx);
-        Document.ActiveLayerIndex = Math.Clamp(Document.ActiveLayerIndex, 0, Document.Layers.Count - 1);
+        if (item.Layer is not PixelLayer pl || Document.Layers.IndexOf(pl) < 0) return;
+        Document.CommitFloating();
+        Document.History.ExecuteAndPush(LayerStackCommand.Remove(Document, pl), Document);
         InvalidateCanvas?.Invoke();
     }
 
@@ -344,6 +339,17 @@ public partial class MainViewModel : ObservableObject
         InvalidateCanvas?.Invoke();
     }
 
+    /// <summary>History position at the last successful save; drives <see cref="IsDirty"/>.</summary>
+    private int _savedAtCursor;
+
+    /// <summary>
+    /// True if there is work that a save would capture and closing would lose. Compares
+    /// the history cursor with where it was at the last save, so undoing back to the saved
+    /// state correctly counts as clean.
+    /// </summary>
+    public bool IsDirty
+        => Document.History.Cursor != _savedAtCursor || Document.FloatingPickup is not null;
+
     [RelayCommand] private void Save()
     {
         Document.CommitFloating();
@@ -356,8 +362,20 @@ public partial class MainViewModel : ObservableObject
         Report(FileService.SaveAsDialog(Document));
     }
 
-    private static void Report(SaveOutcome outcome)
+    /// <summary>Save for the close-confirmation flow. False if the user backed out of the dialog.</summary>
+    public bool TrySaveForClose()
     {
+        Document.CommitFloating();
+        var outcome = FileService.SaveOrSaveAs(Document);
+        Report(outcome);
+        return outcome.Status is SaveStatus.Ok or SaveStatus.FormatChanged;
+    }
+
+    private void Report(SaveOutcome outcome)
+    {
+        if (outcome.Status is SaveStatus.Ok or SaveStatus.FormatChanged)
+            _savedAtCursor = Document.History.Cursor;
+
         if (outcome.Status == SaveStatus.FormatChanged)
         {
             MessageBox.Show(

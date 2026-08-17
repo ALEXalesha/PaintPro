@@ -20,7 +20,18 @@ public sealed class CropTool : ITool
     private bool _dragging;
 
     public void OnActivate(ToolContext ctx) { }
-    public void OnDeactivate(ToolContext ctx) { }
+
+    public void OnDeactivate(ToolContext ctx)
+    {
+        // Switching tools mid-drag has to unwind the transient mode by hand: nothing else
+        // recomputes it while the document is in Cropping, so it would stay stuck there
+        // and selection state would stop driving Mode at all.
+        if (!_dragging) return;
+        _dragging = false;
+        ctx.IsDrawing = false;
+        ctx.Document.Selection = null;
+        ctx.Document.EnterTransientMode(DocumentMode.Idle);
+    }
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {

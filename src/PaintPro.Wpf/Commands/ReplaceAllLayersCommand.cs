@@ -33,6 +33,16 @@ public sealed class ReplaceAllLayersCommand : IDocumentCommand
 
     public string DisplayName { get; }
 
+    // The heaviest command in the app: two full copies of every layer.
+    public long ApproximateBytes => Total(_before) + Total(_after);
+
+    private static long Total(SKBitmap[] set)
+    {
+        long sum = 0;
+        foreach (var b in set) sum += (long)b.RowBytes * b.Height;
+        return sum;
+    }
+
     public void Execute(Document doc) => Install(doc, _after, _afterW, _afterH);
     public void Undo(Document doc) => Install(doc, _before, _beforeW, _beforeH);
 

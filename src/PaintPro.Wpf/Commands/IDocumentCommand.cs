@@ -21,4 +21,13 @@ public interface IDocumentCommand
 
     /// <summary>Reverse the change. Must restore the document to its pre-Execute state.</summary>
     void Undo(Document doc);
+
+    /// <summary>
+    /// Roughly how many bytes of pixel data this command is holding on to.
+    /// <see cref="Services.HistoryManager"/> trims the oldest entries once the total gets
+    /// out of hand: whole-layer ops on a photo-sized canvas keep two full bitmaps each, so
+    /// a depth-only cap says nothing useful about actual memory use.
+    /// Commands that hold no bitmaps can leave this at zero.
+    /// </summary>
+    long ApproximateBytes => 0;
 }

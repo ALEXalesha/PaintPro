@@ -1,4 +1,4 @@
-using PaintPro.Models;
+﻿using PaintPro.Models;
 using SkiaSharp;
 
 namespace PaintPro.Commands;
@@ -29,6 +29,10 @@ public sealed class PasteCommand : IDocumentCommand
     }
 
     public string DisplayName => "Paste";
+
+    public long ApproximateBytes => Bytes(_bitmap);
+
+    private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
 
     public void Execute(Document doc)
     {
