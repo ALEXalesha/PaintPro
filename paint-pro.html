@@ -1265,7 +1265,7 @@
         <button class="mb-dd-item" onclick="if(state.selection||state.floating)cutSelection()"><span>Вырезать</span><span class="kb">Ctrl X</span></button>
         <button class="mb-dd-item" onclick="pasteFromClipboard()"><span>Вставить</span><span class="kb">Ctrl V</span></button>
         <div class="mb-sep"></div>
-        <button class="mb-dd-item" onclick="document.querySelector('[data-tool=&quot;select&quot;]').click(); commitSelection(); state.selection={x:0,y:0,w:canvas.width,h:canvas.height}; state.selectionData=ctx.getImageData(0,0,canvas.width,canvas.height); state.originalBeforeMove=ctx.getImageData(0,0,canvas.width,canvas.height); updateSelectionOverlay(); document.getElementById('sel-size').textContent=canvas.width+' × '+canvas.height"><span>Выделить всё</span><span class="kb">Ctrl A</span></button>
+        <button class="mb-dd-item" onclick="selectAll()"><span>Выделить всё</span><span class="kb">Ctrl A</span></button>
       </div>
     </div>
 
@@ -1618,9 +1618,6 @@ let state = {
   historyIndex: -1,
   selection: null, // {x, y, w, h}
   selectionData: null, // ImageData для перемещения
-  movingSelection: false,
-  moveOffsetX: 0,
-  moveOffsetY: 0,
   cropping: false,
   cropRect: null,
   clipboard: null,
@@ -1740,6 +1737,16 @@ const toolNames = {
 
 const DRAWING_TOOLS = ['pencil','brush','marker','eraser','line','rect','ellipse','triangle','star','arrow','heart'];
 
+// Фактическая толщина мазка в пикселях холста. Заданный размер - не то же самое,
+// что ляжет на холст: карандаш рисует вдвое тоньше, маркер - в полтора раза
+// толще. Одна функция на все места, где эта толщина нужна (стиль пера и курсор),
+// иначе кружок курсора показывает не тот диаметр, каким рисует инструмент.
+function strokeWidthFor(tool, size) {
+  if (tool === 'pencil') return Math.max(1, size * 0.5);
+  if (tool === 'marker') return size * 1.5;
+  return size;
+}
+
 // Генерируем SVG-курсор-круг по размеру кисти. Радиус учитывает зум, потому
 // что пользователь видит мазок именно в экранных пикселях. У браузерных
 // курсоров есть потолок (~128px в Chromium) - выше клампим, чтобы курсор не
@@ -1750,7 +1757,7 @@ function updateBrushCursor() {
     return;
   }
   const zoom = state.zoom || 1;
-  const screenD = Math.max(8, Math.min(96, state.size * zoom));
+  const screenD = Math.max(8, Math.min(96, strokeWidthFor(state.tool, state.size) * zoom));
   const pad = 3;
   const sz = Math.ceil(screenD + pad * 2);
   const c = sz / 2;
@@ -1929,7 +1936,7 @@ function onDown(e) {
     previewCtx.strokeStyle = state.color;
     previewCtx.lineCap = 'round';
     previewCtx.lineJoin = 'round';
-    previewCtx.lineWidth = state.size * 1.5;
+    previewCtx.lineWidth = strokeWidthFor('marker', state.size);
     previewCtx.globalAlpha = 1;
     previewCanvas.style.opacity = String(state.opacity * 0.4);
     previewCtx.beginPath();
@@ -1962,8 +1969,9 @@ function onDown(e) {
       composite.height = canvas.height;
       const cc = composite.getContext('2d');
       cc.drawImage(canvas, 0, 0);
-      const f = state.floating;
-      cc.drawImage(f.canvas, f.x, f.y, f.w, f.h);
+      // Через общий рендер, а не голым drawImage: иначе пипетка берёт цвет
+      // из неповёрнутого прямоугольника, а не из того, что видит пользователь.
+      drawFloatingOnto(cc);
       sampleCtx = cc;
     }
     const pixel = sampleCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
@@ -1983,7 +1991,7 @@ function onMove(e) {
   document.getElementById('pos').textContent = `${Math.round(x)}, ${Math.round(y)}`;
   // Pixel preview только когда не идёт активный drag — getImageData дорогой
   if (!state.drawing && !state.draggingFloating && !state.resizingFloating &&
-      !state.rotatingFloating && !state.warpingQuad && !state.movingSelection) {
+      !state.rotatingFloating && !state.warpingQuad) {
     schedulePixelPreview(x, y);
   }
 
@@ -2015,18 +2023,6 @@ function onMove(e) {
     } else if (!state.drawing) {
       canvas.style.cursor = 'crosshair';
     }
-  }
-
-  // Перемещение старого выделения
-  if (state.movingSelection && state.selectionData) {
-    const nx = x - state.moveOffsetX;
-    const ny = y - state.moveOffsetY;
-    ctx.putImageData(state.originalBeforeMove, 0, 0);
-    ctx.putImageData(state.selectionData, nx, ny);
-    state.selection.x = nx;
-    state.selection.y = ny;
-    updateSelectionOverlay();
-    return;
   }
 
   if (!state.drawing) return;
@@ -2087,11 +2083,6 @@ function onUp(e) {
     state.resizeHandle = null;
     return;
   }
-  if (state.movingSelection) {
-    state.movingSelection = false;
-    return;
-  }
-
   if (!state.drawing) return;
   state.drawing = false;
   selOverlay.classList.remove('drawing');
@@ -2123,7 +2114,6 @@ function onUp(e) {
         state.selection.x, state.selection.y,
         state.selection.w, state.selection.h
       );
-      state.originalBeforeMove = null;
     }
   } else if (t === 'crop') {
     if (state.selection && state.selection.w > 2 && state.selection.h > 2) {
@@ -2159,11 +2149,7 @@ function applyBrushStyle() {
   ctx.lineJoin = 'round';
   ctx.globalAlpha = state.opacity;
 
-  if (state.tool === 'pencil') {
-    ctx.lineWidth = Math.max(1, state.size * 0.5);
-  } else if (state.tool === 'brush') {
-    ctx.lineWidth = state.size;
-  }
+  ctx.lineWidth = strokeWidthFor(state.tool, state.size);
   // marker рисуется через previewCanvas — стили задаются в onDown
 }
 
@@ -2270,10 +2256,13 @@ function floodFill(x, y, fillHex) {
   // заливки, близком к исходному, смешанный результат остаётся в пределах
   // допуска colorsMatch, пиксель совпадает с target снова и соседи кладут его
   // в стек заново - стек растёт бесконечно и приложение зависает.
+  // Стек плоский (x, y, x, y, ...), а не массив пар: на заливке во весь экран
+  // пар набегают миллионы, и каждая - отдельный объект для сборщика мусора.
   const seen = new Uint8Array(w * h);
-  const stack = [[x, y]];
+  const stack = [x, y];
   while (stack.length) {
-    const [cx, cy] = stack.pop();
+    const cy = stack.pop();
+    const cx = stack.pop();
     if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
     const seenIdx = cy * w + cx;
     if (seen[seenIdx]) continue;
@@ -2285,7 +2274,7 @@ function floodFill(x, y, fillHex) {
     const g = Math.round(p[1] * (1 - alpha) + fillRgb[1] * alpha);
     const b = Math.round(p[2] * (1 - alpha) + fillRgb[2] * alpha);
     setPixel(data, cx, cy, w, [r, g, b]);
-    stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+    stack.push(cx + 1, cy, cx - 1, cy, cx, cy + 1, cx, cy - 1);
   }
   ctx.putImageData(img, 0, 0);
 }
@@ -2335,7 +2324,6 @@ function hideSelection() {
 
 function commitSelection() {
   state.selectionData = null;
-  state.originalBeforeMove = null;
 }
 
 function showCropControls() {
@@ -2348,17 +2336,34 @@ function showCropControls() {
   cropControls.style.top = ((state.selection.y + state.selection.h) * scaleY + 8) + 'px';
 }
 
+// Единственная точка смены размера холста. У <canvas> буферный размер
+// (width/height) и экранный (style.width/height) независимы: присвоение
+// width сбрасывает буфер, но CSS-размер остаётся прежним, и картинка
+// оказывается растянутой в старую рамку. Поэтому applyZoom() здесь обязателен,
+// и звать его руками на каждом вызывающем месте больше не нужно.
+function setCanvasSize(w, h) {
+  canvas.width = w;
+  canvas.height = h;
+  previewCanvas.width = w;
+  previewCanvas.height = h;
+  applyZoom();
+}
+
 function applyCrop() {
   if (!state.selection) return;
   // Сначала зафиксировать плавающий объект, чтобы он попал в обрезку, а не
   // потерялся вне новых границ.
   if (state.floating) commitFloating();
   const s = state.selection;
-  const cropped = ctx.getImageData(s.x, s.y, s.w, s.h);
-  canvas.width = s.w;
-  canvas.height = s.h;
-  previewCanvas.width = s.w;
-  previewCanvas.height = s.h;
+  // Округляем до целых пикселей до всех вычислений: getImageData дробные
+  // аргументы округляет, а canvas.width их отбрасывает - на выделении шириной
+  // 100.7 буфер стал бы 100, а снимок 101, и правый столбец обрезался бы.
+  const cx = Math.max(0, Math.round(s.x));
+  const cy = Math.max(0, Math.round(s.y));
+  const cw = Math.max(1, Math.min(Math.round(s.w), canvas.width - cx));
+  const ch = Math.max(1, Math.min(Math.round(s.h), canvas.height - cy));
+  const cropped = ctx.getImageData(cx, cy, cw, ch);
+  setCanvasSize(cw, ch);
   ctx.putImageData(cropped, 0, 0);
   updateCanvasInfo();
   hideSelection();
@@ -2414,8 +2419,10 @@ function renderHistoryPanel() {
   list.innerHTML = '';
   for (let i = 0; i < state.history.length; i++) {
     const entry = state.history[i];
-    const label = (i === 0) ? 'Исходное состояние'
-                            : ((entry && entry.label) ? entry.label : 'Изменение');
+    // Подпись берём из самой записи, а не по индексу: после переполнения
+    // MAX_HISTORY нулевую запись вытесняет обычная правка, и жёсткое
+    // «Исходное состояние» для i === 0 начинало врать.
+    const label = (entry && entry.label) ? entry.label : 'Изменение';
     const div = document.createElement('div');
     div.className = 'hist-item' + (i === state.historyIndex ? ' current' : '')
                                 + (i > state.historyIndex ? ' future' : '');
@@ -2452,17 +2459,12 @@ function restoreHistory() {
   const img = new Image();
   img.onload = () => {
     if (generation !== restoreGeneration) return;
-    const sizeChanged = canvas.width !== img.width || canvas.height !== img.height;
-    if (sizeChanged) {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      previewCanvas.width = img.width;
-      previewCanvas.height = img.height;
+    if (canvas.width !== img.width || canvas.height !== img.height) {
+      setCanvasSize(img.width, img.height);
       updateCanvasInfo();
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0);
-    if (sizeChanged && typeof applyZoom === 'function') applyZoom();
   };
   const entry = state.history[state.historyIndex];
   img.src = (entry && entry.url) ? entry.url : entry;
@@ -2484,10 +2486,7 @@ document.getElementById('file-input').addEventListener('change', (e) => {
         old.width = canvas.width;
         old.height = canvas.height;
         old.getContext('2d').drawImage(canvas, 0, 0);
-        canvas.width = newW;
-        canvas.height = newH;
-        previewCanvas.width = newW;
-        previewCanvas.height = newH;
+        setCanvasSize(newW, newH);
         fillWhite();
         ctx.drawImage(old, 0, 0);
         updateCanvasInfo();
@@ -2551,15 +2550,35 @@ function createFloatingFromImage(img, x, y) {
 // Сделать белый фон холста прозрачным на pickup-картинке. Тогда при перемещении
 // выделения двигается только нарисованное, а не белый прямоугольник, перекрывающий
 // то, что под ним. drawImage (в renderFloating/commitFloating) уважает прозрачность.
+// Прозрачным делается только фон ВОКРУГ рисунка: заливка идёт от краёв pickup'а
+// внутрь и останавливается на первом небелом пикселе. Проход «весь белый подряд»
+// был проще, но пробивал дыры в самой картинке - блик на фото, белую заливку
+// фигуры, глаз на рисунке, - и сквозь них просвечивало то, что лежит ниже.
 function keyOutWhite(cnv, tol) {
   tol = (tol == null) ? 8 : tol;
+  const w = cnv.width, h = cnv.height;
+  if (!w || !h) return;
   const g = cnv.getContext('2d');
-  const id = g.getImageData(0, 0, cnv.width, cnv.height);
+  const id = g.getImageData(0, 0, w, h);
   const d = id.data;
   const lo = 255 - tol;
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] === 0) continue;
-    if (d[i] >= lo && d[i + 1] >= lo && d[i + 2] >= lo) d[i + 3] = 0;
+  const seen = new Uint8Array(w * h);
+  // Стартуем со всей рамки pickup'а, стек плоский (x, y, x, y, ...).
+  const stack = [];
+  for (let x = 0; x < w; x++) stack.push(x, 0, x, h - 1);
+  for (let y = 0; y < h; y++) stack.push(0, y, w - 1, y);
+  while (stack.length) {
+    const cy = stack.pop();
+    const cx = stack.pop();
+    if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
+    const s = cy * w + cx;
+    if (seen[s]) continue;
+    seen[s] = 1;
+    const i = s * 4;
+    if (d[i + 3] === 0) continue; // уже прозрачный - дальше не идём
+    if (d[i] < lo || d[i + 1] < lo || d[i + 2] < lo) continue; // край рисунка
+    d[i + 3] = 0;
+    stack.push(cx + 1, cy, cx - 1, cy, cx, cy + 1, cx, cy - 1);
   }
   g.putImageData(id, 0, 0);
 }
@@ -2623,6 +2642,53 @@ function drawClippedQuad(g, img, quad, drawX, drawY, drawW, drawH, rotation) {
   g.restore();
 }
 
+// Нарисовать текущий floating в произвольный контекст в координатах холста -
+// ровно так, как его видит пользователь (с поворотом и клипом по quad).
+// Один общий рендер на все места: превью, фиксацию, пипетку и копирование.
+// Пока эти три ветки были скопированы по коду, о повороте забывали то в одной,
+// то в другой.
+function drawFloatingOnto(g) {
+  const f = state.floating;
+  if (!f) return;
+  if (f.quad) {
+    drawClippedQuad(g, f.canvas, f.quad, f.x, f.y, f.w, f.h, f.rotation || 0);
+  } else if (f.rotation) {
+    g.save();
+    g.translate(f.x + f.w / 2, f.y + f.h / 2);
+    g.rotate(f.rotation);
+    g.drawImage(f.canvas, -f.w / 2, -f.h / 2, f.w, f.h);
+    g.restore();
+  } else {
+    g.drawImage(f.canvas, f.x, f.y, f.w, f.h);
+  }
+}
+
+// Габарит того, что реально нарисовано, в координатах холста. Это не bbox
+// (f.x/f.y/f.w/f.h): у повёрнутого прямоугольника углы вылезают за него,
+// а quad, наоборот, бывает уже. Нужен при копировании, чтобы не срезать края.
+function floatingBounds(f) {
+  let pts;
+  if (f.quad) {
+    pts = f.quad;
+  } else {
+    pts = [
+      { x: f.x, y: f.y }, { x: f.x + f.w, y: f.y },
+      { x: f.x + f.w, y: f.y + f.h }, { x: f.x, y: f.y + f.h }
+    ];
+    if (f.rotation) {
+      const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+      const c = Math.cos(f.rotation), s = Math.sin(f.rotation);
+      pts = pts.map(p => ({
+        x: cx + c * (p.x - cx) - s * (p.y - cy),
+        y: cy + s * (p.x - cx) + c * (p.y - cy)
+      }));
+    }
+  }
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };
+}
+
 function renderFloating() {
   if (!state.floating) {
     floatingFrame.classList.remove('active', 'quad-mode');
@@ -2630,19 +2696,8 @@ function renderFloating() {
     hideQuadControls();
     return;
   }
-  const f = state.floating;
   previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-  if (f.quad) {
-    drawClippedQuad(previewCtx, f.canvas, f.quad, f.x, f.y, f.w, f.h, f.rotation || 0);
-  } else if (f.rotation) {
-    previewCtx.save();
-    previewCtx.translate(f.x + f.w / 2, f.y + f.h / 2);
-    previewCtx.rotate(f.rotation);
-    previewCtx.drawImage(f.canvas, -f.w / 2, -f.h / 2, f.w, f.h);
-    previewCtx.restore();
-  } else {
-    previewCtx.drawImage(f.canvas, f.x, f.y, f.w, f.h);
-  }
+  drawFloatingOnto(previewCtx);
   updateFloatingFrame();
 }
 
@@ -2732,15 +2787,7 @@ function commitFloating() {
   if (f.quad) ensureOriginalQuadErased();
   ctx.save();
   ctx.globalAlpha = 1;
-  if (f.quad) {
-    drawClippedQuad(ctx, f.canvas, f.quad, f.x, f.y, f.w, f.h, f.rotation || 0);
-  } else if (f.rotation) {
-    ctx.translate(f.x + f.w / 2, f.y + f.h / 2);
-    ctx.rotate(f.rotation);
-    ctx.drawImage(f.canvas, -f.w / 2, -f.h / 2, f.w, f.h);
-  } else {
-    ctx.drawImage(f.canvas, f.x, f.y, f.w, f.h);
-  }
+  drawFloatingOnto(ctx);
   ctx.restore();
   state.floating = null;
   previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
@@ -2760,6 +2807,24 @@ function cancelFloating() {
   floatingFrame.classList.remove('active', 'quad-mode');
   floatingFrame.style.transform = '';
   hideQuadControls();
+}
+
+// Убрать floating, НЕ возвращая пиксели на место: то, что было под ним,
+// остаётся стёртым. Этим отличается от cancelFloating, который делает ровно
+// обратное - откатывает подъём. Возвращает true, если холст при этом
+// изменился, то есть нужна запись в историю (у только что вставленной
+// картинки под ней ничего не стиралось, и писать нечего).
+function deleteFloating() {
+  const f = state.floating;
+  if (!f) return false;
+  const hadQuad = !!f.quad;
+  // Форма quad стирается лениво, при первом перемещении. Если его не было -
+  // стираем сейчас, иначе «вырезать» оставило бы полигон на холсте.
+  if (hadQuad) ensureOriginalQuadErased();
+  const changed = !!f.preCanvas || hadQuad;
+  f.preCanvas = null; // подавляем restore внутри cancelFloating
+  cancelFloating();
+  return changed;
 }
 
 // Проверка, попал ли клик в floating (с учётом rotation и quad).
@@ -3174,13 +3239,19 @@ document.addEventListener('mousedown', (e) => {
 
 // Копирование выделенной области (с прозрачностью)
 function copySelection() {
-  // Если активен floating - копируем его
+  // Если активен floating - копируем его. Именно в том виде, в каком он на
+  // экране: через общий рендер и по фактическому габариту, иначе у повёрнутого
+  // объекта в буфер уходил исходный неповёрнутый прямоугольник.
   if (state.floating) {
-    const f = state.floating;
+    const b = floatingBounds(state.floating);
     const c = document.createElement('canvas');
-    c.width = Math.round(f.w);
-    c.height = Math.round(f.h);
-    c.getContext('2d').drawImage(f.canvas, 0, 0, c.width, c.height);
+    c.width = Math.max(1, Math.round(b.w));
+    c.height = Math.max(1, Math.round(b.h));
+    const g = c.getContext('2d');
+    // drawFloatingOnto рисует в координатах холста, поэтому сдвигаем начало
+    // координат в левый верхний угол габарита.
+    g.translate(-b.x, -b.y);
+    drawFloatingOnto(g);
     state.clipboard = c;
     return true;
   }
@@ -3199,7 +3270,9 @@ function copySelection() {
 function cutSelection() {
   if (state.floating) {
     copySelection();
-    cancelFloating();
+    // Именно deleteFloating: cancelFloating вернул бы пиксели на место, и
+    // «вырезание» не вырезало бы ничего - объект просто прыгал обратно.
+    if (deleteFloating()) saveHistory('Вырезание');
     return;
   }
   if (!copySelection()) return;
@@ -3262,8 +3335,25 @@ document.addEventListener('paste', (e) => {
 
 function newCanvas() {
   if (!confirm('Создать новый холст? Несохранённые изменения будут потеряны.')) return;
-  fillWhite();
+  // Плавающий объект живёт на previewCanvas поверх холста - без сброса он
+  // остался бы висеть над новым чистым листом. preCanvas обнуляем: возвращать
+  // дыру некуда, холст всё равно перезаливается.
+  if (state.floating) {
+    state.floating.preCanvas = null;
+    cancelFloating();
+  }
+  if (textEditor.style.display === 'block') {
+    textEditor.style.display = 'none';
+    textEditor.innerHTML = '';
+    textToolbar.classList.remove('active');
+  }
   hideSelection();
+  fillWhite();
+  // Новый холст - это уже не тот файл. Забываем путь и здесь, и в main-процессе,
+  // иначе Ctrl+S молча перезапишет ранее открытую картинку чистым листом.
+  state.currentFileName = null;
+  document.title = 'Paint Pro';
+  if (window.electronAPI && window.electronAPI.clearSavePath) window.electronAPI.clearSavePath();
   saveHistory('Новый холст');
 }
 
@@ -3307,18 +3397,12 @@ async function saveCanvas(saveAs = false) {
 
 function clearCanvas() {
   if (!confirm('Очистить холст?')) return;
-  // Сначала сбрасываем все "слои" поверх canvas — иначе очистка визуально не сработает:
-  //  - floating живёт на previewCanvas (drawImage поверх), не очистится через fillWhite
-  //  - selectionData/originalBeforeMove восстановит старые пиксели при следующем move
-  // Используем cancelFloating вместо commitFloating, чтобы НЕ применять pickup на canvas
-  // перед заливкой белым — иначе после clear на canvas был бы виден последний pickup.
-  if (state.floating) {
-    // Подавляем preCanvas restore — мы намеренно очищаем всё, не возвращаем дыру.
-    state.floating.preCanvas = null;
-    cancelFloating();
-  }
+  // Сначала сбрасываем floating — иначе очистка визуально не сработает: он живёт
+  // на previewCanvas поверх холста и через fillWhite не убирается. Именно
+  // deleteFloating, а не commitFloating: применять pickup перед заливкой белым
+  // бессмысленно, а cancelFloating вернул бы стёртое обратно.
+  deleteFloating();
   hideSelection();
-  state.originalBeforeMove = null;
   fillWhite();
   saveHistory('Очистка холста');
 }
@@ -3332,10 +3416,7 @@ function resizeCanvas() {
   old.width = canvas.width;
   old.height = canvas.height;
   old.getContext('2d').drawImage(canvas, 0, 0);
-  canvas.width = w;
-  canvas.height = h;
-  previewCanvas.width = w;
-  previewCanvas.height = h;
+  setCanvasSize(w, h);
   fillWhite();
   ctx.drawImage(old, 0, 0);
   updateCanvasInfo();
@@ -3351,10 +3432,7 @@ function rotateCanvas() {
   tctx.translate(tmp.width / 2, tmp.height / 2);
   tctx.rotate(Math.PI / 2);
   tctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-  canvas.width = tmp.width;
-  canvas.height = tmp.height;
-  previewCanvas.width = tmp.width;
-  previewCanvas.height = tmp.height;
+  setCanvasSize(tmp.width, tmp.height);
   ctx.drawImage(tmp, 0, 0);
   updateCanvasInfo();
   saveHistory('Поворот 90°');
@@ -3391,6 +3469,18 @@ function flipV() {
   saveHistory('Отражение ↕');
 }
 
+// «Выделить всё». Одна функция на три вызова: пункт меню, Ctrl+A и действие из
+// main-процесса — раньше это был трижды скопированный кусок, и правки в него
+// приходилось вносить в три места.
+function selectAll() {
+  document.querySelector('[data-tool="select"]').click();
+  commitSelection();
+  state.selection = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+  state.selectionData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  updateSelectionOverlay();
+  document.getElementById('sel-size').textContent = `${canvas.width} × ${canvas.height}`;
+}
+
 function updateCanvasInfo() {
   document.getElementById('info-width').textContent = canvas.width + ' px';
   document.getElementById('info-height').textContent = canvas.height + ' px';
@@ -3416,17 +3506,7 @@ document.addEventListener('keydown', (e) => {
     else if (e.key === 'x') {
       if (state.selection || state.floating) { e.preventDefault(); cutSelection(); }
     }
-    else if (e.key === 'a') {
-      // Ctrl+A - выделить всё
-      e.preventDefault();
-      document.querySelector('[data-tool="select"]').click();
-      commitSelection();
-      state.selection = {x: 0, y: 0, w: canvas.width, h: canvas.height};
-      state.selectionData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      state.originalBeforeMove = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      updateSelectionOverlay();
-      document.getElementById('sel-size').textContent = `${canvas.width} × ${canvas.height}`;
-    }
+    else if (e.key === 'a') { e.preventDefault(); selectAll(); }
     else if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
     else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
     else if (e.key === '0') { e.preventDefault(); zoomReset(); }
@@ -3462,8 +3542,10 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Delete') {
     if (state.floating) {
+      // Удаление должно оставить дыру, а не вернуть объект на место:
+      // cancelFloating откатывал подъём, и Delete визуально не делал ничего.
       e.preventDefault();
-      cancelFloating();
+      if (deleteFloating()) saveHistory('Удаление');
       return;
     }
     if (state.selection) {
@@ -3603,10 +3685,7 @@ function finishCanvasResize() {
     old.height = oldH;
     old.getContext('2d').drawImage(canvas, 0, 0);
 
-    canvas.width = newW;
-    canvas.height = newH;
-    previewCanvas.width = newW;
-    previewCanvas.height = newH;
+    setCanvasSize(newW, newH);
 
     // Заливаем белым (новое пространство)
     ctx.fillStyle = 'white';
@@ -3707,7 +3786,9 @@ state.zoom = 1;
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8];
 
 function applyZoom() {
-  const z = state.zoom;
+  // setCanvasSize зовёт applyZoom и может сработать раньше, чем ниже по файлу
+  // выставится state.zoom — без запасной единицы размеры ушли бы в NaN.
+  const z = state.zoom || 1;
   // Используем transform: scale на canvas и preview-canvas, но wrapper "рос бы" размером
   // Проще - меняем CSS ширину/высоту canvas элементов
   canvas.style.width = (canvas.width * z) + 'px';
@@ -3758,10 +3839,7 @@ if (window.electronAPI) {
     img.onload = () => {
       // Если картинка больше холста - расширяем
       if (img.width > canvas.width || img.height > canvas.height) {
-        canvas.width = Math.max(canvas.width, img.width);
-        canvas.height = Math.max(canvas.height, img.height);
-        previewCanvas.width = canvas.width;
-        previewCanvas.height = canvas.height;
+        setCanvasSize(Math.max(canvas.width, img.width), Math.max(canvas.height, img.height));
         fillWhite();
         updateCanvasInfo();
       }
@@ -3798,39 +3876,47 @@ if (window.electronAPI) {
       case 'paste':
         pasteFromClipboard();
         break;
-      case 'select-all':
-        document.querySelector('[data-tool="select"]').click();
-        commitSelection();
-        state.selection = {x: 0, y: 0, w: canvas.width, h: canvas.height};
-        state.selectionData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        state.originalBeforeMove = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        updateSelectionOverlay();
-        document.getElementById('sel-size').textContent = `${canvas.width} × ${canvas.height}`;
-        break;
+      case 'select-all': selectAll(); break;
       case 'zoom-in': zoomIn(); break;
       case 'zoom-out': zoomOut(); break;
       case 'zoom-reset': zoomReset(); break;
     }
   });
 
-  // Drag & Drop файлов из проводника
+  // Drag & Drop файлов из проводника.
+  // dragenter/dragleave стреляют и при переходе между дочерними элементами, а не
+  // только на границе окна. Поэтому считаем глубину вложенности: рамка гаснет,
+  // когда счётчик вернулся в ноль, а не на первом же dragleave над кнопкой.
+  let dragDepth = 0;
+  function showDropHint() {
+    document.body.style.outline = '3px dashed var(--accent)';
+    document.body.style.outlineOffset = '-6px';
+  }
+  function hideDropHint() {
+    dragDepth = 0;
+    document.body.style.outline = '';
+  }
+
+  document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragDepth++;
+    showDropHint();
+  });
+
   document.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    document.body.style.outline = '3px dashed var(--accent)';
-    document.body.style.outlineOffset = '-6px';
+    showDropHint();
   });
 
-  document.addEventListener('dragleave', (e) => {
-    if (e.target === document.body || !e.relatedTarget) {
-      document.body.style.outline = '';
-    }
+  document.addEventListener('dragleave', () => {
+    if (--dragDepth <= 0) hideDropHint();
   });
 
   document.addEventListener('drop', async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    document.body.style.outline = '';
+    hideDropHint();
 
     const files = Array.from(e.dataTransfer.files || []);
     for (const file of files) {

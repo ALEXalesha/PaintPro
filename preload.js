@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeImage: (filePath, dataUrl) =>
     ipcRenderer.invoke('write-image', { filePath, dataUrl }),
 
+  // Забыть текущий файл — следующий Ctrl+S спросит путь заново
+  clearSavePath: () => ipcRenderer.invoke('clear-save-path'),
+
   // Открытие через нативный диалог
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
 
