@@ -49,11 +49,14 @@ public sealed class SelectTool : ITool
         // Click inside existing rect selection → promote to floating pickup.
         if (doc.Selection is RectSelection rs && rs.Rect.Contains(position))
         {
-            PromoteToFloating(doc, rs.Rect);
-            _isMovingFloating = true;
-            _lastMovePoint = position;
-            ctx.IsDrawing = true;
-            return;
+            Services.PickupOps.PromoteRect(doc, rs.Rect);
+            if (doc.FloatingPickup is not null)
+            {
+                _isMovingFloating = true;
+                _lastMovePoint = position;
+                ctx.IsDrawing = true;
+                return;
+            }
         }
 
         // Start a new rectangle selection.
@@ -78,7 +81,7 @@ public sealed class SelectTool : ITool
         {
             var dx = position.X - _lastMovePoint.X;
             var dy = position.Y - _lastMovePoint.Y;
-            EnsureLazyErase(ctx.Document, fp);
+            Services.PickupOps.EnsureLazyErase(ctx.Document, fp);
             fp.X += dx; fp.Y += dy;
             _lastMovePoint = position;
         }
@@ -100,51 +103,4 @@ public sealed class SelectTool : ITool
         ctx.IsDrawing = false;
     }
 
-    private static void PromoteToFloating(Document doc, SKRect rect)
-    {
-        if (doc.ActiveLayer is not PixelLayer pl) return;
-        var clamped = SKRectI.Intersect(SKRectI.Round(rect), new SKRectI(0, 0, pl.Width, pl.Height));
-        if (clamped.IsEmpty) return;
-
-        using var raw = pl.ExtractRegion(clamped);
-        // Lift only the drawn marks: the white canvas background is keyed out so moving
-        // the selection doesn't drag an opaque white box over whatever sits underneath.
-        var pickupBitmap = Services.BitmapKeying.KeyOutBackground(raw, SKColors.White);
-        var pickup = new FloatingPickup(pickupBitmap,
-            new SKRect(clamped.Left, clamped.Top, clamped.Right, clamped.Bottom))
-        {
-            // Snapshot the layer as it is now (before any lazy-erase) so the eventual
-            // commit can record an undoable before/after diff of the move.
-            PreEditSnapshot = pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height)),
-        };
-        doc.FloatingPickup = pickup;
-    }
-
-    /// <summary>
-    /// Antipattern #6: erase the original area on the active layer at the FIRST move/scale/rotate.
-    /// Implementation: track via FloatingPickup.OriginalAreaErased.
-    /// </summary>
-    private static void EnsureLazyErase(Document doc, FloatingPickup fp)
-    {
-        if (fp.OriginalAreaErased) return;
-        if (doc.ActiveLayer is not PixelLayer pl) return;
-
-        using var canvas = new SKCanvas(pl.Bitmap);
-        using var paint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Fill };
-        if (fp.Quad is { } quad)
-        {
-            using var path = new SKPath();
-            path.MoveTo(quad[0]);
-            path.LineTo(quad[1]);
-            path.LineTo(quad[2]);
-            path.LineTo(quad[3]);
-            path.Close();
-            canvas.DrawPath(path, paint);
-        }
-        else
-        {
-            canvas.DrawRect(fp.OriginalBBox, paint);
-        }
-        fp.OriginalAreaErased = true;
-    }
 }

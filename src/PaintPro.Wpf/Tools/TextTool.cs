@@ -41,13 +41,13 @@ public sealed class TextTool : ITool
         if (_ctx is null || string.IsNullOrEmpty(text)) return;
         if (_ctx.Document.ActiveLayer is not PixelLayer pl) return;
 
-        using var font = new SKFont(SKTypeface.FromFamilyName(family), fontSize);
+        using var typeface = SKTypeface.FromFamilyName(family);
         using var paint = new SKPaint
         {
             IsAntialias = true,
-            Color = _ctx.PrimaryColor.WithAlpha((byte)(255 * _ctx.Opacity)),
+            Color = _ctx.PrimaryColor.WithAlpha(255),
             TextSize = fontSize,
-            Typeface = SKTypeface.FromFamilyName(family),
+            Typeface = typeface,
         };
         // Measure bbox.
         var bounds = new SKRect();
@@ -67,6 +67,9 @@ public sealed class TextTool : ITool
             c.Clear(SKColors.Transparent);
             c.DrawText(text, _lastClick.X - canvasRect.Left, _lastClick.Y - canvasRect.Top, paint);
         }
-        _ctx.History.ExecuteAndPush(new DrawStrokeCommand(bmp, canvasRect), _ctx.Document);
+        // Text is rendered opaque and composited at the tool opacity, same as strokes.
+        var alpha = (byte)(255 * Math.Clamp(_ctx.Opacity, 0f, 1f));
+        _ctx.History.ExecuteAndPush(
+            new DrawStrokeCommand(bmp, canvasRect, SKBlendMode.SrcOver, alpha), _ctx.Document);
     }
 }

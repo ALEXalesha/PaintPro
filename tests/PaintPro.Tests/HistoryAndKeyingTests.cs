@@ -155,19 +155,107 @@ public class HistoryAndKeyingTests
     }
 
     [Fact]
-    public void Committing_a_pickup_without_snapshot_records_no_history()
+    public void Committing_a_pickup_without_snapshot_is_still_undoable()
     {
+        // Paste-style pickup: nothing was lifted off the layer, so there is no pre-edit
+        // snapshot. The merge still has to land in history, otherwise Ctrl+Z after
+        // pressing Enter on a paste does nothing.
         var doc = new Document(20, 20);
-        var bmp = new SKBitmap(10, 10);
+        var bmp = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using (var c = new SKCanvas(bmp)) c.Clear(SKColors.Red);
         doc.FloatingPickup = new FloatingPickup(bmp, new SKRect(0, 0, 10, 10))
         {
-            OriginalAreaErased = true, // edited, but no snapshot => paste-style, not recorded
+            OriginalAreaErased = true,
+            CommitLabel = "Вставка",
+            SourceLayerId = doc.ActiveLayer.Id,
         };
 
         doc.CommitFloating();
 
-        Assert.Equal(0, doc.History.Cursor);
-        Assert.False(doc.History.CanUndo);
+        var layer = (PixelLayer)doc.ActiveLayer;
+        Assert.Equal(1, doc.History.Cursor);
+        Assert.True(doc.History.CanUndo);
+        Assert.Equal(SKColors.Red, layer.Bitmap.GetPixel(5, 5));
+
+        doc.History.Undo(doc);
+        Assert.Equal(SKColors.White, layer.Bitmap.GetPixel(5, 5));
+    }
+
+    [Fact]
+    public void Cancelling_a_pickup_restores_the_lifted_pixels()
+    {
+        // Escape must leave no trace: the lazily-erased source area comes back.
+        var doc = new Document(20, 20);
+        var layer = (PixelLayer)doc.ActiveLayer;
+        using (var c = new SKCanvas(layer.Bitmap))
+        {
+            c.Clear(SKColors.White);
+            c.DrawRect(new SKRect(2, 2, 8, 8), new SKPaint { Color = SKColors.Blue });
+        }
+
+        var snapshot = layer.ExtractRegion(new SKRectI(0, 0, 20, 20));
+        var lifted = layer.ExtractRegion(new SKRectI(2, 2, 8, 8));
+        doc.FloatingPickup = new FloatingPickup(lifted, new SKRect(2, 2, 8, 8))
+        {
+            SourceLayerId = layer.Id,
+            PreEditSnapshot = snapshot,
+        };
+        PickupOps.EnsureLazyErase(doc, doc.FloatingPickup!);
+        Assert.Equal(SKColors.White, layer.Bitmap.GetPixel(5, 5)); // hole is there
+
+        doc.FloatingPickup!.X += 6;
+        doc.CancelFloating();
+
+        Assert.Null(doc.FloatingPickup);
+        Assert.Equal(SKColors.Blue, layer.Bitmap.GetPixel(5, 5));  // hole filled back in
+        Assert.Equal(0, doc.History.Cursor);                       // and nothing recorded
+    }
+
+    [Fact]
+    public void Commands_write_to_their_own_layer_not_the_active_one()
+    {
+        var doc = new Document(10, 10);
+        var background = (PixelLayer)doc.Layers[0];
+        var upper = new PixelLayer(10, 10, SKColors.Transparent);
+        doc.Layers.Add(upper);
+
+        // Record a fill against the background layer…
+        var fill = new FillCommand(new SKPointI(5, 5), SKColors.Red);
+        doc.History.ExecuteAndPush(fill, doc);
+        Assert.Equal(SKColors.Red, background.Bitmap.GetPixel(5, 5));
+
+        // …then switch layers and undo. The pixels must come back on the background.
+        doc.ActiveLayerIndex = 1;
+        doc.History.Undo(doc);
+
+        Assert.Equal(SKColors.White, background.Bitmap.GetPixel(5, 5));
+        Assert.Equal((byte)0, upper.Bitmap.GetPixel(5, 5).Alpha);
+    }
+
+    [Fact]
+    public void History_ignores_pushes_made_while_it_is_applying()
+    {
+        var doc = new Document(10, 10);
+        var h = doc.History;
+        var log = new List<string>();
+        h.ExecuteAndPush(new LogCommand(log, "A"), doc);
+        h.ExecuteAndPush(new ReentrantCommand(h), doc);
+
+        Assert.Equal(2, h.Cursor);
+        h.Undo(doc);   // the command tries to Push from inside Undo
+
+        Assert.Equal(2, h.Commands.Count);
+        Assert.Equal(1, h.Cursor);
+    }
+
+    /// <summary>Stands in for CommitFloating: pushes into history from inside its own Undo.</summary>
+    private sealed class ReentrantCommand : IDocumentCommand
+    {
+        private readonly HistoryManager _history;
+        public ReentrantCommand(HistoryManager history) => _history = history;
+        public string DisplayName => "Reentrant";
+        public void Execute(Document doc) { }
+        public void Undo(Document doc) => _history.Push(new ClearCanvasCommand());
     }
 
     [Fact]

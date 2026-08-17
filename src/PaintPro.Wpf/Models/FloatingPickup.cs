@@ -49,6 +49,15 @@ public sealed class FloatingPickup : IDisposable
     /// <summary>True once lazy-erase has run; prevents erasing the source area twice.</summary>
     public bool OriginalAreaErased { get; set; }
 
+    /// <summary>Label the commit gets in the history panel ("Перемещение", "Вставка", …).</summary>
+    public string CommitLabel { get; set; } = "Перемещение";
+
+    /// <summary>
+    /// Layer the pixels were lifted from. The commit must land back on that layer even if
+    /// the user switched the active layer while the pickup was floating.
+    /// </summary>
+    public Guid SourceLayerId { get; set; }
+
     /// <summary>
     /// Full active-layer snapshot captured when the pixels were lifted, used to build an
     /// undoable diff when the move/resize/rotate is committed. Null for pickups that don't

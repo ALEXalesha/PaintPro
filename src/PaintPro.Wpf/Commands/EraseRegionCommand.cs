@@ -13,6 +13,7 @@ public sealed class EraseRegionCommand : IDocumentCommand
     private readonly SKRectI _bounds;
     private readonly SKPoint[]? _polygon; // null => fill the whole bounds rect
     private readonly SKColor _fill;
+    private Guid _layerId;
     private SKBitmap? _underlying;
 
     public EraseRegionCommand(SKRectI bounds, SKPoint[]? polygon = null, SKColor? fill = null)
@@ -26,10 +27,18 @@ public sealed class EraseRegionCommand : IDocumentCommand
 
     public void Execute(Document doc)
     {
-        if (doc.ActiveLayer is not PixelLayer pl) return;
+        if (LayerTarget.Resolve(doc, ref _layerId) is not { } pl) return;
         _underlying ??= pl.ExtractRegion(_bounds);
         using var canvas = new SKCanvas(pl.Bitmap);
-        using var paint = new SKPaint { Color = _fill, Style = SKPaintStyle.Fill, IsAntialias = true };
+        // Src (not SrcOver) so erasing to a transparent fill on an upper layer actually
+        // clears the pixels instead of compositing nothing over them.
+        using var paint = new SKPaint
+        {
+            Color = _fill,
+            Style = SKPaintStyle.Fill,
+            IsAntialias = true,
+            BlendMode = SKBlendMode.Src,
+        };
         if (_polygon is { Length: >= 3 } poly)
         {
             using var path = new SKPath();
@@ -46,7 +55,7 @@ public sealed class EraseRegionCommand : IDocumentCommand
 
     public void Undo(Document doc)
     {
-        if (doc.ActiveLayer is not PixelLayer pl || _underlying is null) return;
+        if (LayerTarget.Resolve(doc, ref _layerId) is not { } pl || _underlying is null) return;
         using var canvas = new SKCanvas(pl.Bitmap);
         canvas.Save();
         canvas.ClipRect(new SKRect(_bounds.Left, _bounds.Top, _bounds.Right, _bounds.Bottom));

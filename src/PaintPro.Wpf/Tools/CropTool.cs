@@ -53,58 +53,19 @@ public sealed class CropTool : ITool
             return;
         }
 
-        var cmd = new CropCommand(new SKRectI((int)r.Left, (int)r.Top, (int)r.Right, (int)r.Bottom));
+        var region = SKRectI.Intersect(
+            new SKRectI((int)r.Left, (int)r.Top, (int)r.Right, (int)r.Bottom),
+            new SKRectI(0, 0, ctx.Document.CanvasWidth, ctx.Document.CanvasHeight));
+        if (region.IsEmpty)
+        {
+            ctx.Document.Selection = null;
+            ctx.Document.EnterTransientMode(DocumentMode.Idle);
+            return;
+        }
+
+        var cmd = DocumentTransform.Crop(ctx.Document, region);
         ctx.History.ExecuteAndPush(cmd, ctx.Document);
         ctx.Document.Selection = null;
         ctx.Document.EnterTransientMode(DocumentMode.Idle);
-    }
-}
-
-/// <summary>Crop the active layer (and resize the canvas) to <paramref name="region"/>.</summary>
-public sealed class CropCommand : IDocumentCommand
-{
-    private readonly SKRectI _region;
-    private int _prevW, _prevH;
-    private SKBitmap? _prevBitmap;
-
-    public CropCommand(SKRectI region) => _region = region;
-    public string DisplayName => "Crop";
-
-    public void Execute(Document doc)
-    {
-        if (doc.ActiveLayer is not PixelLayer pl) return;
-        _prevW = doc.CanvasWidth;
-        _prevH = doc.CanvasHeight;
-        _prevBitmap = pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height));
-
-        var r = SKRectI.Intersect(_region, new SKRectI(0, 0, pl.Width, pl.Height));
-        var cropped = pl.ExtractRegion(r);
-
-        var newLayer = new PixelLayer(r.Width, r.Height, SKColors.White)
-        {
-            Name = pl.Name, Visible = pl.Visible, Opacity = pl.Opacity,
-        };
-        using (var c = new SKCanvas(newLayer.Bitmap)) c.DrawBitmap(cropped, 0, 0);
-
-        var idx = doc.Layers.IndexOf(pl);
-        pl.Dispose();
-        doc.Layers[idx] = newLayer;
-        doc.CanvasWidth = r.Width;
-        doc.CanvasHeight = r.Height;
-    }
-
-    public void Undo(Document doc)
-    {
-        if (doc.ActiveLayer is not PixelLayer pl || _prevBitmap is null) return;
-        var restored = new PixelLayer(_prevW, _prevH, SKColors.White)
-        {
-            Name = pl.Name, Visible = pl.Visible, Opacity = pl.Opacity,
-        };
-        using (var c = new SKCanvas(restored.Bitmap)) c.DrawBitmap(_prevBitmap, 0, 0);
-        var idx = doc.Layers.IndexOf(pl);
-        pl.Dispose();
-        doc.Layers[idx] = restored;
-        doc.CanvasWidth = _prevW;
-        doc.CanvasHeight = _prevH;
     }
 }

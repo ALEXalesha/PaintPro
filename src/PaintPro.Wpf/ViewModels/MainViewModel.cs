@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -184,6 +184,14 @@ public partial class MainViewModel : ObservableObject
     partial void OnOpacityChanged(double value)
         => ToolContext.Opacity = (float)Math.Clamp(value, 0, 1);
 
+    /// <summary>Outline-only vs filled for the shape tools (rect, ellipse, triangle, star, heart).</summary>
+    [ObservableProperty] private bool _shapeFill;
+    partial void OnShapeFillChanged(bool value)
+    {
+        foreach (var tool in _tools.Values)
+            if (tool is ShapeTool shape) shape.Fill = value;
+    }
+
     // ───────── Zoom / pan ─────────
     [ObservableProperty] private double _zoom = 1.0;
     [RelayCommand] private void ZoomIn()  => Zoom = GeometryMath.NextZoomStep((float)Zoom, true);
@@ -313,6 +321,9 @@ public partial class MainViewModel : ObservableObject
 
     public void ApplyOpenedBitmap(SKBitmap bmp)
     {
+        Document.CommitFloating();
+        Document.Selection = null;
+
         // Resize canvas to image size for simplicity (spec leaves "expand or fit" as an option).
         var resize = new ResizeCanvasCommand(bmp.Width, bmp.Height, SKColors.White);
         Document.History.ExecuteAndPush(resize, Document);
@@ -327,13 +338,38 @@ public partial class MainViewModel : ObservableObject
                 canvas.Clear(SKColors.White);
                 canvas.DrawBitmap(bmp, 0, 0);
             }
-            Document.History.ExecuteAndPush(new RegionDiffCommand("Открытие", full, before, after), Document);
+            Document.History.ExecuteAndPush(
+                new RegionDiffCommand("Открытие", pl.Id, full, before, after), Document);
         }
         InvalidateCanvas?.Invoke();
     }
 
-    [RelayCommand] private void Save() { if (Document.FloatingPickup is not null) Document.CommitFloating(); FileService.SaveOrSaveAs(Document); }
-    [RelayCommand] private void SaveAs() { if (Document.FloatingPickup is not null) Document.CommitFloating(); FileService.SaveAsDialog(Document); }
+    [RelayCommand] private void Save()
+    {
+        Document.CommitFloating();
+        Report(FileService.SaveOrSaveAs(Document));
+    }
+
+    [RelayCommand] private void SaveAs()
+    {
+        Document.CommitFloating();
+        Report(FileService.SaveAsDialog(Document));
+    }
+
+    private static void Report(SaveOutcome outcome)
+    {
+        if (outcome.Status == SaveStatus.FormatChanged)
+        {
+            MessageBox.Show(
+                $"Этот формат записывать нельзя, файл сохранён как PNG:\n{outcome.Path}",
+                "Формат заменён", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else if (outcome.Status == SaveStatus.Failed)
+        {
+            MessageBox.Show($"Не удалось сохранить файл.\n{outcome.Error}",
+                "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 
     // ───────── Clipboard ─────────
     [RelayCommand] private void CopySelection() => ClipboardService.Copy(Document);
@@ -359,17 +395,18 @@ public partial class MainViewModel : ObservableObject
     {
         if (Document.ActiveLayer is not PixelLayer pl) return null;
         var canvasRect = new SKRectI(0, 0, pl.Width, pl.Height);
+        var fill = PickupOps.EraseColor(Document, pl);
         switch (Document.Selection)
         {
             case RectSelection rs:
             {
                 var b = SKRectI.Intersect(SKRectI.Round(rs.Rect), canvasRect);
-                return b.IsEmpty ? null : new EraseRegionCommand(b);
+                return b.IsEmpty ? null : new EraseRegionCommand(b, null, fill);
             }
             case PolygonSelection ps:
             {
                 var b = SKRectI.Intersect(SKRectI.Round(ps.BoundingBox), canvasRect);
-                return b.IsEmpty ? null : new EraseRegionCommand(b, ps.Corners.ToArray());
+                return b.IsEmpty ? null : new EraseRegionCommand(b, ps.Corners.ToArray(), fill);
             }
             default:
                 return null;
@@ -397,9 +434,8 @@ public partial class MainViewModel : ObservableObject
     {
         if (Document.FloatingPickup is not null)
         {
-            // Drop floating without merge.
-            Document.FloatingPickup.Dispose();
-            Document.FloatingPickup = null;
+            // Drop the lifted pixels and keep the hole, recorded so it can be undone.
+            Document.DiscardFloating();
             InvalidateCanvas?.Invoke();
             return;
         }
@@ -413,9 +449,9 @@ public partial class MainViewModel : ObservableObject
     }
     [RelayCommand] private void CancelFloating()
     {
-        if (Document.FloatingPickup is null) return;
-        Document.FloatingPickup.Dispose();
-        Document.FloatingPickup = null;
+        if (Document.FloatingPickup is null) { Document.Selection = null; return; }
+        // Escape must leave no trace: the lifted pixels go back where they came from.
+        Document.CancelFloating();
         InvalidateCanvas?.Invoke();
     }
 
@@ -427,42 +463,15 @@ public partial class MainViewModel : ObservableObject
 
     private void RotateActiveLayer(float radians)
     {
-        if (Document.ActiveLayer is not PixelLayer pl) return;
-        bool quarter = MathF.Abs(MathF.Abs(radians) - MathF.PI / 2f) < 0.01f;
-        int newW = quarter ? pl.Height : pl.Width;
-        int newH = quarter ? pl.Width  : pl.Height;
-
-        var before = pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height));
-        var after = new SKBitmap(newW, newH, SKColorType.Bgra8888, SKAlphaType.Premul);
-        using (var c = new SKCanvas(after))
-        {
-            c.Clear(SKColors.White);
-            c.Translate(newW / 2f, newH / 2f);
-            c.RotateRadians(radians);
-            c.Translate(-pl.Width / 2f, -pl.Height / 2f);
-            c.DrawBitmap(pl.Bitmap, 0, 0);
-        }
-        var label = radians > 0 ? "Rotate CW" : "Rotate CCW";
-        var cmd = new ReplaceActiveLayerCommand(label, before, pl.Width, pl.Height, after, newW, newH);
-        Document.History.ExecuteAndPush(cmd, Document);
+        Document.CommitFloating();
+        Document.History.ExecuteAndPush(DocumentTransform.Rotate(Document, radians), Document);
         InvalidateCanvas?.Invoke();
     }
 
     private void FlipActiveLayer(bool horizontal)
     {
-        if (Document.ActiveLayer is not PixelLayer pl) return;
-        var before = pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height));
-        var after = new SKBitmap(pl.Width, pl.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        using (var c = new SKCanvas(after))
-        {
-            c.Clear(SKColors.White);
-            if (horizontal) { c.Translate(pl.Width, 0); c.Scale(-1, 1); }
-            else            { c.Translate(0, pl.Height); c.Scale(1, -1); }
-            c.DrawBitmap(pl.Bitmap, 0, 0);
-        }
-        var label = horizontal ? "Flip horizontal" : "Flip vertical";
-        var cmd = new ReplaceActiveLayerCommand(label, before, pl.Width, pl.Height, after, pl.Width, pl.Height);
-        Document.History.ExecuteAndPush(cmd, Document);
+        Document.CommitFloating();
+        Document.History.ExecuteAndPush(DocumentTransform.Flip(Document, horizontal), Document);
         InvalidateCanvas?.Invoke();
     }
 
@@ -477,6 +486,15 @@ public partial class MainViewModel : ObservableObject
         var parts = input.Split('x', 'X', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2) return;
         if (!int.TryParse(parts[0], out var nw) || !int.TryParse(parts[1], out var nh)) return;
+        if (!Commands.ResizeCanvasCommand.IsAllowed(nw, nh))
+        {
+            MessageBox.Show(
+                $"Размер должен быть от 1 до {Commands.ResizeCanvasCommand.MaxDimension} по каждой стороне " +
+                $"и не больше {Commands.ResizeCanvasCommand.MaxPixels / 1_000_000} млн пикселей всего.",
+                "Слишком большой холст", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        Document.CommitFloating();
         var cmd = new ResizeCanvasCommand(nw, nh, SKColors.White);
         Document.History.ExecuteAndPush(cmd, Document);
         InvalidateCanvas?.Invoke();

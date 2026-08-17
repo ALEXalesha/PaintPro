@@ -20,6 +20,7 @@ public partial class HistoryManager : ObservableObject
 {
     private readonly List<IDocumentCommand> _commands = new();
     private int _cursor; // commands[0.._cursor-1] are applied
+    private bool _applying; // true while Undo/Redo/JumpTo is walking the list
 
     [ObservableProperty] private bool _canUndo;
     [ObservableProperty] private bool _canRedo;
@@ -40,11 +41,22 @@ public partial class HistoryManager : ObservableObject
     public event Action? Changed;
 
     /// <summary>
+    /// True while an Undo/Redo/JumpTo is in progress. Side effects that would normally
+    /// record their own command (Document.CommitFloating) must stay silent then.
+    /// </summary>
+    public bool IsApplying => _applying;
+
+    /// <summary>
     /// Push an already-executed command. Drops the redoable tail, trims oldest entries
     /// past <see cref="MaxDepth"/>. Use <see cref="ExecuteAndPush"/> to run Execute and push together.
+    ///
+    /// Ignored while <see cref="IsApplying"/>: a command's Execute/Undo can indirectly
+    /// trigger CommitFloating, and letting that RemoveRange the list under the walking
+    /// cursor corrupts the timeline.
     /// </summary>
     public void Push(IDocumentCommand cmd)
     {
+        if (_applying) return;
         if (_cursor < _commands.Count)
             _commands.RemoveRange(_cursor, _commands.Count - _cursor);
         _commands.Add(cmd);
@@ -63,8 +75,13 @@ public partial class HistoryManager : ObservableObject
     public bool Undo(Document doc)
     {
         if (_cursor == 0) return false;
-        _cursor--;
-        _commands[_cursor].Undo(doc);
+        _applying = true;
+        try
+        {
+            _cursor--;
+            _commands[_cursor].Undo(doc);
+        }
+        finally { _applying = false; }
         Notify();
         return true;
     }
@@ -72,8 +89,13 @@ public partial class HistoryManager : ObservableObject
     public bool Redo(Document doc)
     {
         if (_cursor >= _commands.Count) return false;
-        _commands[_cursor].Execute(doc);
-        _cursor++;
+        _applying = true;
+        try
+        {
+            _commands[_cursor].Execute(doc);
+            _cursor++;
+        }
+        finally { _applying = false; }
         Notify();
         return true;
     }
@@ -87,8 +109,13 @@ public partial class HistoryManager : ObservableObject
     {
         target = Math.Clamp(target, 0, _commands.Count);
         if (target == _cursor) return;
-        while (_cursor > target) { _cursor--; _commands[_cursor].Undo(doc); }
-        while (_cursor < target) { _commands[_cursor].Execute(doc); _cursor++; }
+        _applying = true;
+        try
+        {
+            while (_cursor > target) { _cursor--; _commands[_cursor].Undo(doc); }
+            while (_cursor < target) { _commands[_cursor].Execute(doc); _cursor++; }
+        }
+        finally { _applying = false; }
         Notify();
     }
 

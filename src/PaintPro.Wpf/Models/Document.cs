@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using PaintPro.Commands;
 using PaintPro.Services;
@@ -37,6 +37,18 @@ public partial class Document : ObservableObject
     /// (clamped if the user deletes the active one).
     /// </summary>
     public Layer ActiveLayer => Layers[Math.Clamp(ActiveLayerIndex, 0, Layers.Count - 1)];
+
+    /// <summary>
+    /// Find a pixel layer by its stable id, or null if it no longer exists (the user
+    /// deleted it). Commands resolve their target through this so an undo never writes
+    /// into a layer it was not recorded against.
+    /// </summary>
+    public PixelLayer? FindPixelLayer(Guid id)
+    {
+        foreach (var l in Layers)
+            if (l.Id == id && l is PixelLayer pl) return pl;
+        return null;
+    }
 
     [ObservableProperty]
     private int _canvasWidth;
@@ -90,6 +102,14 @@ public partial class Document : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Raise a change for Selection / FloatingPickup after mutating one in place.
+    /// Dragging a quad corner edits the existing object, so the property setters never
+    /// fire and the overlay would keep drawing the old shape.
+    /// </summary>
+    public void NotifySelectionChanged() => OnPropertyChanged(nameof(Selection));
+    public void NotifyFloatingChanged() => OnPropertyChanged(nameof(FloatingPickup));
+
     [ObservableProperty]
     private DocumentMode _mode = DocumentMode.Idle;
 
@@ -100,6 +120,11 @@ public partial class Document : ObservableObject
     /// </summary>
     private void RecomputeMode()
     {
+        // Cropping / DrawingShape are driven by the tool, not by the selection state.
+        // Without this guard CropTool's own Selection updates immediately knock the
+        // document back to SelectionRect.
+        if (Mode is DocumentMode.Cropping or DocumentMode.DrawingShape) return;
+
         Mode = (_selection, _floatingPickup) switch
         {
             (_, not null)            => DocumentMode.FloatingActive,
@@ -113,7 +138,12 @@ public partial class Document : ObservableObject
     /// Set Mode directly for ad-hoc modes (DrawingShape while a shape tool is dragging,
     /// Cropping while CropTool is active). Caller is responsible for switching back.
     /// </summary>
-    public void EnterTransientMode(DocumentMode mode) => Mode = mode;
+    public void EnterTransientMode(DocumentMode mode)
+    {
+        Mode = mode;
+        // Leaving a transient mode: fall back to whatever the selection state implies.
+        if (mode is not (DocumentMode.Cropping or DocumentMode.DrawingShape)) RecomputeMode();
+    }
 
     /// <summary>
     /// Merge the floating pickup back into the active layer and dispose it.
@@ -124,50 +154,30 @@ public partial class Document : ObservableObject
     {
         if (_floatingPickup is null) return;
         var pickup = _floatingPickup;
+        var target = TargetLayer(pickup);
 
-        if (ActiveLayer is PixelLayer pl)
+        if (target is not null)
         {
-            // If this pickup was lifted from the layer (carries a snapshot) and actually
-            // moved/resized/rotated, record a before/after diff over the affected region so
-            // the move is undoable. The dirty region spans source + destination.
-            bool recordUndo = pickup.PreEditSnapshot is not null && pickup.OriginalAreaErased;
-            SKRectI dirty = default;
+            // Record a before/after diff over the affected region so the commit is undoable.
+            // "Before" comes from the pre-lift snapshot when there is one (the layer has
+            // already been lazily erased by then); for a paste there is no snapshot and the
+            // layer is still untouched, so the current pixels are the correct "before".
+            var dirty = ComputeDirtyRect(pickup, target.Width, target.Height);
             SKBitmap? before = null;
-            if (recordUndo)
+            if (!dirty.IsEmpty)
             {
-                dirty = ComputeDirtyRect(pickup, pl.Width, pl.Height);
-                if (dirty.IsEmpty) recordUndo = false;
-                else before = Crop(pickup.PreEditSnapshot!, dirty);
+                before = pickup.PreEditSnapshot is { } snap
+                    ? Crop(snap, dirty)
+                    : target.ExtractRegion(dirty);
             }
 
-            using (var canvas = new SKCanvas(pl.Bitmap))
-            {
-                canvas.Save();
-                if (pickup.Rotation != 0f)
-                {
-                    var c = pickup.Center;
-                    canvas.Translate(c.X, c.Y);
-                    canvas.RotateRadians(pickup.Rotation);
-                    canvas.Translate(-c.X, -c.Y);
-                }
-                if (pickup.Quad is { } q)
-                {
-                    using var clipPath = new SKPath();
-                    clipPath.MoveTo(q[0]);
-                    clipPath.LineTo(q[1]);
-                    clipPath.LineTo(q[2]);
-                    clipPath.LineTo(q[3]);
-                    clipPath.Close();
-                    canvas.ClipPath(clipPath, antialias: true);
-                }
-                canvas.DrawBitmap(pickup.SourceBitmap, pickup.CurrentBBox);
-                canvas.Restore();
-            }
+            DrawPickup(target.Bitmap, pickup);
 
-            if (recordUndo && before is not null)
+            if (before is not null)
             {
-                var after = pl.ExtractRegion(dirty);
-                History.Push(new Commands.RegionDiffCommand("Перемещение", dirty, before, after));
+                var after = target.ExtractRegion(dirty);
+                History.Push(new Commands.RegionDiffCommand(
+                    pickup.CommitLabel, target.Id, dirty, before, after));
             }
         }
 
@@ -175,6 +185,133 @@ public partial class Document : ObservableObject
         _floatingPickup = null;
         OnPropertyChanged(nameof(FloatingPickup));
         RecomputeMode();
+    }
+
+    /// <summary>
+    /// Drop the pickup and put the lifted pixels back where they came from.
+    /// This is Escape: nothing about the document should have changed afterwards, so the
+    /// lazily-erased source area is restored from the pre-lift snapshot and nothing is
+    /// recorded in history.
+    /// </summary>
+    public void CancelFloating()
+    {
+        if (_floatingPickup is null) return;
+        var pickup = _floatingPickup;
+
+        if (pickup.OriginalAreaErased && pickup.PreEditSnapshot is { } snap
+            && TargetLayer(pickup) is { } target)
+        {
+            var source = SourceRect(pickup, target.Width, target.Height);
+            if (!source.IsEmpty) BlitRegion(target.Bitmap, snap, source);
+        }
+
+        pickup.Dispose();
+        _floatingPickup = null;
+        OnPropertyChanged(nameof(FloatingPickup));
+        RecomputeMode();
+    }
+
+    /// <summary>
+    /// Drop the pickup and keep the hole: this is Delete on a lifted selection.
+    /// Unlike <see cref="CancelFloating"/> the erase is intentional, so it goes into
+    /// history as a normal diff.
+    /// </summary>
+    public void DiscardFloating()
+    {
+        if (_floatingPickup is null) return;
+        var pickup = _floatingPickup;
+
+        if (pickup.OriginalAreaErased && pickup.PreEditSnapshot is { } snap
+            && TargetLayer(pickup) is { } target)
+        {
+            var source = SourceRect(pickup, target.Width, target.Height);
+            if (!source.IsEmpty)
+            {
+                var before = Crop(snap, source);
+                var after = target.ExtractRegion(source);
+                History.Push(new Commands.RegionDiffCommand(
+                    "Удаление выделения", target.Id, source, before, after));
+            }
+        }
+
+        pickup.Dispose();
+        _floatingPickup = null;
+        OnPropertyChanged(nameof(FloatingPickup));
+        RecomputeMode();
+    }
+
+    /// <summary>Layer a pickup belongs to: the one it was lifted from, falling back to the active layer.</summary>
+    private PixelLayer? TargetLayer(FloatingPickup pickup)
+        => FindPixelLayer(pickup.SourceLayerId) ?? ActiveLayer as PixelLayer;
+
+    /// <summary>Composite a pickup (rotation + optional quad clip) onto a bitmap.</summary>
+    public static void DrawPickup(SKBitmap destination, FloatingPickup pickup)
+    {
+        using var canvas = new SKCanvas(destination);
+        DrawPickup(canvas, pickup);
+    }
+
+    /// <summary>
+    /// Composite a pickup onto an existing canvas, respecting whatever transform is
+    /// already on it. The live view and the flattened output must draw the pickup exactly
+    /// the same way, so both go through here.
+    /// </summary>
+    public static void DrawPickup(SKCanvas canvas, FloatingPickup pickup)
+    {
+        canvas.Save();
+        if (pickup.Rotation != 0f)
+        {
+            var c = pickup.Center;
+            canvas.Translate(c.X, c.Y);
+            canvas.RotateRadians(pickup.Rotation);
+            canvas.Translate(-c.X, -c.Y);
+        }
+        if (pickup.Quad is { } q)
+        {
+            using var clipPath = new SKPath();
+            clipPath.MoveTo(q[0]);
+            clipPath.LineTo(q[1]);
+            clipPath.LineTo(q[2]);
+            clipPath.LineTo(q[3]);
+            clipPath.Close();
+            canvas.ClipPath(clipPath, antialias: true);
+        }
+        canvas.DrawBitmap(pickup.SourceBitmap, pickup.CurrentBBox);
+        canvas.Restore();
+    }
+
+    /// <summary>Area the pickup was lifted from, clamped to the layer.</summary>
+    private static SKRectI SourceRect(FloatingPickup pickup, int layerW, int layerH)
+    {
+        var bounds = pickup.OriginalBBox;
+        if (pickup.OriginalQuad is { } oq)
+        {
+            float minX = oq[0].X, maxX = oq[0].X, minY = oq[0].Y, maxY = oq[0].Y;
+            foreach (var p in oq)
+            {
+                if (p.X < minX) minX = p.X; if (p.X > maxX) maxX = p.X;
+                if (p.Y < minY) minY = p.Y; if (p.Y > maxY) maxY = p.Y;
+            }
+            bounds = new SKRect(minX, minY, maxX, maxY);
+        }
+        // Round outward by one pixel: the erase is antialiased and bleeds past the exact edge.
+        var r = new SKRectI(
+            (int)MathF.Floor(bounds.Left) - 1, (int)MathF.Floor(bounds.Top) - 1,
+            (int)MathF.Ceiling(bounds.Right) + 1, (int)MathF.Ceiling(bounds.Bottom) + 1);
+        return SKRectI.Intersect(r, new SKRectI(0, 0, layerW, layerH));
+    }
+
+    /// <summary>Copy <paramref name="region"/> out of a full-layer snapshot back onto the layer.</summary>
+    private static void BlitRegion(SKBitmap destination, SKBitmap fullSnapshot, SKRectI region)
+    {
+        using var canvas = new SKCanvas(destination);
+        canvas.Save();
+        canvas.ClipRect(new SKRect(region.Left, region.Top, region.Right, region.Bottom));
+        canvas.Clear(SKColors.Transparent);
+        canvas.DrawBitmap(fullSnapshot,
+            source: new SKRect(region.Left, region.Top, region.Right, region.Bottom),
+            dest:   new SKRect(region.Left, region.Top, region.Right, region.Bottom));
+        canvas.Restore();
     }
 
     /// <summary>

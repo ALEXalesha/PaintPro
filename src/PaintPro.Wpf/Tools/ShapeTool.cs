@@ -21,8 +21,10 @@ public abstract class ShapeTool : ITool
     private bool _drawing;
     private float _strokeWidth;
     private SKColor _color;
+    private byte _alpha = 255;
 
     public SKBitmap? PreviewBitmap => _drawing ? _previewBitmap : null;
+    public byte PreviewAlpha => _alpha;
     public Cursor? GetCursor(SKPoint position) => Cursors.Cross;
 
     public void OnActivate(ToolContext ctx) { }
@@ -36,7 +38,10 @@ public abstract class ShapeTool : ITool
         if (ctx.Document.ActiveLayer is not PixelLayer pl) return;
         _origin = position;
         _current = position;
-        _color = ctx.PrimaryColor.WithAlpha((byte)(255 * ctx.Opacity));
+        // Render opaque, composite once with this alpha: a filled shape draws its fill and
+        // its outline over the same pixels, and at partial opacity the overlap shows.
+        _alpha = (byte)(255 * Math.Clamp(ctx.Opacity, 0f, 1f));
+        _color = ctx.PrimaryColor.WithAlpha(255);
         _strokeWidth = MathF.Max(1f, ctx.ToolSize);
 
         _previewBitmap = new SKBitmap(pl.Width, pl.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
@@ -76,7 +81,8 @@ public abstract class ShapeTool : ITool
                     source: new SKRect(rect.Left, rect.Top, rect.Right, rect.Bottom),
                     dest:   new SKRect(0, 0, rect.Width, rect.Height));
             }
-            ctx.History.ExecuteAndPush(new DrawStrokeCommand(cropped, rect), ctx.Document);
+            ctx.History.ExecuteAndPush(
+                new DrawStrokeCommand(cropped, rect, SKBlendMode.SrcOver, _alpha), ctx.Document);
         }
         Reset(ctx);
     }

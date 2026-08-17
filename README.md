@@ -7,12 +7,14 @@
 
 - `src/PaintPro.Wpf/` — основной WPF-проект
   - `Models/` — `Document`, `Layer`, `Selection`, `FloatingPickup`, `DocumentMode`, `ToolKind`
-  - `Commands/` — Command Pattern: `DrawStrokeCommand`, `FillCommand`, `ClearCanvasCommand`,
-    `ResizeCanvasCommand`, `PasteCommand`, `CropCommand`
+  - `Commands/` — Command Pattern: `DrawStrokeCommand`, `FillCommand`, `EraseRegionCommand`,
+    `RegionDiffCommand`, `ClearCanvasCommand`, `ResizeCanvasCommand`, `PasteCommand`,
+    `ReplaceAllLayersCommand` + `DocumentTransform` (поворот / отражение / кадрирование),
+    `LayerTarget` (привязка команды к конкретному слою)
   - `Tools/` — `ITool` + 18 реализаций (Pencil, Brush, Marker, Eraser, Fill, Picker, Text,
     Line, Rect, Ellipse, Triangle, Star, Arrow, Heart, Select, Quad, Crop, Hand)
   - `Services/` — `HistoryManager`, `FileService`, `ClipboardService`, `GeometryMath`,
-    `SkiaBitmapBridge`
+    `BitmapKeying`, `PickupOps` (подъём пикселей и ленивое стирание), `SkiaBitmapBridge`
   - `ViewModels/` — `MainViewModel`, `ColorEntryViewModel`
   - `Views/` — `CanvasView` (SkiaSharp + overlay), `PromptDialog`
   - `Resources/` — `Themes.xaml`, `GlassStyles.xaml`, `ToolIcons.xaml`
@@ -42,6 +44,20 @@ dotnet publish -c Release -r win-x64 --self-contained true `
 На выходе — `dist/PaintPro.exe` (~78 МБ, single file, всё внутри).
 Для portable-сборки без runtime: убрать `--self-contained true` → ~5 МБ, но нужен .NET 8 Desktop Runtime.
 
+## Установщик
+
+Inno Setup 6, скрипт — `installer/PaintPro.iss`. Упаковывает готовый
+`dist/PaintPro.exe`, поэтому publish должен пройти первым.
+
+```pwsh
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\PaintPro.iss
+```
+
+На выходе — `dist/PaintPro-Setup-<версия>.exe`. Версия задаётся в двух местах и
+должна совпадать: `MyAppVersion` в `.iss` и `<Version>` в `PaintPro.Wpf.csproj`.
+
+Оба каталога `dist/` в `.gitignore` — бинарники не коммитятся.
+
 ### Иконка
 
 ```pwsh
@@ -69,8 +85,38 @@ csproj уже ссылается на него через `<ApplicationIcon>`.
 5. **Undo через Command Pattern с diff-bitmap**, не PNG-snapshot всего canvas.
    (антипаттерн §5)
 6. **Polygon lazy-erase** при первом translate/scale/rotate, по форме
-   полигона а не bbox. (антипаттерн §6)
-7. **Один `DocumentMode` enum**, не куча bool-флагов. (антипаттерн §7)
+   полигона а не bbox. (антипаттерн §6). Единственная реализация —
+   `PickupOps.EnsureLazyErase`, ей пользуются и SelectTool, и QuadTool, и ручки на канвасе.
+7. **Один `DocumentMode` enum**, не куча bool-флагов. (антипаттерн §7).
+   `Cropping` и `DrawingShape` задаёт инструмент, `RecomputeMode` их не перетирает.
+8. **Команда привязана к слою, а не к «активному сейчас»** — `Layer.Id` переживает
+   пересоздание слоя (resize / rotate / crop), команды резолвят его через
+   `LayerTarget`. Если слой удалён, undo просто ничего не делает вместо записи
+   пикселей в чужой слой.
+9. **Операции над документом трогают все слои сразу** — `DocumentTransform` строит
+   один `ReplaceAllLayersCommand`. Иначе `CanvasWidth` рассинхронизируется
+   с размерами неактивных слоёв.
+10. **`Push` игнорируется, пока история применяется** (`HistoryManager.IsApplying`).
+    `CommitFloating` умеет писать в историю, и без этого флага вызов изнутри
+    `Undo`/`Redo`/`JumpTo` резал список под идущим по нему курсором.
+11. **Escape возвращает поднятые пиксели** (`Document.CancelFloating`), Delete
+    оставляет дыру, но пишет её в историю (`Document.DiscardFloating`).
+12. **Прозрачность применяется один раз, при слиянии** — инструменты рисуют штрих
+    непрозрачным в свой буфер, альфа уходит в `DrawStrokeCommand`. Иначе
+    перекрытия сегментов внутри одного штриха темнеют.
+13. **Стирание вверх по стеку слоёв идёт в прозрачность, а не в белое** —
+    `PickupOps.EraseColor`. Белым заливается только нижний слой.
+
+### Форматы файлов
+
+Skia умеет **кодировать только PNG / JPEG / WebP** — `SKImage.Encode` для BMP и GIF
+возвращает `null`. Поэтому диалог «Сохранить как» предлагает только эти три, а если
+целью оказался другой контейнер (например, открыли `.gif` и нажали Ctrl+S), файл
+пишется рядом как `.png` с предупреждением. Открывать при этом можно всё, что
+Skia декодирует, включая BMP и GIF.
+
+Запись идёт через `File.Create`, а не `File.OpenWrite`: второй не обрезает файл, и
+меньшая картинка поверх большей оставляла бы хвост предыдущей.
 
 ### Добавить новый tool
 
@@ -80,6 +126,21 @@ csproj уже ссылается на него через `<ApplicationIcon>`.
 4. Добавить `ToggleButton` в `MainWindow.xaml` (левая панель) + опционально `KeyBinding`.
 
 Всё. Никаких изменений в Document, History, или CanvasView не требуется.
+
+### Выделения
+
+- **Select (S)** — растянуть прямоугольник, клик внутри поднимает пиксели в
+  `FloatingPickup`, дальше 8 ручек масштаба и ручка поворота.
+- **Quad (Q)** — то же для четырёхугольника. Углы помечены точками и тянутся по
+  отдельности: это меняет форму клипа, содержимое не деформируется. Клик внутри
+  полигона поднимает пиксели, дальше пикап двигается, масштабируется и вращается
+  как прямоугольный. Перетаскивание угла намеренно **не** запускает ленивое
+  стирание — исходные пиксели остаются на месте, пока пикап не сдвинут.
+- Белый фон вычитается при подъёме (`BitmapKeying`), чтобы выделение не тащило
+  за собой непрозрачный белый прямоугольник.
+
+Флажок **«Заливать фигуры»** в правой панели переключает прямоугольник, эллипс,
+треугольник, звезду и сердце между контуром и заливкой.
 
 ## Хоткеи
 

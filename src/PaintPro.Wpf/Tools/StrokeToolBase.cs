@@ -24,8 +24,10 @@ public abstract class StrokeToolBase : ITool
     private SKRect _strokeBounds;
     private SKRectI _canvasSize;
     private bool _drawing;
+    private byte _strokeAlpha = 255;
 
     public SKBitmap? PreviewBitmap => _drawing ? _strokeBitmap : null;
+    public byte PreviewAlpha => _strokeAlpha;
 
     public virtual Cursor? GetCursor(SKPoint position) => Cursors.Cross;
 
@@ -52,16 +54,26 @@ public abstract class StrokeToolBase : ITool
         };
         ConfigurePaint(_paint, ctx);
 
+        // Peel the alpha off the paint and draw the stroke opaque. The transparency is
+        // re-applied once, when the finished stroke is merged into the layer — otherwise
+        // every overlapping segment and round cap composites again and the stroke turns
+        // into a chain of dark blobs.
+        _strokeAlpha = _paint.Color.Alpha;
+        _paint.Color = _paint.Color.WithAlpha(255);
+
         _path = new SKPath();
         _path.MoveTo(position);
         // Draw an initial dot so single-click leaves a mark.
-        _strokeCanvas.DrawCircle(position, _paint.StrokeWidth / 2f, new SKPaint
+        using (var dot = new SKPaint
         {
             IsAntialias = true,
             Color = _paint.Color,
             Style = SKPaintStyle.Fill,
             BlendMode = _paint.BlendMode,
-        });
+        })
+        {
+            _strokeCanvas.DrawCircle(position, _paint.StrokeWidth / 2f, dot);
+        }
 
         _last = position;
         var radius = _paint.StrokeWidth / 2f + 1f;
@@ -102,7 +114,7 @@ public abstract class StrokeToolBase : ITool
                     dest:   new SKRect(0, 0, bbox.Width, bbox.Height));
             }
 
-            var cmd = new DrawStrokeCommand(cropped, bbox, _paint.BlendMode);
+            var cmd = new DrawStrokeCommand(cropped, bbox, _paint.BlendMode, _strokeAlpha);
             ctx.History.ExecuteAndPush(cmd, ctx.Document);
         }
 
@@ -161,15 +173,14 @@ public sealed class EraserTool : StrokeToolBase
     }
 }
 
-/// <summary>Marker — translucent stroke; uses a separate alpha layer to avoid stacking.</summary>
+/// <summary>Marker — translucent stroke, capped at 40% so it always reads as a highlighter.</summary>
 public sealed class MarkerTool : StrokeToolBase
 {
     public override string Name => "Marker";
     protected override void ConfigurePaint(SKPaint paint, ToolContext ctx)
     {
-        // Draw fully opaque on the per-stroke bitmap; the merge step uses SrcOver
-        // so a single stroke composites at the alpha below, but overlapping in the
-        // same stroke doesn't darken.
+        // The alpha set here is peeled off by the base class and applied once at merge
+        // time, so overlapping segments within one stroke do not darken each other.
         paint.Color = ctx.PrimaryColor.WithAlpha((byte)(255 * MathF.Min(ctx.Opacity, 0.4f)));
         paint.StrokeWidth = MathF.Max(1f, ctx.ToolSize);
     }

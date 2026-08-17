@@ -1,5 +1,6 @@
 using System.Windows.Input;
 using PaintPro.Models;
+using PaintPro.Services;
 using SkiaSharp;
 
 namespace PaintPro.Tools;
@@ -9,8 +10,10 @@ namespace PaintPro.Tools;
 /// then individual corners can be dragged independently to reshape the clip mask.
 /// Content is NOT warped; the polygon acts as the clip path when committing/rendering.
 ///
-/// On the FIRST translate/scale/rotate (not corner-drag) the active layer is erased
-/// using the CURRENT polygon shape, not its bbox — see antipattern §6.
+/// Click inside the polygon lifts its pixels into a floating pickup, which then moves,
+/// scales and rotates like a rectangular one. On the FIRST translate/scale/rotate (not
+/// corner-drag) the source layer is erased using the CURRENT polygon shape, not its bbox
+/// — see antipattern §6.
 /// </summary>
 public sealed class QuadTool : ITool
 {
@@ -18,9 +21,13 @@ public sealed class QuadTool : ITool
     public SKBitmap? PreviewBitmap => null;
     public Cursor? GetCursor(SKPoint position) => Cursors.Cross;
 
+    /// <summary>Grab radius for corner handles, in document pixels.</summary>
+    private const float CornerRadius = 10f;
+
     private SKPoint _origin;
     private bool _isCreating;
     private bool _isMovingFloating;
+    private int _draggingCorner = -1;
     private SKPoint _lastMove;
 
     public void OnActivate(ToolContext ctx) { }
@@ -30,44 +37,92 @@ public sealed class QuadTool : ITool
     {
         var doc = ctx.Document;
 
-        if (doc.FloatingPickup is { } fp && fp.CurrentBBox.Contains(position))
+        if (doc.FloatingPickup is { } fp)
         {
-            _isMovingFloating = true;
-            _lastMove = position;
-            ctx.IsDrawing = true;
-            return;
+            // Corner handles win over the body: they sit on the outline, which is inside
+            // the bbox, so testing them first is what makes them reachable at all.
+            int pickupCorner = fp.Quad is { } quad
+                ? PickupOps.HitCorner(quad, position, CornerRadius)
+                : -1;
+            if (pickupCorner >= 0)
+            {
+                _draggingCorner = pickupCorner;
+                ctx.IsDrawing = true;
+                return;
+            }
+            if (fp.CurrentBBox.Contains(position))
+            {
+                _isMovingFloating = true;
+                _lastMove = position;
+                ctx.IsDrawing = true;
+                return;
+            }
+            doc.CommitFloating();
         }
 
-        if (doc.FloatingPickup is not null)
-            doc.CommitFloating();
+        if (doc.Selection is PolygonSelection ps)
+        {
+            var corner = PickupOps.HitCorner(ps.Corners, position, CornerRadius);
+            if (corner >= 0)
+            {
+                _draggingCorner = corner;
+                ctx.IsDrawing = true;
+                return;
+            }
+            if (ps.Contains(position))
+            {
+                PickupOps.PromoteQuad(doc, ps.Corners);
+                if (doc.FloatingPickup is not null)
+                {
+                    _isMovingFloating = true;
+                    _lastMove = position;
+                    ctx.IsDrawing = true;
+                    return;
+                }
+            }
+        }
 
         _origin = position;
         _isCreating = true;
-        var rect = new SKRect(position.X, position.Y, position.X, position.Y);
-        doc.Selection = new PolygonSelection(
-            new SKPoint(rect.Left, rect.Top),
-            new SKPoint(rect.Right, rect.Top),
-            new SKPoint(rect.Right, rect.Bottom),
-            new SKPoint(rect.Left, rect.Bottom));
+        doc.Selection = new PolygonSelection(position, position, position, position);
         ctx.IsDrawing = true;
     }
 
     public void OnPointerMove(SKPoint position, ToolContext ctx)
     {
+        var doc = ctx.Document;
+
         if (_isCreating)
         {
             var r = new SKRect(
                 MathF.Min(_origin.X, position.X), MathF.Min(_origin.Y, position.Y),
                 MathF.Max(_origin.X, position.X), MathF.Max(_origin.Y, position.Y));
-            ctx.Document.Selection = new PolygonSelection(
+            doc.Selection = new PolygonSelection(
                 new SKPoint(r.Left, r.Top), new SKPoint(r.Right, r.Top),
                 new SKPoint(r.Right, r.Bottom), new SKPoint(r.Left, r.Bottom));
             return;
         }
 
-        if (_isMovingFloating && ctx.Document.FloatingPickup is { } fp)
+        if (_draggingCorner >= 0)
         {
-            EnsureLazyErase(ctx.Document, fp);
+            // Reshaping the clip is not a transform, so it deliberately does NOT trigger
+            // the lazy erase — the source pixels stay put until the pickup actually moves.
+            if (doc.FloatingPickup is { Quad: { } quad })
+            {
+                quad[_draggingCorner] = position;
+                doc.NotifyFloatingChanged();
+            }
+            else if (doc.Selection is PolygonSelection ps)
+            {
+                ps.SetCorner(_draggingCorner, position);
+                doc.NotifySelectionChanged();
+            }
+            return;
+        }
+
+        if (_isMovingFloating && doc.FloatingPickup is { } fp)
+        {
+            PickupOps.EnsureLazyErase(doc, fp);
             var dx = position.X - _lastMove.X;
             var dy = position.Y - _lastMove.Y;
             fp.X += dx; fp.Y += dy;
@@ -92,33 +147,7 @@ public sealed class QuadTool : ITool
             _isCreating = false;
         }
         _isMovingFloating = false;
+        _draggingCorner = -1;
         ctx.IsDrawing = false;
-    }
-
-    /// <summary>
-    /// Antipattern §6: on first translate/scale/rotate of a quad pickup, lazily erase
-    /// the active layer along the CURRENT polygon shape (not its bbox).
-    /// </summary>
-    private static void EnsureLazyErase(Document doc, FloatingPickup fp)
-    {
-        if (fp.OriginalAreaErased) return;
-        if (doc.ActiveLayer is not PixelLayer pl) return;
-        if (fp.Quad is not { } quad) return;
-
-        // Snapshot the original quad — this is the shape we erase, even if the user
-        // later moves corners further (those further moves are part of the pickup's
-        // *current* shape, but the source region on the active layer stays this snapshot).
-        fp.OriginalQuad = (SKPoint[])quad.Clone();
-
-        using var canvas = new SKCanvas(pl.Bitmap);
-        using var paint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var path = new SKPath();
-        path.MoveTo(quad[0]);
-        path.LineTo(quad[1]);
-        path.LineTo(quad[2]);
-        path.LineTo(quad[3]);
-        path.Close();
-        canvas.DrawPath(path, paint);
-        fp.OriginalAreaErased = true;
     }
 }

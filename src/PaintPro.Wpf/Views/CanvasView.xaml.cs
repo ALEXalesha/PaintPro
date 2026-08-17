@@ -160,32 +160,20 @@ public partial class CanvasView : UserControl
         }
 
         // Active tool's preview bitmap (rubber-banded shape, brush ghost).
+        // Tools draw their stroke opaque and report the alpha separately, so the preview
+        // has to be composited at that alpha to match what will land on the layer.
         var preview = _vm.ActiveToolInstance.PreviewBitmap;
         if (preview is not null)
+        {
+            samplePaint.Color = SKColors.White.WithAlpha(_vm.ActiveToolInstance.PreviewAlpha);
             canvas.DrawBitmap(preview, 0, 0, samplePaint);
+        }
 
         samplePaint.Dispose();
 
         // Floating pickup on top.
         if (_vm.Document.FloatingPickup is { } fp)
-        {
-            canvas.Save();
-            if (fp.Rotation != 0)
-            {
-                var c = fp.Center;
-                canvas.Translate(c.X, c.Y);
-                canvas.RotateRadians(fp.Rotation);
-                canvas.Translate(-c.X, -c.Y);
-            }
-            if (fp.Quad is { } quad)
-            {
-                using var path = new SKPath();
-                path.MoveTo(quad[0]); path.LineTo(quad[1]); path.LineTo(quad[2]); path.LineTo(quad[3]); path.Close();
-                canvas.ClipPath(path, antialias: true);
-            }
-            canvas.DrawBitmap(fp.SourceBitmap, fp.CurrentBBox);
-            canvas.Restore();
-        }
+            Document.DrawPickup(canvas, fp);
     }
 
     // ───────── Overlay (selection / handles) ─────────
@@ -219,6 +207,9 @@ public partial class CanvasView : UserControl
             };
             AnimateMarchingAnts(poly);
             Overlay.Children.Add(poly);
+            // Corner dots: purely a hint that the corners are draggable. QuadTool does the
+            // hit-testing itself on the Skia element, so these must not swallow clicks.
+            foreach (var c in ps.Corners) AddQuadCornerDot(c, s);
         }
 
         // Render floating pickup bbox + handles.
@@ -255,7 +246,27 @@ public partial class CanvasView : UserControl
                 AddResizeHandle(fp, ResizeHandle.W,  s, Cursors.SizeWE);
                 AddRotateHandle(fp, s);
             }
+
+            if (fp.Quad is { } quad)
+                foreach (var c in quad) AddQuadCornerDot(c, s);
         }
+    }
+
+    /// <summary>Small marker on a quad corner. Not hit-testable: the tool owns corner drags.</summary>
+    private void AddQuadCornerDot(SKPoint corner, double zoom)
+    {
+        const double size = 9;
+        var dot = new System.Windows.Shapes.Ellipse
+        {
+            Width = size, Height = size,
+            Fill = new SolidColorBrush(Color.FromRgb(0x9D, 0x5B, 0xEF)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0xF4, 0xF4, 0xF8)),
+            StrokeThickness = 1.5,
+            IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(dot, corner.X * zoom - size / 2);
+        Canvas.SetTop(dot,  corner.Y * zoom - size / 2);
+        Overlay.Children.Add(dot);
     }
 
     /// <summary>Build a Rectangle with running marching-ants stroke animation.</summary>
@@ -366,7 +377,7 @@ public partial class CanvasView : UserControl
         _draggingHandle = el.Tag;
         if (_vm.Document.FloatingPickup is { } fp)
         {
-            EnsureLazyErase(_vm.Document, fp);
+            PickupOps.EnsureLazyErase(_vm.Document, fp);
         }
         var p = e.GetPosition(Overlay);
         _dragStartMouseDoc = new SKPoint((float)(p.X / _vm.Zoom), (float)(p.Y / _vm.Zoom));
@@ -406,28 +417,6 @@ public partial class CanvasView : UserControl
         if (_vm is not null) _vm.ToolContext.IsDrawing = false;
         Refresh();
         e.Handled = true;
-    }
-
-    /// <summary>Antipattern §6: erase the source area at first transform.</summary>
-    private static void EnsureLazyErase(Document doc, FloatingPickup fp)
-    {
-        if (fp.OriginalAreaErased) return;
-        if (doc.ActiveLayer is not PixelLayer pl) return;
-
-        using var canvas = new SKCanvas(pl.Bitmap);
-        using var paint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Fill, IsAntialias = true };
-        if (fp.Quad is { } quad)
-        {
-            fp.OriginalQuad = (SKPoint[])quad.Clone();
-            using var path = new SKPath();
-            path.MoveTo(quad[0]); path.LineTo(quad[1]); path.LineTo(quad[2]); path.LineTo(quad[3]); path.Close();
-            canvas.DrawPath(path, paint);
-        }
-        else
-        {
-            canvas.DrawRect(fp.OriginalBBox, paint);
-        }
-        fp.OriginalAreaErased = true;
     }
 
     // ───────── Pointer routing ─────────

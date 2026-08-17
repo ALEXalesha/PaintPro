@@ -8,6 +8,14 @@ namespace PaintPro.Models;
 /// </summary>
 public abstract class Layer : IDisposable
 {
+    /// <summary>
+    /// Stable identity that survives the layer being rebuilt (resize / rotate / crop
+    /// replace the object but keep the id). History commands address layers by this
+    /// instead of by "whatever is active right now" — otherwise an undo after the user
+    /// switched or deleted a layer lands its pixels on the wrong one.
+    /// </summary>
+    public Guid Id { get; init; } = Guid.NewGuid();
+
     public string Name { get; set; } = "Layer";
     public bool Visible { get; set; } = true;
     /// <summary>Opacity 0..1.</summary>

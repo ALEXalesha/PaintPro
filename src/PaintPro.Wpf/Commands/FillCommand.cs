@@ -12,6 +12,7 @@ public sealed class FillCommand : IDocumentCommand
 {
     private readonly SKPointI _seed;
     private readonly SKColor _newColor;
+    private Guid _layerId;
     private SKBitmap? _previousRegion;
     private SKRectI _affectedBounds;
 
@@ -25,7 +26,10 @@ public sealed class FillCommand : IDocumentCommand
 
     public void Execute(Document doc)
     {
-        if (doc.ActiveLayer is not PixelLayer pl) return;
+        if (LayerTarget.Resolve(doc, ref _layerId) is not { } pl) return;
+        // A redo re-runs the whole fill; drop the snapshot from the previous run first.
+        _previousRegion?.Dispose();
+        _previousRegion = null;
         var bmp = pl.Bitmap;
         int w = bmp.Width, h = bmp.Height;
         if (_seed.X < 0 || _seed.X >= w || _seed.Y < 0 || _seed.Y >= h) return;
@@ -84,8 +88,15 @@ public sealed class FillCommand : IDocumentCommand
 
     public void Undo(Document doc)
     {
-        if (doc.ActiveLayer is not PixelLayer pl || _previousRegion is null) return;
+        if (LayerTarget.Resolve(doc, ref _layerId) is not { } pl || _previousRegion is null) return;
         using var canvas = new SKCanvas(pl.Bitmap);
+        // Clear before blitting: on a transparent layer a plain SrcOver draw of the
+        // snapshot composites *under* the fill and leaves it visible.
+        canvas.Save();
+        canvas.ClipRect(new SKRect(_affectedBounds.Left, _affectedBounds.Top,
+                                   _affectedBounds.Right, _affectedBounds.Bottom));
+        canvas.Clear(SKColors.Transparent);
         canvas.DrawBitmap(_previousRegion, new SKPoint(_affectedBounds.Left, _affectedBounds.Top));
+        canvas.Restore();
     }
 }

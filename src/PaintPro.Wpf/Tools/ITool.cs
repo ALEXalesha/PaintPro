@@ -43,6 +43,13 @@ public interface ITool
     /// </summary>
     SKBitmap? PreviewBitmap { get; }
 
+    /// <summary>
+    /// Alpha the preview should be composited at. Tools that render their stroke opaque
+    /// and apply transparency at merge time report it here so the live preview matches
+    /// what lands on the layer.
+    /// </summary>
+    byte PreviewAlpha => 255;
+
     /// <summary>Cursor to show at the given position. Return null to use default.</summary>
     Cursor? GetCursor(SKPoint position);
 }

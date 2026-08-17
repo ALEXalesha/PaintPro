@@ -11,6 +11,7 @@ namespace PaintPro.Commands;
 public sealed class ClearCanvasCommand : IDocumentCommand
 {
     private readonly SKColor _fill;
+    private Guid _layerId;
     private SKBitmap? _previousBitmap;
     private FloatingPickup? _previousFloating;
     private Selection? _previousSelection;
@@ -21,9 +22,9 @@ public sealed class ClearCanvasCommand : IDocumentCommand
 
     public void Execute(Document doc)
     {
-        if (doc.ActiveLayer is PixelLayer pl)
+        if (LayerTarget.Resolve(doc, ref _layerId) is { } pl)
         {
-            _previousBitmap = pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height));
+            _previousBitmap ??= pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height));
             pl.Clear(_fill);
         }
         _previousFloating = doc.FloatingPickup;
@@ -37,9 +38,10 @@ public sealed class ClearCanvasCommand : IDocumentCommand
 
     public void Undo(Document doc)
     {
-        if (doc.ActiveLayer is PixelLayer pl && _previousBitmap is not null)
+        if (LayerTarget.Resolve(doc, ref _layerId) is { } pl && _previousBitmap is not null)
         {
             using var canvas = new SKCanvas(pl.Bitmap);
+            canvas.Clear(SKColors.Transparent);
             canvas.DrawBitmap(_previousBitmap, 0, 0);
         }
         doc.FloatingPickup = _previousFloating;

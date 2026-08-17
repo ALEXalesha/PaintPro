@@ -5,28 +5,43 @@ using SkiaSharp;
 
 namespace PaintPro.Services;
 
+public enum SaveStatus
+{
+    Ok,
+    /// <summary>The requested container can't be written, so a PNG was written instead.</summary>
+    FormatChanged,
+    Cancelled,
+    Failed,
+}
+
+/// <param name="Path">Where the file actually landed (may differ from the requested path).</param>
+public readonly record struct SaveOutcome(SaveStatus Status, string? Path = null, string? Error = null);
+
 /// <summary>
-/// File I/O: open / save common raster formats via SkiaSharp. PNG / JPG / BMP / WEBP.
-/// Wraps Win32 file dialogs.
+/// File I/O: open / save raster formats via SkiaSharp.
+///
+/// Skia can only ENCODE png / jpeg / webp — Encode() hands back null for bmp and gif.
+/// Anything else is therefore written as PNG under a .png name rather than producing an
+/// empty file or a null dereference.
 /// </summary>
 public sealed class FileService
 {
     public string? LastSavedPath { get; private set; }
     public string? LastOpenedPath { get; private set; }
 
-    private const string AllFilter =
+    private const string OpenFilter =
         "Images|*.png;*.jpg;*.jpeg;*.bmp;*.webp;*.gif|" +
         "PNG|*.png|JPEG|*.jpg;*.jpeg|Bitmap|*.bmp|WebP|*.webp|GIF|*.gif";
+
+    /// <summary>Only the containers Skia can actually encode are offered when saving.</summary>
+    private const string SaveFilter = "PNG|*.png|JPEG|*.jpg;*.jpeg|WebP|*.webp";
 
     /// <summary>Show an Open dialog and load the picked image. Returns null on cancel.</summary>
     public SKBitmap? OpenImageDialog()
     {
-        var dlg = new OpenFileDialog { Filter = AllFilter };
+        var dlg = new OpenFileDialog { Filter = OpenFilter };
         if (dlg.ShowDialog() != true) return null;
-        var bmp = SKBitmap.Decode(dlg.FileName);
-        if (bmp is null) return null;
-        LastOpenedPath = dlg.FileName;
-        return bmp;
+        return OpenImage(dlg.FileName);
     }
 
     /// <summary>Load <paramref name="path"/> into a bitmap (no dialog).</summary>
@@ -38,75 +53,78 @@ public sealed class FileService
         return bmp;
     }
 
-    /// <summary>Show a Save As dialog and write the document. Returns true on success.</summary>
-    public bool SaveAsDialog(Document doc)
+    /// <summary>Show a Save As dialog and write the document.</summary>
+    public SaveOutcome SaveAsDialog(Document doc)
     {
         var dlg = new SaveFileDialog
         {
-            Filter = "PNG|*.png|JPEG|*.jpg|Bitmap|*.bmp|WebP|*.webp",
+            Filter = SaveFilter,
             DefaultExt = ".png",
-            FileName = "Untitled.png",
+            FileName = Path.GetFileNameWithoutExtension(LastSavedPath ?? LastOpenedPath ?? "Untitled") + ".png",
         };
-        if (dlg.ShowDialog() != true) return false;
-        var ok = WriteToFile(doc, dlg.FileName);
-        if (ok) LastSavedPath = dlg.FileName;
-        return ok;
+        if (dlg.ShowDialog() != true) return new SaveOutcome(SaveStatus.Cancelled);
+        var outcome = WriteToFile(doc, dlg.FileName);
+        if (outcome.Status is SaveStatus.Ok or SaveStatus.FormatChanged) LastSavedPath = outcome.Path;
+        return outcome;
     }
 
-    /// <summary>Save to the last-opened/saved path if known; otherwise prompts via dialog.</summary>
-    public bool SaveOrSaveAs(Document doc)
+    /// <summary>
+    /// Save to the current target (last saved, else last opened) if there is one;
+    /// otherwise prompt via dialog. An opened file stays the Ctrl+S target — but if its
+    /// container can't be encoded, the write lands next to it as PNG instead of failing.
+    /// </summary>
+    public SaveOutcome SaveOrSaveAs(Document doc)
     {
-        var path = LastSavedPath ?? LastOpenedPath;
-        if (path is null) return SaveAsDialog(doc);
-        return WriteToFile(doc, path);
+        var target = LastSavedPath ?? LastOpenedPath;
+        if (target is null) return SaveAsDialog(doc);
+        var outcome = WriteToFile(doc, target);
+        if (outcome.Status is SaveStatus.Ok or SaveStatus.FormatChanged) LastSavedPath = outcome.Path;
+        return outcome;
     }
 
-    private static bool WriteToFile(Document doc, string path)
-    {
-        using var flat = Flatten(doc);
-        var ext = Path.GetExtension(path).ToLowerInvariant();
-        SKEncodedImageFormat fmt = ext switch
+    /// <summary>Pick the encoder for a path, falling back to PNG (and a .png name) when it can't be written.</summary>
+    private static (SKEncodedImageFormat Format, string Path, bool Changed) ResolveTarget(string path)
+        => Path.GetExtension(path).ToLowerInvariant() switch
         {
-            ".jpg" or ".jpeg" => SKEncodedImageFormat.Jpeg,
-            ".bmp"  => SKEncodedImageFormat.Bmp,
-            ".webp" => SKEncodedImageFormat.Webp,
-            ".gif"  => SKEncodedImageFormat.Gif,
-            _       => SKEncodedImageFormat.Png,
+            ".jpg" or ".jpeg" => (SKEncodedImageFormat.Jpeg, path, false),
+            ".webp"           => (SKEncodedImageFormat.Webp, path, false),
+            ".png"            => (SKEncodedImageFormat.Png, path, false),
+            _                 => (SKEncodedImageFormat.Png, Path.ChangeExtension(path, ".png"), true),
         };
-        using var img = SKImage.FromBitmap(flat);
-        using var data = img.Encode(fmt, fmt == SKEncodedImageFormat.Jpeg ? 92 : 100);
-        using var stream = File.OpenWrite(path);
-        data.SaveTo(stream);
-        return true;
+
+    private static SaveOutcome WriteToFile(Document doc, string requestedPath)
+    {
+        var (fmt, path, changed) = ResolveTarget(requestedPath);
+        try
+        {
+            using var flat = Flatten(doc);
+            using var img = SKImage.FromBitmap(flat);
+            using var data = img.Encode(fmt, fmt == SKEncodedImageFormat.Jpeg ? 92 : 100);
+            if (data is null)
+                return new SaveOutcome(SaveStatus.Failed, path, "Кодировщик вернул пустой результат.");
+
+            // Create, not OpenWrite: OpenWrite keeps the old file's length, so writing a
+            // smaller image over a bigger one leaves the tail of the previous file behind.
+            using var stream = File.Create(path);
+            data.SaveTo(stream);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new SaveOutcome(SaveStatus.Failed, path, ex.Message);
+        }
+        return new SaveOutcome(changed ? SaveStatus.FormatChanged : SaveStatus.Ok, path);
     }
 
     /// <summary>Flatten all visible layers (and any floating pickup) into a single bitmap.</summary>
     public static SKBitmap Flatten(Document doc)
     {
         var bmp = new SKBitmap(doc.CanvasWidth, doc.CanvasHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
-        using var canvas = new SKCanvas(bmp);
-        canvas.Clear(SKColors.White);
-        foreach (var layer in doc.Layers) layer.Render(canvas);
-
-        if (doc.FloatingPickup is { } fp)
+        using (var canvas = new SKCanvas(bmp))
         {
-            canvas.Save();
-            if (fp.Rotation != 0)
-            {
-                var c = fp.Center;
-                canvas.Translate(c.X, c.Y);
-                canvas.RotateRadians(fp.Rotation);
-                canvas.Translate(-c.X, -c.Y);
-            }
-            if (fp.Quad is { } quad)
-            {
-                using var path = new SKPath();
-                path.MoveTo(quad[0]); path.LineTo(quad[1]); path.LineTo(quad[2]); path.LineTo(quad[3]); path.Close();
-                canvas.ClipPath(path, antialias: true);
-            }
-            canvas.DrawBitmap(fp.SourceBitmap, fp.CurrentBBox);
-            canvas.Restore();
+            canvas.Clear(SKColors.White);
+            foreach (var layer in doc.Layers) layer.Render(canvas);
         }
+        if (doc.FloatingPickup is { } fp) Document.DrawPickup(bmp, fp);
         return bmp;
     }
 }

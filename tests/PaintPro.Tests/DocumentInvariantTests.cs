@@ -1,3 +1,4 @@
+using PaintPro.Commands;
 using PaintPro.Models;
 using SkiaSharp;
 using Xunit;
@@ -135,5 +136,70 @@ public class DocumentInvariantTests
         // Pixel at (0,0) of the extracted region is the red we drew.
         var px = extracted.GetPixel(0, 0);
         Assert.Equal(SKColors.Red, px);
+    }
+
+    [Fact]
+    public void Rotating_resizes_every_layer_with_the_canvas()
+    {
+        var doc = new Document(40, 20);
+        doc.Layers.Add(new PixelLayer(40, 20, SKColors.Transparent));
+
+        doc.History.ExecuteAndPush(DocumentTransform.Rotate(doc, MathF.PI / 2f), doc);
+
+        Assert.Equal(20, doc.CanvasWidth);
+        Assert.Equal(40, doc.CanvasHeight);
+        foreach (var layer in doc.Layers)
+        {
+            Assert.Equal(doc.CanvasWidth, layer.Width);
+            Assert.Equal(doc.CanvasHeight, layer.Height);
+        }
+
+        doc.History.Undo(doc);
+
+        Assert.Equal(40, doc.CanvasWidth);
+        Assert.Equal(20, doc.CanvasHeight);
+        foreach (var layer in doc.Layers)
+        {
+            Assert.Equal(40, layer.Width);
+            Assert.Equal(20, layer.Height);
+        }
+    }
+
+    [Fact]
+    public void Cropping_keeps_upper_layers_transparent()
+    {
+        var doc = new Document(40, 40);
+        var upper = new PixelLayer(40, 40, SKColors.Transparent);
+        doc.Layers.Add(upper);
+
+        doc.History.ExecuteAndPush(DocumentTransform.Crop(doc, new SKRectI(10, 10, 30, 30)), doc);
+
+        Assert.Equal(20, doc.CanvasWidth);
+        var newUpper = (PixelLayer)doc.Layers[1];
+        Assert.Equal(20, newUpper.Width);
+        // An upper layer filled with white here would hide the background entirely.
+        Assert.Equal((byte)0, newUpper.Bitmap.GetPixel(5, 5).Alpha);
+    }
+
+    [Fact]
+    public void Resize_limits_reject_absurd_sizes()
+    {
+        Assert.True(ResizeCanvasCommand.IsAllowed(1200, 800));
+        Assert.False(ResizeCanvasCommand.IsAllowed(0, 800));
+        Assert.False(ResizeCanvasCommand.IsAllowed(-5, 800));
+        Assert.False(ResizeCanvasCommand.IsAllowed(100_000, 100_000));
+    }
+
+    [Fact]
+    public void Layer_identity_survives_a_resize()
+    {
+        var doc = new Document(20, 20);
+        var id = doc.Layers[0].Id;
+
+        doc.History.ExecuteAndPush(new ResizeCanvasCommand(30, 30), doc);
+        Assert.Equal(id, doc.Layers[0].Id);
+
+        doc.History.Undo(doc);
+        Assert.Equal(id, doc.Layers[0].Id);
     }
 }
