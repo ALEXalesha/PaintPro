@@ -26,16 +26,11 @@ public partial class MainViewModel : ObservableObject
     private readonly Dictionary<ToolKind, ITool> _tools;
     private readonly PickerTool _pickerTool = new();
     private readonly TextTool _textTool = new();
-    private readonly HandTool _handTool = new();
 
-    /// <summary>Raised when the active tool changes. CanvasView re-subscribes pointer events.</summary>
-    public event Action? ToolChanged;
     /// <summary>Raised when canvas needs an immediate visual refresh (rare; usually PropertyChanged handles it).</summary>
     public event Action? InvalidateCanvas;
     /// <summary>Raised when the TextTool wants a string from the user at <see cref="SKPoint"/>.</summary>
     public event Action<SKPoint>? TextRequested;
-    /// <summary>Raised when the HandTool pans by <see cref="SKPoint"/> delta (canvas-space pixels).</summary>
-    public event Action<SKPoint>? PanRequested;
 
     /// <summary>VM-wrapped layer rows; rebuilt whenever Document.Layers changes.</summary>
     public ObservableCollection<LayerListItemViewModel> LayerItems { get; } = new();
@@ -51,7 +46,6 @@ public partial class MainViewModel : ObservableObject
         };
         _pickerTool.ColorPicked += c => PrimaryColor = c;
         _textTool.TextRequested += p => TextRequested?.Invoke(p);
-        _handTool.Panned += d => PanRequested?.Invoke(d);
 
         _tools = new Dictionary<ToolKind, ITool>
         {
@@ -72,7 +66,7 @@ public partial class MainViewModel : ObservableObject
             [ToolKind.Select]  = new SelectTool(),
             [ToolKind.Quad]    = new QuadTool(),
             [ToolKind.Crop]    = new CropTool(),
-            [ToolKind.Hand]    = _handTool,
+            [ToolKind.Hand]    = new HandTool(),
         };
         ActiveToolInstance = _tools[ActiveTool];
         ActiveToolInstance.OnActivate(ToolContext);
@@ -152,7 +146,6 @@ public partial class MainViewModel : ObservableObject
         ActiveToolInstance?.OnDeactivate(ToolContext);
         ActiveToolInstance = _tools[value];
         ActiveToolInstance.OnActivate(ToolContext);
-        ToolChanged?.Invoke();
         InvalidateCanvas?.Invoke();
     }
 

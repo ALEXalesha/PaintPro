@@ -421,6 +421,14 @@ public partial class CanvasView : UserControl
 
     // ───────── Pointer routing ─────────
     private bool _captured;
+
+    /// <summary>
+    /// Drag anchor for the Hand tool, in ScrollViewer (viewport) coordinates.
+    /// Deliberately not document coordinates: scrolling moves the canvas under the cursor,
+    /// so a document-space delta partly undoes the scroll that produced it and the view
+    /// jitters. Viewport coordinates are unaffected by the scroll offset.
+    /// </summary>
+    private System.Windows.Point? _panAnchor;
     private SKPoint ToDoc(System.Windows.Point p)
     {
         var s = _vm?.Zoom ?? 1;
@@ -435,6 +443,7 @@ public partial class CanvasView : UserControl
         if (e.ChangedButton != MouseButton.Left) return;
         Skia.CaptureMouse();
         _captured = true;
+        if (_vm.ActiveTool == ToolKind.Hand) _panAnchor = e.GetPosition(Scroll);
         var pos = ToDoc(e.GetPosition(Skia));
         _vm.ActiveToolInstance.OnPointerDown(pos, _vm.ToolContext);
         QueueRender();
@@ -461,6 +470,13 @@ public partial class CanvasView : UserControl
         }
         if (e.LeftButton == MouseButtonState.Pressed)
         {
+            if (_panAnchor is { } anchor)
+            {
+                var cursor = e.GetPosition(Scroll);
+                Scroll.ScrollToHorizontalOffset(Scroll.HorizontalOffset - (cursor.X - anchor.X));
+                Scroll.ScrollToVerticalOffset(Scroll.VerticalOffset - (cursor.Y - anchor.Y));
+                _panAnchor = cursor;
+            }
             _vm.ActiveToolInstance.OnPointerMove(pos, _vm.ToolContext);
             QueueRender();
         }
@@ -471,6 +487,7 @@ public partial class CanvasView : UserControl
     {
         if (_vm is null) return;
         if (e.ChangedButton != MouseButton.Left) return;
+        _panAnchor = null;
         if (_captured) { Skia.ReleaseMouseCapture(); _captured = false; }
         var pos = ToDoc(e.GetPosition(Skia));
         _vm.ActiveToolInstance.OnPointerUp(pos, _vm.ToolContext);
