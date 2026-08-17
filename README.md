@@ -21,6 +21,10 @@
   - `Resources/` — `Themes.xaml`, `GlassStyles.xaml`, `ToolIcons.xaml`
 - `tools/generate-icon.ps1` — генератор многоразрешённого `.ico` (16/32/48/64/128/256)
 - `dist/PaintPro.exe` — финальный self-contained single-file билд (~78 МБ)
+- `paint-pro-electron/` — исходная Electron-версия, живёт параллельно и
+  поддерживается. Её устройство и грабли: `paint-pro-electron/README.md` и
+  `paint-pro-electron/DEV_CONTEXT.md`. Историю обеих версий ведёт общий
+  `CHANGELOG.md` (WPF — 1.2.0, Electron — 1.3.0).
 
 ## Запуск из исходников
 

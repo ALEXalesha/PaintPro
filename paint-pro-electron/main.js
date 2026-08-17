@@ -132,6 +132,14 @@ ipcMain.handle('write-image', async (event, { filePath, dataUrl }) => {
   }
 });
 
+// «Файл → Новый» отвязывает документ от файла. Без этого Ctrl+S на новом холсте
+// молча перезаписывал бы ранее открытую картинку чистым листом: pick-save-path
+// без saveAs возвращает lastSavedPath не спрашивая.
+ipcMain.handle('clear-save-path', async () => {
+  global.lastSavedPath = null;
+  return { success: true };
+});
+
 // Открытие файла через системный диалог
 ipcMain.handle('open-file-dialog', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
