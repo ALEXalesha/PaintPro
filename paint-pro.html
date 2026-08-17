@@ -2266,10 +2266,18 @@ function floodFill(x, y, fillHex) {
   // Если цвет заливки такой же как целевой при непрозрачности 100% - выходим
   if (alpha >= 1 && colorsMatch(target, fillRgb)) return;
 
+  // Флаги посещённых пикселей. Без них при непрозрачности меньше 100% и цвете
+  // заливки, близком к исходному, смешанный результат остаётся в пределах
+  // допуска colorsMatch, пиксель совпадает с target снова и соседи кладут его
+  // в стек заново - стек растёт бесконечно и приложение зависает.
+  const seen = new Uint8Array(w * h);
   const stack = [[x, y]];
   while (stack.length) {
     const [cx, cy] = stack.pop();
     if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
+    const seenIdx = cy * w + cx;
+    if (seen[seenIdx]) continue;
+    seen[seenIdx] = 1;
     const p = getPixel(data, cx, cy, w);
     if (!colorsMatch(p, target)) continue;
     // Смешиваем с учётом прозрачности: new = bg * (1-a) + fill * a
@@ -2429,13 +2437,21 @@ function toggleHistoryPanel() {
   if (caret) caret.textContent = collapsed ? '▸' : '▾';
 }
 
+// Счётчик поколений восстановления. Загрузка кадра истории идёт через img.onload,
+// то есть асинхронно: несколько быстрых Ctrl+Z могут завершиться не в том порядке
+// и оставить на холсте не то состояние. Кадр применяется только если он всё ещё
+// самый свежий из запрошенных.
+let restoreGeneration = 0;
+
 function restoreHistory() {
   // Активный floating-объект относится к "до-undo" моменту, после restoreHistory
   // его не должно остаться (иначе drag/rotate ссылается на отсутствующую дырку).
   cancelFloating();
   hideSelection();
+  const generation = ++restoreGeneration;
   const img = new Image();
   img.onload = () => {
+    if (generation !== restoreGeneration) return;
     const sizeChanged = canvas.width !== img.width || canvas.height !== img.height;
     if (sizeChanged) {
       canvas.width = img.width;
@@ -3251,27 +3267,41 @@ function newCanvas() {
   saveHistory('Новый холст');
 }
 
-function saveCanvas(saveAs = false) {
-  const dataUrl = canvas.toDataURL('image/png');
+// MIME-тип и качество по расширению файла. toDataURL молча падает обратно на PNG
+// для неизвестного типа, поэтому список ровно тот, что Chromium умеет кодировать.
+function encoderFor(filePath) {
+  const ext = (filePath.match(/\.[^.\\/]*$/) || [''])[0].toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return { mime: 'image/jpeg', quality: 0.92 };
+  if (ext === '.webp') return { mime: 'image/webp', quality: 0.92 };
+  return { mime: 'image/png', quality: undefined };
+}
+
+async function saveCanvas(saveAs = false) {
   const defaultName = state.currentFileName || 'paint-pro-' + Date.now() + '.png';
 
-  // Electron: используем нативный диалог
+  // Electron: сначала спрашиваем путь, потом кодируем под его расширение.
   if (window.electronAPI) {
-    window.electronAPI.saveFile(dataUrl, defaultName, saveAs).then(result => {
-      if (result.success) {
-        state.currentFileName = result.filePath.split(/[\\/]/).pop();
-        document.title = 'Paint Pro — ' + state.currentFileName;
-      } else if (result.error) {
-        alert('Ошибка сохранения: ' + result.error);
-      }
-    });
+    const target = await window.electronAPI.pickSavePath(defaultName, saveAs);
+    if (!target || target.canceled || !target.filePath) return;
+    if (target.changed) {
+      alert('Этот формат записывать нельзя, файл сохранён как PNG:\n' + target.filePath);
+    }
+    const { mime, quality } = encoderFor(target.filePath);
+    const dataUrl = canvas.toDataURL(mime, quality);
+    const result = await window.electronAPI.writeImage(target.filePath, dataUrl);
+    if (result && result.success) {
+      state.currentFileName = result.filePath.split(/[\\/]/).pop();
+      document.title = 'Paint Pro — ' + state.currentFileName;
+    } else if (result && result.error) {
+      alert('Ошибка сохранения: ' + result.error);
+    }
     return;
   }
 
   // Браузер: классическое скачивание
   const link = document.createElement('a');
   link.download = defaultName;
-  link.href = dataUrl;
+  link.href = canvas.toDataURL('image/png');
   link.click();
 }
 

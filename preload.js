@@ -1,9 +1,13 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Сохранение через нативный диалог
-  saveFile: (dataUrl, defaultName, saveAs) =>
-    ipcRenderer.invoke('save-file', { dataUrl, defaultName, saveAs }),
+  // Сохранение в два шага: сначала путь, потом байты. Renderer кодирует картинку
+  // уже зная расширение, поэтому JPEG сохраняется как JPEG, а не как PNG под .jpg.
+  pickSavePath: (defaultName, saveAs) =>
+    ipcRenderer.invoke('pick-save-path', { defaultName, saveAs }),
+
+  writeImage: (filePath, dataUrl) =>
+    ipcRenderer.invoke('write-image', { filePath, dataUrl }),
 
   // Открытие через нативный диалог
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),

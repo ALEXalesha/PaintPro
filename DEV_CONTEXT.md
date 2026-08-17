@@ -9,8 +9,8 @@
 - **Платформа:** Electron 33.4.11 + Node 24.14 / npm 11.9.
 - **electron-builder 25.1.8** — Windows portable + NSIS installer.
 - **Один HTML-файл (`paint-pro.html` ≈ 3000+ строк)** содержит CSS + HTML + ванильный JS. Никаких бандлеров, фреймворков, transpile-шага. Это намеренно — приложение «open-and-edit».
-- **`main.js`** — создаёт `BrowserWindow`, отключает нативное меню (`Menu.setApplicationMenu(null)` + `setMenuBarVisibility(false)`), обрабатывает `ipcMain.handle('save-file' | 'open-file-dialog' | 'read-dropped-file')` и single-instance lock + ассоциации файлов.
-- **`preload.js`** — `contextBridge.exposeInMainWorld('electronAPI', { saveFile, openFileDialog, getFilePath, readDroppedFile, onMenuAction, onOpenFile })`. `contextIsolation:true`, `nodeIntegration:false`.
+- **`main.js`** — создаёт `BrowserWindow`, отключает нативное меню (`Menu.setApplicationMenu(null)` + `setMenuBarVisibility(false)`), обрабатывает `ipcMain.handle('pick-save-path' | 'write-image' | 'open-file-dialog' | 'read-dropped-file')` и single-instance lock + ассоциации файлов. Сохранение разведено на два вызова специально: renderer должен знать расширение до `toDataURL`, иначе JPEG уезжает в файл PNG-байтами.
+- **`preload.js`** — `contextBridge.exposeInMainWorld('electronAPI', { pickSavePath, writeImage, openFileDialog, getFilePath, readDroppedFile, onMenuAction, onOpenFile })`. `contextIsolation:true`, `nodeIntegration:false`.
 - **`package.json` build-конфиг:** `target: ['portable', 'nsis']`, иконки в `build/icon.ico` + `build/icon.png`. NSIS — `oneClick:false, perMachine:false, allowToChangeInstallationDirectory:true`.
 
 Команды:
@@ -496,6 +496,12 @@ calc-pro-electron/
 7. **`eval()` для парсинга выражения** — НИКОГДА. Свой парсер.
 
 8. **`text-size` input без clamp** — `min`/`max` HTML работают только для стрелок; вводимое руками значение не зажимается. Делать `Math.min(max, Math.max(min, parseInt(v)))` в input listener.
+
+9. **Flood fill без множества посещённых пикселей** — ранний выход `if (target === fill) return` спасает только при непрозрачности 100%. При alpha < 1 и цвете заливки, близком к исходному, смешанный результат остаётся в пределах допуска `colorsMatch`, пиксель снова совпадает с target, соседи кладут его в стек заново — стек растёт бесконечно и приложение зависает. Всегда держать `Uint8Array(w*h)` посещённых.
+
+10. **`restoreHistory` через `img.onload` без счётчика поколений** — несколько быстрых Ctrl+Z завершаются не в том порядке, на холсте оседает не тот кадр. Инкрементировать `restoreGeneration` на входе и проверять его в `onload`.
+
+11. **`canvas.toDataURL('image/png')` до того, как известно расширение** — «Сохранить как JPEG» пишет PNG-байты под именем `.jpg`. Сначала путь, потом кодирование под его расширение.
 
 ---
 
