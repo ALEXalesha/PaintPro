@@ -24,7 +24,7 @@
 - `paint-pro-electron/` — исходная Electron-версия, живёт параллельно и
   поддерживается. Её устройство и грабли: `paint-pro-electron/README.md` и
   `paint-pro-electron/DEV_CONTEXT.md`. Историю обеих версий ведёт общий
-  `CHANGELOG.md` (WPF — 1.2.0, Electron — 1.3.0).
+  `CHANGELOG.md` (обе версии — 1.4.0).
 
 ## Запуск из исходников
 

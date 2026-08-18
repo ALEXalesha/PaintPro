@@ -310,6 +310,44 @@ public partial class Document : ObservableObject
         canvas.Restore();
     }
 
+    /// <summary>
+    /// Габарит того, что pickup рисует СЕЙЧАС, в координатах документа: с учётом
+    /// поворота (углы вылезают за bbox) и quad-клипа (он, наоборот, бывает уже).
+    /// Нужен копированию - копировать по CurrentBBox значило бы срезать углы
+    /// повёрнутого объекта.
+    /// </summary>
+    public static SKRectI PickupBounds(FloatingPickup pickup, int canvasW, int canvasH)
+    {
+        float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+        void Add(SKPoint p)
+        {
+            if (p.X < minX) minX = p.X; if (p.X > maxX) maxX = p.X;
+            if (p.Y < minY) minY = p.Y; if (p.Y > maxY) maxY = p.Y;
+        }
+
+        if (pickup.Quad is { } q)
+        {
+            foreach (var p in q) Add(p);
+        }
+        else
+        {
+            var bb = pickup.CurrentBBox;
+            var corners = new[]
+            {
+                new SKPoint(bb.Left, bb.Top), new SKPoint(bb.Right, bb.Top),
+                new SKPoint(bb.Right, bb.Bottom), new SKPoint(bb.Left, bb.Bottom),
+            };
+            var center = pickup.Center;
+            foreach (var c in corners)
+                Add(pickup.Rotation == 0f ? c : Services.GeometryMath.Rotate(c, center, pickup.Rotation));
+        }
+
+        var r = new SKRectI(
+            (int)MathF.Floor(minX), (int)MathF.Floor(minY),
+            (int)MathF.Ceiling(maxX), (int)MathF.Ceiling(maxY));
+        return SKRectI.Intersect(r, new SKRectI(0, 0, canvasW, canvasH));
+    }
+
     /// <summary>Area the pickup was lifted from, clamped to the layer.</summary>
     private static SKRectI SourceRect(FloatingPickup pickup, int layerW, int layerH)
     {

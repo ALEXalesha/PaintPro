@@ -1864,8 +1864,12 @@ canvas.addEventListener('mousedown', onDown);
 canvas.addEventListener('mousemove', onMove);
 canvas.addEventListener('mouseup', onUp);
 canvas.addEventListener('mouseleave', onUp);
+// mousedown приходит для любой кнопки. Правый клик кистью ставил точку и писал
+// запись в историю, а вместе с ним вылезало системное контекстное меню.
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function onDown(e) {
+  if (e.button !== 0) return;
   if (state.tool === 'hand') return;
   const {x, y} = getPos(e);
   state.startX = x;
@@ -3412,6 +3416,7 @@ function resizeCanvas() {
   const h = parseInt(document.getElementById('height-input').value);
   if (!w || !h || w < 10 || h < 10) return;
   if (state.floating) commitFloating();
+  hideSelection();
   const old = document.createElement('canvas');
   old.width = canvas.width;
   old.height = canvas.height;
@@ -3425,6 +3430,9 @@ function resizeCanvas() {
 
 function rotateCanvas() {
   if (state.floating) commitFloating();
+  // Рамка выделения осталась бы висеть на старом месте, а selectionData
+  // указывал бы на пиксели, которых там уже нет.
+  hideSelection();
   const tmp = document.createElement('canvas');
   tmp.width = canvas.height;
   tmp.height = canvas.width;
@@ -3440,6 +3448,9 @@ function rotateCanvas() {
 
 function flipH() {
   if (state.floating) commitFloating();
+  // Рамка выделения осталась бы висеть на старом месте, а selectionData
+  // указывал бы на пиксели, которых там уже нет.
+  hideSelection();
   // Снимок текущего холста в офскрин, потом рисуем его зеркально обратно.
   const tmp = document.createElement('canvas');
   tmp.width = canvas.width;
@@ -3456,6 +3467,9 @@ function flipH() {
 
 function flipV() {
   if (state.floating) commitFloating();
+  // Рамка выделения осталась бы висеть на старом месте, а selectionData
+  // указывал бы на пиксели, которых там уже нет.
+  hideSelection();
   const tmp = document.createElement('canvas');
   tmp.width = canvas.width;
   tmp.height = canvas.height;
@@ -3490,7 +3504,10 @@ function updateCanvasInfo() {
 
 // Горячие клавиши
 document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT') return;
+  // Не только INPUT: выпадающий список шрифта - это SELECT, и нажатие "e" в нём
+  // переключало инструмент на ластик вместо выбора шрифта на букву "e".
+  const tn = e.target.tagName;
+  if (tn === 'INPUT' || tn === 'SELECT' || tn === 'TEXTAREA' || e.target.isContentEditable) return;
   // Не перехватываем хоткеи при редактировании текста
   if (e.target === textEditor || textEditor.contains(e.target)) {
     // Разрешаем только Escape - он обработан в keydown самого редактора
@@ -3837,11 +3854,20 @@ if (window.electronAPI) {
   function loadImageFromDataUrl(dataUrl, fileName) {
     const img = new Image();
     img.onload = () => {
-      // Если картинка больше холста - расширяем
+      // Если картинка больше холста - расширяем. Прежний код сразу заливал
+      // всё белым, и уже нарисованное пропадало молча и безвозвратно: записи
+      // в историю на это не было. Переносим старое содержимое, как это делает
+      // ветка загрузки через <input type=file>.
       if (img.width > canvas.width || img.height > canvas.height) {
+        const old = document.createElement('canvas');
+        old.width = canvas.width;
+        old.height = canvas.height;
+        old.getContext('2d').drawImage(canvas, 0, 0);
         setCanvasSize(Math.max(canvas.width, img.width), Math.max(canvas.height, img.height));
         fillWhite();
+        ctx.drawImage(old, 0, 0);
         updateCanvasInfo();
+        saveHistory('Расширение холста');
       }
       createFloatingFromImage(img, 20, 20);
       if (fileName) {

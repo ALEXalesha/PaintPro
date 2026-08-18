@@ -199,7 +199,7 @@ public partial class MainViewModel : ObservableObject
             "#7FFF00","#00FF00","#00FF7F","#00FFFF","#007FFF",
             "#0000FF","#7F00FF","#FF00FF","#FF007F","#A0522D",
             "#5B8DEF","#9D5BEF","#EF5B6E","#EFC85B","#5BEFA3",
-            "#1A1330","#0E0C1A","#2EFFFFFF".Substring(0,7), // mid-grey-ish
+            "#1A1330","#0E0C1A","#6E7080", // mid-grey-ish
             "#F4F4F8","#9EA0AE","#3CC8FF",
             "#FF64B4","#64FFB4","#B464FF","#FFB464",
             "#FFEDA0","#FED976","#FEB24C","#FD8D3C",
@@ -296,6 +296,11 @@ public partial class MainViewModel : ObservableObject
     {
         var cmd = new ClearCanvasCommand();
         Document.History.ExecuteAndPush(cmd, Document);
+        // Новый документ - это уже не тот файл. Без отвязки Ctrl+S уходил в
+        // SaveOrSaveAs с прежним LastSavedPath/LastOpenedPath и молча
+        // перезаписывал ранее открытую картинку чистым холстом.
+        FileService.Detach();
+        _savedAtCursor = Document.History.Cursor;
         InvalidateCanvas?.Invoke();
     }
 
@@ -386,6 +391,17 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand] private void CopySelection() => ClipboardService.Copy(Document);
     [RelayCommand] private void CutSelection()
     {
+        // Поднятое выделение обнуляет Selection, поэтому проверка на неё одна
+        // отправляла Ctrl+X по перетащенному объекту в никуда. Здесь нужен не
+        // EraseSelection, а DiscardFloating: он оставляет дыру и пишет её в
+        // историю, тогда как CancelFloating вернул бы пиксели на место.
+        if (Document.FloatingPickup is not null)
+        {
+            ClipboardService.Copy(Document);
+            Document.DiscardFloating();
+            InvalidateCanvas?.Invoke();
+            return;
+        }
         if (Document.Selection is null) return;
         ClipboardService.Copy(Document);
         EraseSelection();

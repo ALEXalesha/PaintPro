@@ -21,10 +21,16 @@ public sealed class ClipboardService
     private static SKBitmap ExtractSelectedRegion(Document doc)
     {
         var canvasRect = new SKRectI(0, 0, doc.CanvasWidth, doc.CanvasHeight);
+        // Плавающий объект по инварианту обнуляет Selection, поэтому ветка "нет
+        // выделения - копируем весь холст" срабатывала сразу после того, как
+        // выделение подняли для перемещения: Ctrl+C по перетащенной картинке
+        // клал в буфер обмена весь документ.
         SKRectI rect = doc.Selection switch
         {
             RectSelection rs => SKRectI.Round(rs.Rect),
             PolygonSelection poly => SKRectI.Round(poly.BoundingBox),
+            _ when doc.FloatingPickup is { } fp
+                => Document.PickupBounds(fp, doc.CanvasWidth, doc.CanvasHeight),
             _ => canvasRect,
         };
         rect = SKRectI.Intersect(rect, canvasRect);

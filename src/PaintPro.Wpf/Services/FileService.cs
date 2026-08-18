@@ -50,7 +50,18 @@ public sealed class FileService
         var bmp = SKBitmap.Decode(path);
         if (bmp is null) return null;
         LastOpenedPath = path;
+        // Только что открытый файл и есть цель следующего Ctrl+S. Без сброса
+        // SaveOrSaveAs брал LastSavedPath - то есть картинку, сохранённую до
+        // открытия, - и молча записывал в неё содержимое нового документа.
+        LastSavedPath = null;
         return bmp;
+    }
+
+    /// <summary>Отвязать документ от файла: следующий Ctrl+S спросит путь заново.</summary>
+    public void Detach()
+    {
+        LastSavedPath = null;
+        LastOpenedPath = null;
     }
 
     /// <summary>Show a Save As dialog and write the document.</summary>
