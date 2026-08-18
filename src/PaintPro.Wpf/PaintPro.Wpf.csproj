@@ -21,8 +21,9 @@
     <Product>Paint Pro</Product>
     <Company>Paint Pro</Company>
     <Copyright>Paint Pro</Copyright>
+    <!-- Один источник версии: FileVersion/AssemblyVersion выводятся из Version.
+         Прежде FileVersion был прописан отдельно и отстал на два релиза. -->
     <Version>1.4.0</Version>
-    <FileVersion>1.2.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
