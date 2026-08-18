@@ -9,14 +9,14 @@
 - **Платформа:** Electron 33.4.11 + Node 24.14 / npm 11.9.
 - **electron-builder 25.1.8** — Windows portable + NSIS installer.
 - **Один HTML-файл (`paint-pro.html` ≈ 3000+ строк)** содержит CSS + HTML + ванильный JS. Никаких бандлеров, фреймворков, transpile-шага. Это намеренно — приложение «open-and-edit».
-- **`main.js`** — создаёт `BrowserWindow`, отключает нативное меню (`Menu.setApplicationMenu(null)` + `setMenuBarVisibility(false)`), обрабатывает `ipcMain.handle('pick-save-path' | 'write-image' | 'open-file-dialog' | 'read-dropped-file')` и single-instance lock + ассоциации файлов. Сохранение разведено на два вызова специально: renderer должен знать расширение до `toDataURL`, иначе JPEG уезжает в файл PNG-байтами.
-- **`preload.js`** — `contextBridge.exposeInMainWorld('electronAPI', { pickSavePath, writeImage, openFileDialog, getFilePath, readDroppedFile, onMenuAction, onOpenFile })`. `contextIsolation:true`, `nodeIntegration:false`.
+- **`main.js`** — создаёт `BrowserWindow`, отключает нативное меню (`Menu.setApplicationMenu(null)` + `setMenuBarVisibility(false)`), обрабатывает `ipcMain.handle('pick-save-path' | 'write-image' | 'clear-save-path' | 'open-file-dialog' | 'read-dropped-file')` и single-instance lock + ассоциации файлов. Сохранение разведено на два вызова специально: renderer должен знать расширение до `toDataURL`, иначе JPEG уезжает в файл PNG-байтами. `clear-save-path` обнуляет `global.lastSavedPath`: без него «Файл → Новый» оставлял документ привязанным к прежней картинке, и Ctrl+S перезаписывал её чистым холстом.
+- **`preload.js`** — `contextBridge.exposeInMainWorld('electronAPI', { pickSavePath, writeImage, clearSavePath, openFileDialog, getFilePath, readDroppedFile, onMenuAction, onOpenFile })`. `contextIsolation:true`, `nodeIntegration:false`.
 - **`package.json` build-конфиг:** `target: ['portable', 'nsis']`, иконки в `build/icon.ico` + `build/icon.png`. NSIS — `oneClick:false, perMachine:false, allowToChangeInstallationDirectory:true`.
 
 Команды:
 ```
-npm run build           # PaintPro-1.0.0-portable.exe
-npm run build-installer # Paint Pro Setup 1.0.0.exe
+npm run build           # PaintPro-<версия>-portable.exe
+npm run build-installer # Paint Pro Setup <версия>.exe
 ```
 
 ---
