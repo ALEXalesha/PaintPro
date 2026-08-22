@@ -4,6 +4,17 @@ const fs = require('fs');
 
 let mainWindow;
 let pendingFileOpen = null; // Путь к файлу, который нужно открыть после старта
+// Окно закрывается только после того, как renderer подтвердил: сохранять нечего
+// или пользователь так решил.
+let closeConfirmed = false;
+let closeFallbackTimer = null;
+
+function cancelCloseFallback() {
+  if (closeFallbackTimer) {
+    clearTimeout(closeFallbackTimer);
+    closeFallbackTimer = null;
+  }
+}
 
 // Файл передан через аргументы командной строки (ассоциация файлов)
 function getFileFromArgs(argv) {
@@ -52,6 +63,26 @@ function createWindow() {
   });
 
   mainWindow.loadFile('paint-pro.html');
+  closeConfirmed = false;
+
+  // Закрытие окна молча теряло несохранённый рисунок. В WPF-версии вопрос есть
+  // с 1.2.0, сюда правка не доехала. Спросить может только renderer - признак
+  // изменений живёт там, - поэтому окно сначала не отпускаем.
+  mainWindow.on('close', (e) => {
+    if (closeConfirmed || mainWindow.webContents.isCrashed()) return;
+    e.preventDefault();
+    mainWindow.webContents.send('menu-action', 'request-close');
+    // Страховка на случай, если renderer не ответит вообще (ошибка в скрипте):
+    // приложение должно оставаться выключаемым. Таймер снимается первым же
+    // ответом - и диалогом, и подтверждением.
+    cancelCloseFallback();
+    closeFallbackTimer = setTimeout(() => {
+      closeConfirmed = true;
+      if (mainWindow) mainWindow.close();
+    }, 5000);
+  });
+
+  mainWindow.on('closed', () => { mainWindow = null; });
 
   // Скрываем нативное меню — у нас своё (macOS-style menu bar в renderer)
   mainWindow.setMenuBarVisibility(false);
@@ -138,6 +169,27 @@ ipcMain.handle('write-image', async (event, { filePath, dataUrl }) => {
 ipcMain.handle('clear-save-path', async () => {
   global.lastSavedPath = null;
   return { success: true };
+});
+
+// Вопрос про несохранённый рисунок. Три кнопки, а не confirm(): «не сохранять»
+// и «отмена» - разные ответы. Возвращает индекс нажатой кнопки.
+ipcMain.handle('ask-unsaved', async () => {
+  cancelCloseFallback();
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Сохранить', 'Не сохранять', 'Отмена'],
+    defaultId: 0,
+    cancelId: 2,
+    title: 'Paint Pro',
+    message: 'Рисунок изменён. Сохранить перед выходом?',
+  });
+  return response;
+});
+
+ipcMain.on('confirm-close', () => {
+  cancelCloseFallback();
+  closeConfirmed = true;
+  if (mainWindow) mainWindow.close();
 });
 
 // Открытие файла через системный диалог
