@@ -144,7 +144,13 @@ public partial class HistoryManager : ObservableObject
         // на момент подъёма, и после отката этот снимок относится к состоянию, которого
         // больше нет: коммит записал бы в историю diff со старыми пикселями и воскрешал штрих,
         // который уже отменили. В Electron-версии это закрыто в restoreHistory.
-        if (doc.FloatingPickup is not null) { doc.CancelFloating(); Notify(); return true; }
+        //
+        // Пикап вставки - исключение: его создала команда, которая уже лежит в списке.
+        // Снять его отдельно значило убрать картинку с холста, оставив запись «Вставка»
+        // текущей: история говорила, что вставка применена, а на холсте её не было, и
+        // Ctrl+Y картинку не возвращал - курсор-то не двигался. Такой пикап снимает
+        // отмена самой команды, парой строк ниже.
+        if (doc.FloatingPickup is { OwnedByCommand: false }) { doc.CancelFloating(); Notify(); return true; }
         if (_cursor == 0) return false;
         _applying = true;
         try

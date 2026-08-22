@@ -388,10 +388,9 @@ public partial class CanvasView : UserControl
     {
         if (_vm is null || sender is not FrameworkElement el) return;
         _draggingHandle = el.Tag;
-        if (_vm.Document.FloatingPickup is { } fp)
-        {
-            PickupOps.EnsureLazyErase(_vm.Document, fp);
-        }
+        // Стирание исходной области - при первом реальном движении, как у инструментов, а
+        // не по нажатию: нажатие на ручку без перетаскивания стирало пиксели и делало
+        // документ изменённым, хотя пользователь ничего не сдвинул.
         var p = e.GetPosition(Overlay);
         _dragStartMouseDoc = new SKPoint((float)(p.X / _vm.Zoom), (float)(p.Y / _vm.Zoom));
         _rotationAtDragStart = _vm.Document.FloatingPickup?.Rotation ?? 0;
@@ -408,6 +407,8 @@ public partial class CanvasView : UserControl
 
         var p = e.GetPosition(Overlay);
         var docPos = new SKPoint((float)(p.X / _vm.Zoom), (float)(p.Y / _vm.Zoom));
+
+        PickupOps.EnsureLazyErase(_vm.Document, fp);
 
         switch (_draggingHandle)
         {

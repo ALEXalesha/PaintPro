@@ -2519,7 +2519,7 @@ function saveHistory(label) {
   // нельзя, а новая запись сейчас встанет ровно на его номер. Пока метка оставалась на
   // месте, «нарисовали → Ctrl+S → Ctrl+Z → нарисовали заново» давало historyIndex, равный
   // метке, при другом содержимом файла: окно закрывалось без вопроса и уносило работу.
-  // В WPF-версии это починено в 1.9.0 (HistoryManager.Push), сюда правка не доехала.
+  // В WPF-версии то же самое делает HistoryManager.Push (1.9.0), здесь - строка ниже (1.10.0).
   if (state.savedHistoryIndex > state.historyIndex) state.savedHistoryIndex = -1;
   state.history = state.history.slice(0, state.historyIndex + 1);
   state.history.push({ url: canvas.toDataURL(), label: label || 'Изменение' });

@@ -40,14 +40,61 @@ public sealed class FloatingPickup : IDisposable
     public SKPoint[]? Quad { get; set; }
 
     /// <summary>
-    /// Snapshot of the polygon shape at the moment of the FIRST translate/scale/rotate.
+    /// Snapshot of the polygon shape at the moment the pixels were LIFTED.
     /// Used by the lazy-erase logic so the original area is erased as a polygon,
     /// not as the bbox — see REWRITE_PROMPT_CSHARP.md §"6. Pickup for polygon ...".
+    ///
+    /// Именно на момент подъёма, а не на момент первого перемещения: перетаскивание угла
+    /// меняет маску пикапа, но не то, что было взято из слоя.
     /// </summary>
     public SKPoint[]? OriginalQuad { get; set; }
 
     /// <summary>True once lazy-erase has run; prevents erasing the source area twice.</summary>
     public bool OriginalAreaErased { get; set; }
+
+    /// <summary>
+    /// Пикап создан командой, которая уже лежит в истории (вставка). Отмена такого
+    /// пикапа - дело самой команды: снять его отдельно значило бы убрать картинку с
+    /// холста, оставив запись «Вставка» текущей, и повтор её уже не возвращал.
+    /// </summary>
+    public bool OwnedByCommand { get; set; }
+
+    /// <summary>Геометрия пикапа на момент подъёма - с чем сравнивать, двигали его или нет.</summary>
+    private (float X, float Y, float W, float H, float Rotation, SKPoint[]? Quad)? _origin;
+
+    /// <summary>
+    /// Запомнить положение сразу после подъёма. Зовётся один раз, при создании пикапа.
+    /// </summary>
+    public void RememberOrigin()
+        => _origin = (X, Y, Width, Height, Rotation, Quad is { } q ? (SKPoint[])q.Clone() : null);
+
+    /// <summary>
+    /// Изменилось ли хоть что-нибудь с момента подъёма. Сравнивается геометрия, а не
+    /// выставляется флаг в каждом обработчике перетаскивания: забытый флаг - это молча
+    /// потерянная запись в истории, а лишний - запись про то, чего не было.
+    ///
+    /// Отдельного признака «пиксели новые» нет: он и есть отсутствие снимка слоя. У
+    /// вставки поднимать было нечего, и класть обратно тоже нечего - такой пикап
+    /// изменяет документ самим фактом своего существования.
+    /// Так же устроен <c>floatingMoved</c> в Electron-версии.
+    /// </summary>
+    public bool HasMoved
+    {
+        get
+        {
+            if (PreEditSnapshot is null) return true;
+            if (_origin is not { } o) return true;
+            if (X != o.X || Y != o.Y || Width != o.W || Height != o.H) return true;
+            if (Rotation != o.Rotation) return true;
+            if ((Quad is null) != (o.Quad is null)) return true;
+            if (Quad is { } cur && o.Quad is { } was)
+            {
+                for (int i = 0; i < cur.Length && i < was.Length; i++)
+                    if (cur[i] != was[i]) return true;
+            }
+            return false;
+        }
+    }
 
     /// <summary>Label the commit gets in the history panel ("Перемещение", "Вставка", …).</summary>
     public string CommitLabel { get; set; } = "Перемещение";

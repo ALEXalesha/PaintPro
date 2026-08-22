@@ -68,7 +68,8 @@ public abstract class ShapeTool : ITool
         Render();
 
         var bbox = ComputeBBox();
-        bbox.Inflate(_strokeWidth + 2f, _strokeWidth + 2f);
+        var margin = _strokeWidth + 2f + Overshoot(_origin, _current, _strokeWidth);
+        bbox.Inflate(margin, margin);
         var rect = SKRectI.Round(bbox);
         if (ctx.Document.ActiveLayer is PixelLayer pl)
             rect = SKRectI.Intersect(rect, new SKRectI(0, 0, pl.Width, pl.Height));
@@ -117,6 +118,15 @@ public abstract class ShapeTool : ITool
 
     /// <summary>Subclasses render the shape into <paramref name="c"/> between p1 and p2.</summary>
     protected abstract void DrawShape(SKCanvas c, SKPoint p1, SKPoint p2, SKPaint stroke, SKPaint? fill);
+
+    /// <summary>
+    /// Насколько фигура вылезает за прямоугольник, натянутый между началом и концом
+    /// жеста. Прямоугольник, овал и треугольник ложатся в него ровно, а наконечник
+    /// стрелки стоит поперёк линии: у горизонтальной стрелки прямоугольник вырождается в
+    /// отрезок, и крылья наконечника оказывались за границей вырезаемой области. На слой
+    /// ложилась стрелка с обрубленным наконечником, хотя превью показывало целую.
+    /// </summary>
+    protected virtual float Overshoot(SKPoint p1, SKPoint p2, float strokeWidth) => 0f;
 
     private void Reset(ToolContext ctx)
     {
@@ -204,6 +214,15 @@ public sealed class StarShapeTool : ShapeTool
 public sealed class ArrowShapeTool : ShapeTool
 {
     public override string Name => "Arrow";
+
+    /// <summary>Длина наконечника вдоль линии.</summary>
+    private static float HeadLength(float strokeWidth) => MathF.Max(8f, strokeWidth * 4f);
+
+    // Крылья наконечника отходят от оси линии на wing в каждую сторону, и у стрелки,
+    // проведённой строго по горизонтали или вертикали, это чистый выход за габарит жеста.
+    protected override float Overshoot(SKPoint p1, SKPoint p2, float strokeWidth)
+        => HeadLength(strokeWidth) * 0.6f;
+
     protected override void DrawShape(SKCanvas c, SKPoint p1, SKPoint p2, SKPaint stroke, SKPaint? fill)
     {
         c.DrawLine(p1, p2, stroke);
@@ -211,7 +230,7 @@ public sealed class ArrowShapeTool : ShapeTool
         var len = MathF.Sqrt(dx*dx + dy*dy);
         if (len < 1) return;
         var ux = dx / len; var uy = dy / len;
-        var head = MathF.Max(8f, stroke.StrokeWidth * 4f);
+        var head = HeadLength(stroke.StrokeWidth);
         var ax = p2.X - ux*head;  var ay = p2.Y - uy*head;
         var wing = head * 0.6f;
         var left  = new SKPoint(ax + -uy*wing, ay + ux*wing);
@@ -230,6 +249,15 @@ public sealed class ArrowShapeTool : ShapeTool
 public sealed class HeartShapeTool : ShapeTool
 {
     public override string Name => "Heart";
+
+    // Опорные точки кривых стоят за прямоугольником жеста: по бокам на 0.1 ширины,
+    // сверху на 0.05 высоты. Сама кривая дальше своих опорных точек не уходит.
+    protected override float Overshoot(SKPoint p1, SKPoint p2, float strokeWidth)
+    {
+        float w = MathF.Abs(p2.X - p1.X), h = MathF.Abs(p2.Y - p1.Y);
+        return MathF.Max(w * 0.1f, h * 0.05f);
+    }
+
     protected override void DrawShape(SKCanvas c, SKPoint p1, SKPoint p2, SKPaint stroke, SKPaint? fill)
     {
         var r = new SKRect(MathF.Min(p1.X, p2.X), MathF.Min(p1.Y, p2.Y),

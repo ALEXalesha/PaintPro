@@ -71,6 +71,8 @@ public sealed class QuadTool : ITool
             }
             if (ps.Contains(position))
             {
+                // Со скрытого слоя поднимать нечего - см. SelectTool.
+                if (ctx.DrawTarget() is null) return;
                 PickupOps.PromoteQuad(doc, ps.Corners);
                 if (doc.FloatingPickup is not null)
                 {

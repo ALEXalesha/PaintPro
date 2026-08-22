@@ -55,6 +55,9 @@ public sealed class PasteCommand : IDocumentCommand, IDisposable
             OriginalAreaErased = true,
             CommitLabel = "Вставка",
             SourceLayerId = doc.ActiveLayer.Id,
+            // Пикап принадлежит этой записи истории: снимает его отмена команды, а не
+            // отдельный Ctrl+Z по самому пикапу.
+            OwnedByCommand = true,
         };
         doc.FloatingPickup = _createdPickup;
     }

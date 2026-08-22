@@ -49,6 +49,10 @@ public sealed class SelectTool : ITool
         // Click inside existing rect selection → promote to floating pickup.
         if (doc.Selection is RectSelection rs && rs.Rect.Contains(position))
         {
+            // Со скрытого слоя поднимать нечего: пикап рисуется поверх документа всегда,
+            // и пиксели невидимого слоя всплывали на экране, а после прижатия исчезали
+            // обратно. Причину отказа объяснит сам DrawTarget.
+            if (ctx.DrawTarget() is null) return;
             Services.PickupOps.PromoteRect(doc, rs.Rect);
             if (doc.FloatingPickup is not null)
             {

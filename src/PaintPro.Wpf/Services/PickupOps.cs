@@ -41,16 +41,25 @@ public static class PickupOps
         // Lift only the drawn marks: the white canvas background is keyed out so moving
         // the selection doesn't drag an opaque white box over whatever sits underneath.
         var pickupBitmap = BitmapKeying.KeyOutBackground(raw, SKColors.White);
-        doc.FloatingPickup = new FloatingPickup(pickupBitmap,
+        var pickup = new FloatingPickup(pickupBitmap,
             new SKRect(clamped.Left, clamped.Top, clamped.Right, clamped.Bottom))
         {
             Quad = quad,
+            // Форма на момент подъёма - именно её выкусывают из слоя. Пока она
+            // снималась при первом перемещении, перетаскивание угла ДО перемещения
+            // подменяло её: из слоя вырезалась новая форма, то есть область, которую
+            // пользователь не выделял, а часть выделенной оставалась лежать на месте.
+            OriginalQuad = quad is null ? null : (SKPoint[])quad.Clone(),
             SourceLayerId = pl.Id,
             // Snapshot the layer as it is now (before any lazy-erase) so the eventual
             // commit can record an undoable before/after diff, and Escape can put the
             // lifted pixels back.
             PreEditSnapshot = pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height)),
         };
+        // С чем сравнивать при коммите: подъём сам по себе холста не меняет, и отличить
+        // «подняли и положили обратно» от настоящего перемещения можно только так.
+        pickup.RememberOrigin();
+        doc.FloatingPickup = pickup;
     }
 
     /// <summary>
@@ -73,11 +82,11 @@ public static class PickupOps
             BlendMode = SKBlendMode.Src,
         };
 
-        if (fp.Quad is { } quad)
+        // Выкусываем форму, которую подняли, а не ту, что на пикапе сейчас: перетаскивание
+        // угла меняет маску, но не то, что было взято из слоя.
+        if ((fp.OriginalQuad ?? fp.Quad) is { } quad)
         {
-            // Snapshot the shape we erase. Later corner drags change the pickup's current
-            // clip, but the hole left behind stays this shape.
-            fp.OriginalQuad = (SKPoint[])quad.Clone();
+            fp.OriginalQuad ??= (SKPoint[])quad.Clone();
             using var path = new SKPath();
             path.MoveTo(quad[0]);
             path.LineTo(quad[1]);

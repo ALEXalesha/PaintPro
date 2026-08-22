@@ -95,6 +95,10 @@ public sealed class ClipboardService
         using var bmp = ExtractSelectedRegion(doc);
         using var img = SKImage.FromBitmap(bmp);
         using var data = img.Encode(SKEncodedImageFormat.Png, 100);
+        // Кодировщик возвращает null, а не бросает: без проверки обычный Ctrl+C падал бы
+        // с NullReferenceException до глобального обработчика и пугал окном «Что-то
+        // пошло не так» - при том, что копирование это просто не удалось.
+        if (data is null) return false;
         using var ms = new MemoryStream(data.ToArray());
         var bi = new BitmapImage();
         bi.BeginInit();

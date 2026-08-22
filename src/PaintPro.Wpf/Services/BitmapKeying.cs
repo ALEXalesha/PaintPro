@@ -14,9 +14,14 @@ namespace PaintPro.Services;
 public static class BitmapKeying
 {
     /// <summary>
-    /// Return a copy of <paramref name="source"/> where every pixel within
-    /// <paramref name="tolerance"/> of <paramref name="background"/> (per channel) is made
-    /// fully transparent. The original bitmap is left untouched.
+    /// Return a copy of <paramref name="source"/> where the background AROUND the drawn
+    /// marks is made fully transparent. The original bitmap is left untouched.
+    ///
+    /// Прозрачным становится только фон вокруг рисунка: заливка идёт от краёв битмапа
+    /// внутрь и останавливается на первом пикселе, не похожем на фон. Проход «все белые
+    /// пиксели подряд» был проще, но пробивал дыры в самой картинке - блик на фото,
+    /// белая заливка фигуры, глаз на рисунке, - и сквозь них просвечивало то, что лежит
+    /// ниже. В Electron-версии (<c>keyOutWhite</c>) это устроено так с самого начала.
     /// </summary>
     public static SKBitmap KeyOutBackground(SKBitmap source, SKColor background, int tolerance = 8)
     {
@@ -26,19 +31,37 @@ public static class BitmapKeying
         using (var canvas = new SKCanvas(dst))
             canvas.DrawBitmap(source, 0, 0);
 
+        int w = dst.Width, h = dst.Height;
+        if (w == 0 || h == 0) return dst;
+
         var pixels = dst.Pixels; // SKColor[] copy, unpremultiplied
         byte br = background.Red, bg = background.Green, bb = background.Blue;
 
-        for (int i = 0; i < pixels.Length; i++)
+        var seen = new bool[w * h];
+        var stack = new Stack<int>();
+        // Стартуем со всей рамки битмапа: фон - это то, что связано с краем.
+        for (int x = 0; x < w; x++) { stack.Push(x); stack.Push((h - 1) * w + x); }
+        for (int y = 0; y < h; y++) { stack.Push(y * w); stack.Push(y * w + w - 1); }
+
+        while (stack.Count > 0)
         {
+            int i = stack.Pop();
+            if (seen[i]) continue;
+            seen[i] = true;
+
             var p = pixels[i];
-            if (p.Alpha == 0) continue; // already transparent
-            if (Near(p.Red, br, tolerance) &&
-                Near(p.Green, bg, tolerance) &&
-                Near(p.Blue, bb, tolerance))
-            {
-                pixels[i] = SKColors.Transparent;
-            }
+            if (p.Alpha == 0) continue; // уже прозрачный - дальше не идём
+            if (!Near(p.Red, br, tolerance) ||
+                !Near(p.Green, bg, tolerance) ||
+                !Near(p.Blue, bb, tolerance)) continue; // край рисунка
+
+            pixels[i] = SKColors.Transparent;
+
+            int x = i % w, y = i / w;
+            if (x > 0)     stack.Push(i - 1);
+            if (x < w - 1) stack.Push(i + 1);
+            if (y > 0)     stack.Push(i - w);
+            if (y < h - 1) stack.Push(i + w);
         }
 
         dst.Pixels = pixels;

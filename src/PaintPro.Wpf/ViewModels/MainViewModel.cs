@@ -500,13 +500,14 @@ public partial class MainViewModel : ObservableObject
     ///
     /// Сам по себе поднятый пикап правкой не считается: клик внутрь рамки поднимает
     /// пиксели, но холста не трогает, пока их не сдвинули - ровно об этом говорит
-    /// <see cref="FloatingPickup.OriginalAreaErased"/>, по нему же решает, писать ли в
-    /// историю, <see cref="Document.CommitFloating"/>. Пока проверка была на сам пикап,
-    /// приложение спрашивало про сохранение после клика, который ничего не изменил.
+    /// <see cref="FloatingPickup.HasMoved"/>, по нему же решает, писать ли в историю,
+    /// <see cref="Document.CommitFloating"/>. Пока здесь стоял признак «исходную область
+    /// стёрли», нажатие на ручку без перетаскивания делало документ изменённым: стирание
+    /// шло по нажатию, а сдвинуть пикап пользователь не успевал.
     /// </summary>
     public bool IsDirty
         => Document.History.IsDirtySinceSave
-           || Document.FloatingPickup is { OriginalAreaErased: true };
+           || Document.FloatingPickup is { HasMoved: true };
 
     [RelayCommand] private void Save()
     {

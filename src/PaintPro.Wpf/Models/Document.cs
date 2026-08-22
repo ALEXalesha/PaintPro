@@ -154,21 +154,29 @@ public partial class Document : ObservableObject
     {
         if (_floatingPickup is null) return;
         var pickup = _floatingPickup;
+
+        // Подняли и положили обратно, ничего не изменив: клик внутрь рамки, нажатие на
+        // ручку без перетаскивания. Холст обязан остаться прежним до пикселя, а записи в
+        // истории и признаку несохранённой работы такому событию взяться неоткуда.
+        // Возврат делает CancelFloating - он же кладёт назад пиксели, если исходную
+        // область успели стереть.
+        if (!pickup.HasMoved) { CancelFloating(); return; }
+
         var target = TargetLayer(pickup);
 
         if (target is not null)
         {
+            // Исходная область стирается лениво, при первом перемещении. Если двигали
+            // только углы quad'а, стирание ещё не проходило: без него исходный полигон
+            // остался бы лежать под прижатым пикапом, а в историю не попало бы ничего.
+            // В Electron-версии то же самое делает ensureOriginalQuadErased.
+            Services.PickupOps.EnsureLazyErase(this, pickup);
+
             // Record a before/after diff over the affected region so the commit is undoable.
             // "Before" comes from the pre-lift snapshot when there is one (the layer has
             // already been lazily erased by then); for a paste there is no snapshot and the
             // layer is still untouched, so the current pixels are the correct "before".
-            // Only worth recording if the pickup actually did something. A click that
-            // promotes a selection and a click that puts it straight back down leave the
-            // layer as it was, and OriginalAreaErased is the flag that says a transform
-            // happened at all (a paste sets it up front, since its pixels are new).
-            var dirty = pickup.OriginalAreaErased
-                ? ComputeDirtyRect(pickup, target.Width, target.Height)
-                : SKRectI.Empty;
+            var dirty = ComputeDirtyRect(pickup, target.Width, target.Height);
             SKBitmap? before = null;
             if (!dirty.IsEmpty)
             {
@@ -227,8 +235,13 @@ public partial class Document : ObservableObject
         if (_floatingPickup is null) return;
         var pickup = _floatingPickup;
 
-        if (pickup.OriginalAreaErased && pickup.PreEditSnapshot is { } snap
-            && TargetLayer(pickup) is { } target)
+        // Исходную область могли ещё не стереть: подъём её не трогает, стирание идёт при
+        // первом перемещении. Пока этого вызова не было, Delete и Ctrl+X по только что
+        // поднятому выделению просто снимали пикап - пиксели возвращались на место, и
+        // пользователь получал «вырезал, а ничего не вырезалось».
+        Services.PickupOps.EnsureLazyErase(this, pickup);
+
+        if (pickup.PreEditSnapshot is { } snap && TargetLayer(pickup) is { } target)
         {
             var source = SourceRect(pickup, target.Width, target.Height);
             if (!source.IsEmpty)
