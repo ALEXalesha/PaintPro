@@ -300,7 +300,7 @@ public partial class MainViewModel : ObservableObject
         // SaveOrSaveAs с прежним LastSavedPath/LastOpenedPath и молча
         // перезаписывал ранее открытую картинку чистым холстом.
         FileService.Detach();
-        _savedAtCursor = Document.History.Cursor;
+        Document.History.MarkSaved();
         InvalidateCanvas?.Invoke();
     }
 
@@ -317,27 +317,17 @@ public partial class MainViewModel : ObservableObject
         Document.CommitFloating();
         Document.Selection = null;
 
-        // Resize canvas to image size for simplicity (spec leaves "expand or fit" as an option).
-        var resize = new ResizeCanvasCommand(bmp.Width, bmp.Height, SKColors.White);
-        Document.History.ExecuteAndPush(resize, Document);
-        if (Document.ActiveLayer is PixelLayer pl)
-        {
-            // Draw the opened image through history so it can be undone *and* redone.
-            var full = new SKRectI(0, 0, pl.Width, pl.Height);
-            var before = pl.ExtractRegion(full);
-            var after = new SKBitmap(pl.Width, pl.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-            using (var canvas = new SKCanvas(after))
-            {
-                canvas.Clear(SKColors.White);
-                canvas.DrawBitmap(bmp, 0, 0);
-            }
-            Document.History.ExecuteAndPush(
-                new RegionDiffCommand("Открытие", pl.Id, full, before, after), Document);
-        }
+        // Открытый файл заменяет документ целиком. Прежняя версия меняла размер холста
+        // и рисовала картинку только в активный слой: ResizeCanvasCommand переносит
+        // содержимое всех слоёв, поэтому старый рисунок с верхних слоёв оставался
+        // лежать поверх открытой фотографии, и следующий Ctrl+S записывал её вместе
+        // с ним - Flatten складывает все слои.
+        Document.History.ExecuteAndPush(DocumentTransform.OpenImage(Document, bmp), Document);
+        Document.ActiveLayerIndex = 0;
         // Только что открытый файл - это не несохранённая работа. Без сдвига метки
         // окно сразу после «Открыть» спрашивало про сохранение и по «Да» переписывало
         // файл тем же содержимым.
-        _savedAtCursor = Document.History.Cursor;
+        Document.History.MarkSaved();
         InvalidateCanvas?.Invoke();
     }
 
@@ -363,16 +353,14 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public string VersionLabel => $"Paint Pro {AppVersion}";
 
-    /// <summary>History position at the last successful save; drives <see cref="IsDirty"/>.</summary>
-    private int _savedAtCursor;
-
     /// <summary>
-    /// True if there is work that a save would capture and closing would lose. Compares
-    /// the history cursor with where it was at the last save, so undoing back to the saved
-    /// state correctly counts as clean.
+    /// True if there is work that a save would capture and closing would lose. Метку
+    /// «здесь сохранено» ведёт сам <see cref="HistoryManager"/>: он же выбрасывает
+    /// старые записи при переполнении и сдвигает вместе с ними курсор, а копия метки
+    /// снаружи об этом не узнавала и после тысячи правок объявляла документ чистым.
     /// </summary>
     public bool IsDirty
-        => Document.History.Cursor != _savedAtCursor || Document.FloatingPickup is not null;
+        => Document.History.IsDirtySinceSave || Document.FloatingPickup is not null;
 
     [RelayCommand] private void Save()
     {
@@ -398,7 +386,7 @@ public partial class MainViewModel : ObservableObject
     private void Report(SaveOutcome outcome)
     {
         if (outcome.Status is SaveStatus.Ok or SaveStatus.FormatChanged)
-            _savedAtCursor = Document.History.Cursor;
+            Document.History.MarkSaved();
 
         if (outcome.Status == SaveStatus.FormatChanged)
         {
@@ -469,10 +457,14 @@ public partial class MainViewModel : ObservableObject
     {
         var bmp = ClipboardService.TryGetImage();
         if (bmp is null) return;
+        // Инструмент переключаем до вставки, а не после. Смена инструмента зовёт
+        // OnDeactivate у прежнего, а QuadTool и SelectTool делают там CommitFloating:
+        // вставка с активным «Четырёхугольником» прижималась к холсту в точке (20, 20)
+        // раньше, чем пользователь успевал её увидеть, и подвинуть было уже нечего.
+        ActiveTool = ToolKind.Select;
         var cmd = new PasteCommand(bmp, new SKPoint(20, 20));
         Document.History.ExecuteAndPush(cmd, Document);
         bmp.Dispose();
-        ActiveTool = ToolKind.Select;
         InvalidateCanvas?.Invoke();
     }
 

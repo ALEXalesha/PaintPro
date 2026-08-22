@@ -6,7 +6,9 @@ namespace PaintPro.Commands;
 /// <summary>
 /// Blank the document: every layer, plus any pending floating pickup and selection.
 /// Directly addresses antipattern #1 from the spec — every transient state slice must be
-/// reset, not just the visible bitmap.
+/// reset, not just the visible bitmap. Поднятый пикап не сохраняется в команде, а
+/// возвращается на холст до снимка: отмена должна вернуть документ таким, каким он был
+/// до подъёма, а не с дырой на его месте.
 ///
 /// Every layer, not the active one. This is what «Файл → Создать» runs, and clearing only
 /// the active layer left a document with two layers showing the old drawing through a
@@ -18,7 +20,6 @@ public sealed class ClearCanvasCommand : IDocumentCommand
 {
     private readonly SKColor _fill;
     private SKBitmap[]? _previousLayers;
-    private FloatingPickup? _previousFloating;
     private Selection? _previousSelection;
 
     public ClearCanvasCommand(SKColor? fill = null) => _fill = fill ?? SKColors.White;
@@ -38,18 +39,18 @@ public sealed class ClearCanvasCommand : IDocumentCommand
 
     public void Execute(Document doc)
     {
+        // Поднятые пиксели возвращаем на место ДО снимка. Прежняя версия просто клала
+        // сам пикап в поле команды: отмена возвращала холст с дырой на месте подъёма, а
+        // объект с двумя битмапами оставался жить в записи истории и не освобождался
+        // вовсе, если её вытесняло переполнение.
+        doc.CancelFloating();
+        _previousSelection = doc.Selection;
         _previousLayers ??= Snapshot(doc);
         for (int i = 0; i < doc.Layers.Count; i++)
         {
             if (doc.Layers[i] is PixelLayer pl)
                 pl.Clear(i == 0 ? _fill : SKColors.Transparent);
         }
-        _previousFloating = doc.FloatingPickup;
-        _previousSelection = doc.Selection;
-
-        // IMPORTANT: order matters — set FloatingPickup first (it would auto-clear Selection),
-        // then Selection. Both end up null and Mode is recomputed to Idle.
-        doc.FloatingPickup = null;
         doc.Selection = null;
     }
 
@@ -65,7 +66,6 @@ public sealed class ClearCanvasCommand : IDocumentCommand
                 canvas.DrawBitmap(shots[i], 0, 0);
             }
         }
-        doc.FloatingPickup = _previousFloating;
         doc.Selection = _previousSelection;
     }
 

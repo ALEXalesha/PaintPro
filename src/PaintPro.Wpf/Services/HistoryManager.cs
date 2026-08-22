@@ -44,6 +44,22 @@ public partial class HistoryManager : ObservableObject
     public int UndoDepth => _cursor;
     public int RedoDepth => _commands.Count - _cursor;
 
+    /// <summary>
+    /// Позиция курсора на момент последнего сохранения. Живёт здесь, а не во вьюмодели,
+    /// потому что <see cref="Trim"/> выбрасывает старые записи и сдвигает курсор вниз:
+    /// метка обязана ехать вместе с ним. Пока она хранилась снаружи, после переполнения
+    /// истории курсор переставал расти, метка оставалась на прежнем числе, и приложение
+    /// считало сохранённым всё, что нарисовано дальше. Уходит в минус, если сохранённое
+    /// состояние вытеснено совсем: вернуться к нему уже нельзя, значит работа изменена.
+    /// </summary>
+    private int _savedCursor;
+
+    /// <summary>Запомнить текущую позицию как сохранённую.</summary>
+    public void MarkSaved() => _savedCursor = _cursor;
+
+    /// <summary>Есть ли правки, которых нет в файле.</summary>
+    public bool IsDirtySinceSave => _cursor != _savedCursor;
+
     /// <summary>Raised after any change to the timeline or cursor (push/undo/redo/jump/clear).</summary>
     public event Action? Changed;
 
@@ -130,6 +146,7 @@ public partial class HistoryManager : ObservableObject
     {
         _commands.Clear();
         _cursor = 0;
+        _savedCursor = 0;
         Notify();
     }
 
@@ -156,6 +173,7 @@ public partial class HistoryManager : ObservableObject
     {
         _commands.RemoveRange(0, count);
         _cursor = Math.Max(0, _cursor - count);
+        _savedCursor -= count;
     }
 
     private void Notify()

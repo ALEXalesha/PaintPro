@@ -46,6 +46,49 @@ public static class DocumentTransform
                  (canvas, _) => canvas.Translate(-region.Left, -region.Top));
 
     /// <summary>
+    /// Заменить документ содержимым открытого файла: холст под размер картинки, нижний
+    /// слой - сама картинка на белом, верхние - пустые.
+    ///
+    /// Не то же самое, что «изменить размер и нарисовать в активный слой»: смена размера
+    /// переносит содержимое ВСЕХ слоёв, и старый рисунок с верхних продолжал лежать
+    /// поверх открытой фотографии. Видно его было сразу, а попадал он ещё и в файл -
+    /// <see cref="Services.FileService.Flatten"/> складывает все слои.
+    /// </summary>
+    public static ReplaceAllLayersCommand OpenImage(Document doc, SKBitmap image)
+    {
+        int count = doc.Layers.Count;
+        var before = new SKBitmap[count];
+        var after = new SKBitmap[count];
+        int w = image.Width, h = image.Height;
+
+        for (int i = 0; i < count; i++)
+        {
+            before[i] = doc.Layers[i] is PixelLayer pl
+                ? pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height))
+                : new SKBitmap(1, 1);
+
+            var dst = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using (var c = new SKCanvas(dst))
+            {
+                if (i == 0)
+                {
+                    c.Clear(SKColors.White);
+                    c.DrawBitmap(image, 0, 0);
+                }
+                else
+                {
+                    c.Clear(SKColors.Transparent);
+                }
+            }
+            after[i] = dst;
+        }
+
+        return new ReplaceAllLayersCommand("Открытие",
+            before, doc.CanvasWidth, doc.CanvasHeight,
+            after, w, h);
+    }
+
+    /// <summary>
     /// Snapshot every layer, render each one through <paramref name="setTransform"/> into a
     /// new bitmap of (newW, newH), and wrap both sides in an undoable command.
     /// The bottom layer keeps its opaque background; layers above stay transparent where

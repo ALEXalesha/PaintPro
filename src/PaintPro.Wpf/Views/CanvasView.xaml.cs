@@ -42,6 +42,17 @@ public partial class CanvasView : UserControl
         // otherwise ScrollViewer would scroll instead of letting us zoom.
         PreviewMouseWheel += OnPreviewMouseWheel;
 
+        // Перетаскивание ручек слушает Overlay, а не сами ручки. DrawOverlay каждый кадр
+        // делает Children.Clear() и пересоздаёт ручки заново, а WPF снимает захват мыши с
+        // элемента, который убрали из дерева. Ручка, за которую тянули, исчезала на первом
+        // же кадре, и дальше события шли туда, куда попал курсор: у боковых ручек движение
+        // поперёк оси выводило его за 12 пикселей ручки, жест обрывался, а следующее
+        // движение попадало на холст и уходило активному инструменту. Overlay же остаётся
+        // на месте, чистятся только его дети, так что захват держится до отпускания.
+        Overlay.MouseMove += OnHandleMouseMove;
+        Overlay.MouseLeftButtonUp += OnHandleMouseUp;
+        Overlay.LostMouseCapture += (_, _) => EndHandleDrag();
+
         // Ctrl+wheel zoom is wired by the host (MainWindow) so it can centre on cursor properly.
         Loaded += (_, _) =>
         {
@@ -320,8 +331,6 @@ public partial class CanvasView : UserControl
         Canvas.SetLeft(r, worldPos.X * zoom - size / 2);
         Canvas.SetTop(r,  worldPos.Y * zoom - size / 2);
         r.MouseLeftButtonDown += OnHandleMouseDown;
-        r.MouseMove           += OnHandleMouseMove;
-        r.MouseLeftButtonUp   += OnHandleMouseUp;
         Overlay.Children.Add(r);
     }
 
@@ -346,8 +355,6 @@ public partial class CanvasView : UserControl
         Canvas.SetLeft(rot, worldPos.X * zoom - size / 2);
         Canvas.SetTop(rot,  worldPos.Y * zoom - size / 2);
         rot.MouseLeftButtonDown += OnHandleMouseDown;
-        rot.MouseMove           += OnHandleMouseMove;
-        rot.MouseLeftButtonUp   += OnHandleMouseUp;
         Overlay.Children.Add(rot);
 
         // Small connecting line from the handle down to the bbox top — visual cue.
@@ -383,7 +390,7 @@ public partial class CanvasView : UserControl
         _dragStartMouseDoc = new SKPoint((float)(p.X / _vm.Zoom), (float)(p.Y / _vm.Zoom));
         _rotationAtDragStart = _vm.Document.FloatingPickup?.Rotation ?? 0;
         _vm.ToolContext.IsDrawing = true;
-        el.CaptureMouse();
+        Overlay.CaptureMouse();
         e.Handled = true;
     }
 
@@ -412,11 +419,22 @@ public partial class CanvasView : UserControl
 
     private void OnHandleMouseUp(object sender, MouseButtonEventArgs e)
     {
-        if (sender is FrameworkElement el) el.ReleaseMouseCapture();
+        if (_draggingHandle is null) return;
+        Overlay.ReleaseMouseCapture();
+        EndHandleDrag();
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Свернуть жест. Зовётся и по отпусканию кнопки, и по потере захвата - окно могло
+    /// уйти из фокуса, а бросить IsDrawing включённым значит спрятать ручки навсегда.
+    /// </summary>
+    private void EndHandleDrag()
+    {
+        if (_draggingHandle is null) return;
         _draggingHandle = null;
         if (_vm is not null) _vm.ToolContext.IsDrawing = false;
         Refresh();
-        e.Handled = true;
     }
 
     // ───────── Pointer routing ─────────
