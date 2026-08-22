@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using PaintPro.Models;
@@ -6,12 +7,52 @@ using SkiaSharp;
 
 namespace PaintPro.Services;
 
+/// <summary>Чем кончилась попытка прочитать буфер обмена.</summary>
+public enum ClipboardStatus
+{
+    Ok,
+    /// <summary>Картинки в буфере нет.</summary>
+    Empty,
+    /// <summary>Буфер держит другое приложение и не отдаёт.</summary>
+    Busy,
+}
+
+/// <param name="Bitmap">Декодированная картинка; владение переходит вызывающему.</param>
+public readonly record struct ClipboardOutcome(ClipboardStatus Status, SKBitmap? Bitmap = null);
+
 /// <summary>
 /// System clipboard bridge for raster images. Uses WPF's Clipboard API and converts
 /// to/from SkiaSharp via PNG round-trip (the safest cross-app format).
+///
+/// Буфер обмена в Windows - один на всех и захватывается монопольно: пока его держит
+/// чужое приложение, вызов падает с <see cref="COMException"/> (CLIPBRD_E_CANT_OPEN).
+/// Это обычное дело, а не сбой, поэтому каждая операция повторяется несколько раз с
+/// паузой. Без этого обычный Ctrl+C время от времени доходил до
+/// <c>App.DispatcherUnhandledException</c> и пугал пользователя окном «Что-то пошло не так».
 /// </summary>
 public sealed class ClipboardService
 {
+    private const int Attempts = 5;
+    private const int RetryDelayMs = 60;
+
+    /// <summary>Выполнить операцию с буфером, повторяя, пока его не отпустят. False - не дождались.</summary>
+    private static bool Retry(Action operation)
+    {
+        for (int i = 0; i < Attempts; i++)
+        {
+            try
+            {
+                operation();
+                return true;
+            }
+            catch (Exception ex) when (ex is COMException or ExternalException)
+            {
+                if (i < Attempts - 1) Thread.Sleep(RetryDelayMs);
+            }
+        }
+        return false;
+    }
+
     /// <summary>
     /// The selection rect inside <paramref name="doc"/>, or the full canvas if there is no
     /// selection — flattened. Copy takes what the user can see; reading the active layer
@@ -45,8 +86,11 @@ public sealed class ClipboardService
         return dst;
     }
 
-    /// <summary>Copy the current selection (or whole canvas) to the OS clipboard.</summary>
-    public void Copy(Document doc)
+    /// <summary>
+    /// Copy the current selection (or whole canvas) to the OS clipboard.
+    /// False - буфер обмена так и не отдался.
+    /// </summary>
+    public bool Copy(Document doc)
     {
         using var bmp = ExtractSelectedRegion(doc);
         using var img = SKImage.FromBitmap(bmp);
@@ -58,20 +102,32 @@ public sealed class ClipboardService
         bi.StreamSource = ms;
         bi.EndInit();
         bi.Freeze();
-        Clipboard.SetImage(bi);
+        return Retry(() => Clipboard.SetImage(bi));
     }
 
-    /// <summary>Try to read a bitmap from the clipboard. Returns null if no image.</summary>
-    public SKBitmap? TryGetImage()
+    /// <summary>
+    /// Try to read a bitmap from the clipboard. <see cref="ClipboardStatus.Empty"/> и
+    /// <see cref="ClipboardStatus.Busy"/> - разные вещи: в первом случае вставлять нечего,
+    /// во втором есть что, но прочитать не дали, и об этом стоит сказать.
+    /// </summary>
+    public ClipboardOutcome TryGetImage()
     {
-        if (!Clipboard.ContainsImage()) return null;
-        var src = Clipboard.GetImage();
-        if (src is null) return null;
+        BitmapSource? src = null;
+        bool got = Retry(() =>
+        {
+            src = Clipboard.ContainsImage() ? Clipboard.GetImage() : null;
+        });
+        if (!got) return new ClipboardOutcome(ClipboardStatus.Busy);
+        if (src is null) return new ClipboardOutcome(ClipboardStatus.Empty);
+
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(src));
         using var ms = new MemoryStream();
         encoder.Save(ms);
         ms.Position = 0;
-        return SKBitmap.Decode(ms);
+        var decoded = SKBitmap.Decode(ms);
+        return decoded is null
+            ? new ClipboardOutcome(ClipboardStatus.Empty)
+            : new ClipboardOutcome(ClipboardStatus.Ok, decoded);
     }
 }

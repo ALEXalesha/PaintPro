@@ -86,20 +86,48 @@ public partial class HistoryManager : ObservableObject
     public void Push(IDocumentCommand cmd)
     {
         if (_applying) return;
-        if (_cursor < _commands.Count)
-        {
-            // Сохранённое состояние могло лежать в срезаемом хвосте: вернуться к нему
-            // уже нельзя, а курсор сейчас встанет на то же число. Пока метка оставалась
-            // на месте, «сохранили → Ctrl+Z → нарисовали заново» давало чистый документ
-            // при другом содержимом файла, и окно закрывалось без вопроса.
-            if (_savedCursor > _cursor) _savedCursor = Unreachable;
-            for (int i = _cursor; i < _commands.Count; i++) Release(_commands[i]);
-            _commands.RemoveRange(_cursor, _commands.Count - _cursor);
-        }
+        DropRedoTail();
         _commands.Add(cmd);
         _cursor = _commands.Count;
         Trim();
         Notify();
+    }
+
+    /// <summary>
+    /// Правка дописана в последнюю запись вместо новой (см. <see
+    /// cref="Commands.LayerPropertyCommand.MergeInto"/>): курсор не двигается, и всё, что
+    /// считает правки по его позиции, такого изменения не видит.
+    ///
+    /// Пока склейка ходила мимо истории, «выключили слой → Ctrl+S → включили обратно»
+    /// дописывалось в запись, сделанную до сохранения: курсор оставался равен метке,
+    /// <see cref="IsDirtySinceSave"/> отвечал false, и окно закрывалось без вопроса, а в
+    /// файле слой оставался выключенным.
+    /// </summary>
+    public void AmendCurrent()
+    {
+        if (_applying || _cursor == 0) return;
+        // Дописанная правка - такая же новая правка, как любая другая: хвост повтора
+        // записан относительно состояния, которого больше нет.
+        DropRedoTail();
+        // Изменилось состояние на позиции курсора; всё, что левее, склейка не трогала.
+        if (_savedCursor >= _cursor) _savedCursor = Unreachable;
+        Notify();
+    }
+
+    /// <summary>
+    /// Срезать записи повтора: новая правка их обесценивает.
+    ///
+    /// Сохранённое состояние могло лежать в срезаемом хвосте: вернуться к нему уже
+    /// нельзя, а курсор при этом остаётся на прежнем числе. Пока метка оставалась на
+    /// месте, «сохранили → Ctrl+Z → нарисовали заново» давало чистый документ при другом
+    /// содержимом файла, и окно закрывалось без вопроса.
+    /// </summary>
+    private void DropRedoTail()
+    {
+        if (_cursor >= _commands.Count) return;
+        if (_savedCursor > _cursor) _savedCursor = Unreachable;
+        for (int i = _cursor; i < _commands.Count; i++) Release(_commands[i]);
+        _commands.RemoveRange(_cursor, _commands.Count - _cursor);
     }
 
     /// <summary>Run cmd.Execute(doc) then push. The conventional way to record an edit.</summary>

@@ -226,7 +226,25 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="StatusPos"   Grid.Column="0" Text="—" Foreground="{StaticResource TextDim}"/>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <TextBlock x:Name="StatusPos" Text="—" Foreground="{StaticResource TextDim}"/>
+                        <!-- Объяснение, почему жест ничего не сделал: скрытый слой и подобное.
+                             Пустая строка прячет всю строку целиком. -->
+                        <TextBlock Text="{Binding StatusHint}" Margin="16,0,0,0"
+                                   Foreground="{StaticResource Accent}"
+                                   TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding StatusHint}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="12,0">
                         <Border Width="14" Height="14" CornerRadius="3"
                                 BorderBrush="{StaticResource GlassBorder}" BorderThickness="1"

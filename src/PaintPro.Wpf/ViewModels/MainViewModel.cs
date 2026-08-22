@@ -43,6 +43,7 @@ public partial class MainViewModel : ObservableObject
             PrimaryColor = SKColors.Black,
             ToolSize = 4f,
             Opacity = 1f,
+            ReportHint = ShowHint,
         };
         _pickerTool.ColorPicked += c => PrimaryColor = c;
         _textTool.TextRequested += p => TextRequested?.Invoke(p);
@@ -90,7 +91,40 @@ public partial class MainViewModel : ObservableObject
             {
                 InvalidateCanvas?.Invoke();
             }
+            // Подъём и снятие пикапа меняют ответ CanUndo, а истории об этом знать неоткуда.
+            if (e.PropertyName == nameof(Document.FloatingPickup)) UndoCommand.NotifyCanExecuteChanged();
         };
+    }
+
+    // ───────── Подсказка в статусбаре ─────────
+
+    /// <summary>
+    /// Короткое объяснение, почему жест ничего не сделал. Пустая строка - строки нет.
+    /// Модальное окно на каждый штрих по скрытому слою было бы хуже самой ошибки.
+    /// </summary>
+    [ObservableProperty] private string _statusHint = "";
+
+    private System.Windows.Threading.DispatcherTimer? _hintTimer;
+
+    /// <summary>Показать подсказку и убрать её через несколько секунд.</summary>
+    private void ShowHint(string text)
+    {
+        StatusHint = text;
+        _hintTimer ??= new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(4),
+        };
+        _hintTimer.Tick -= ClearHint;
+        _hintTimer.Tick += ClearHint;
+        // Перезапуск, а не продление: повторный тот же жест должен обновлять отсчёт.
+        _hintTimer.Stop();
+        _hintTimer.Start();
+    }
+
+    private void ClearHint(object? sender, EventArgs e)
+    {
+        _hintTimer?.Stop();
+        StatusHint = "";
     }
 
     private void RebuildLayerItems()
@@ -112,18 +146,40 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Когда и по какому слою последний раз двигали ползунок прозрачности.</summary>
+    private DateTime _lastOpacityEdit = DateTime.MinValue;
+    private Guid _lastOpacityLayer;
+
+    /// <summary>
+    /// Насколько долго правки прозрачности считаются одним жестом. Ползунок шлёт значение
+    /// на каждый пиксель перетаскивания, паузы между ними миллисекундные; отдельный заход
+    /// к тому же слою через секунду - уже другая правка и заслуживает своей записи.
+    /// </summary>
+    private static readonly TimeSpan OpacityGesture = TimeSpan.FromMilliseconds(700);
+
     /// <summary>
     /// Правка видимости/прозрачности слоя из панели - через историю.
-    /// Подряд идущие правки одного слоя дописываются в ту же запись: перетаскивание
-    /// ползунка иначе оставляет по записи на каждый его пиксель.
+    ///
+    /// Перетаскивание ползунка склеивается в одну запись, иначе один жест оставил бы
+    /// полсотни. Флажок видимости - отдельное нажатие и всегда отдельная запись: склейка
+    /// по одному только «последняя запись про этот слой» объединяла и правки, сделанные
+    /// с разницей в час, и один Ctrl+Z откатывал обе.
     /// </summary>
     private void ApplyLayerProperties(Layer layer, bool visible, float opacity)
     {
         if (layer.Visible == visible && Math.Abs(layer.Opacity - opacity) < 0.0001f) return;
 
-        if (Document.History.Current is LayerPropertyCommand last && last.LayerId == layer.Id)
+        var now = DateTime.UtcNow;
+        bool sameGesture = layer.Visible == visible          // видимость не трогали: это ползунок
+            && _lastOpacityLayer == layer.Id
+            && now - _lastOpacityEdit < OpacityGesture;
+
+        if (sameGesture && Document.History.Current is LayerPropertyCommand last && last.LayerId == layer.Id)
         {
             last.MergeInto(Document, visible, opacity);
+            // Курсор при склейке не двигается, и без этого признак несохранённой работы
+            // о правке не узнавал: изменение доходило до файла, а вопрос при закрытии - нет.
+            Document.History.AmendCurrent();
         }
         else
         {
@@ -131,6 +187,8 @@ public partial class MainViewModel : ObservableObject
             if (!cmd.ChangedAnything) return;
             Document.History.ExecuteAndPush(cmd, Document);
         }
+        _lastOpacityEdit = now;
+        _lastOpacityLayer = layer.Id;
         InvalidateCanvas?.Invoke();
     }
 
@@ -262,7 +320,14 @@ public partial class MainViewModel : ObservableObject
     // ───────── History ─────────
     [RelayCommand(CanExecute = nameof(CanUndo))]
     private void Undo() { Document.History.Undo(Document); AfterHistoryWalk(); }
-    private bool CanUndo => Document.History.CanUndo;
+
+    /// <summary>
+    /// Поднятое выделение - правка, которой в списке ещё нет, и первый Ctrl+Z снимает
+    /// именно её (<see cref="HistoryManager.Undo"/>). Пока сюда смотрел один только
+    /// курсор истории, на чистом документе кнопка была выключена и подъём нельзя было
+    /// отменить ничем, кроме Escape.
+    /// </summary>
+    private bool CanUndo => Document.History.CanUndo || Document.FloatingPickup is not null;
 
     [RelayCommand(CanExecute = nameof(CanRedo))]
     private void Redo() { Document.History.Redo(Document); AfterHistoryWalk(); }
@@ -432,9 +497,16 @@ public partial class MainViewModel : ObservableObject
     /// «здесь сохранено» ведёт сам <see cref="HistoryManager"/>: он же выбрасывает
     /// старые записи при переполнении и сдвигает вместе с ними курсор, а копия метки
     /// снаружи об этом не узнавала и после тысячи правок объявляла документ чистым.
+    ///
+    /// Сам по себе поднятый пикап правкой не считается: клик внутрь рамки поднимает
+    /// пиксели, но холста не трогает, пока их не сдвинули - ровно об этом говорит
+    /// <see cref="FloatingPickup.OriginalAreaErased"/>, по нему же решает, писать ли в
+    /// историю, <see cref="Document.CommitFloating"/>. Пока проверка была на сам пикап,
+    /// приложение спрашивало про сохранение после клика, который ничего не изменил.
     /// </summary>
     public bool IsDirty
-        => Document.History.IsDirtySinceSave || Document.FloatingPickup is not null;
+        => Document.History.IsDirtySinceSave
+           || Document.FloatingPickup is { OriginalAreaErased: true };
 
     [RelayCommand] private void Save()
     {
@@ -476,7 +548,16 @@ public partial class MainViewModel : ObservableObject
     }
 
     // ───────── Clipboard ─────────
-    [RelayCommand] private void CopySelection() => ClipboardService.Copy(Document);
+    [RelayCommand] private void CopySelection() => CopyToClipboard();
+
+    /// <summary>Копирование с сообщением об отказе: молчащий Ctrl+C неотличим от сработавшего.</summary>
+    private bool CopyToClipboard()
+    {
+        if (ClipboardService.Copy(Document)) return true;
+        ShowHint("Буфер обмена занят другим приложением — копирование не удалось");
+        return false;
+    }
+
     [RelayCommand] private void CutSelection()
     {
         // Поднятое выделение обнуляет Selection, поэтому проверка на неё одна
@@ -485,13 +566,14 @@ public partial class MainViewModel : ObservableObject
         // историю, тогда как CancelFloating вернул бы пиксели на место.
         if (Document.FloatingPickup is not null)
         {
-            ClipboardService.Copy(Document);
+            // Не вырезаем, если копия не удалась: иначе пиксели пропадут в никуда.
+            if (!CopyToClipboard()) return;
             Document.DiscardFloating();
             InvalidateCanvas?.Invoke();
             return;
         }
         if (Document.Selection is null) return;
-        ClipboardService.Copy(Document);
+        if (!CopyToClipboard()) return;
         EraseSelection();
     }
 
@@ -529,8 +611,13 @@ public partial class MainViewModel : ObservableObject
     }
     [RelayCommand] private void Paste()
     {
-        var bmp = ClipboardService.TryGetImage();
-        if (bmp is null) return;
+        var outcome = ClipboardService.TryGetImage();
+        if (outcome.Status == ClipboardStatus.Busy)
+        {
+            ShowHint("Буфер обмена занят другим приложением — вставка не удалась");
+            return;
+        }
+        if (outcome.Bitmap is not { } bmp) return;
         // Инструмент переключаем до вставки, а не после. Смена инструмента зовёт
         // OnDeactivate у прежнего, а QuadTool и SelectTool делают там CommitFloating:
         // вставка с активным «Четырёхугольником» прижималась к холсту в точке (20, 20)

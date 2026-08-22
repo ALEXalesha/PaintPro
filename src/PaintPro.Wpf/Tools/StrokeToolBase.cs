@@ -40,7 +40,7 @@ public abstract class StrokeToolBase : ITool
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
-        if (ctx.Document.ActiveLayer is not PixelLayer pl) return;
+        if (ctx.DrawTarget() is not { } pl) return;
         // Прошлый штрих мог не получить PointerUp - например, у него отобрали захват мыши.
         // Без сброса его битмап размером с холст просто терялся вместе со ссылкой.
         if (_drawing) ResetStroke(ctx);

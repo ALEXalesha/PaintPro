@@ -73,5 +73,30 @@ public sealed class ToolContext
     /// <summary>True while a pointer button is held — the canvas uses this to hide handles.</summary>
     public bool IsDrawing { get; set; }
 
+    /// <summary>
+    /// Куда инструмент отдаёт короткое объяснение, почему жест ничего не сделал.
+    /// Показывает статусбар; хост подписывается сам, тулы про UI не знают.
+    /// </summary>
+    public Action<string>? ReportHint { get; set; }
+
+    /// <summary>
+    /// Слой, в который инструменты сейчас пишут, или null, если писать некуда.
+    ///
+    /// Проверка на видимость нужна здесь, а не в каждом инструменте: штрих по скрытому
+    /// слою уходил в его битмап целиком - на экране не появлялось ничего, зато в истории
+    /// появлялась запись, а в файл нарисованное попадало, стоило слой включить.
+    /// Пользователь при этом видел, что кисть не работает, и без объяснений.
+    /// </summary>
+    public PixelLayer? DrawTarget()
+    {
+        if (Document.ActiveLayer is not PixelLayer pl) return null;
+        if (!pl.Visible)
+        {
+            ReportHint?.Invoke($"Слой «{pl.Name}» скрыт — включите видимость, чтобы рисовать");
+            return null;
+        }
+        return pl;
+    }
+
     public ToolContext(Document doc) => Document = doc;
 }

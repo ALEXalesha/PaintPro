@@ -17,6 +17,7 @@ public sealed class FillTool : ITool
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
+        if (ctx.DrawTarget() is null) return;
         var seed = new SKPointI((int)position.X, (int)position.Y);
         var color = ctx.PrimaryColor.WithAlpha((byte)(255 * ctx.Opacity));
         var cmd = new FillCommand(seed, color);

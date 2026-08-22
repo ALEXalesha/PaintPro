@@ -27,6 +27,8 @@ public sealed class TextTool : ITool
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
+        // Спрашивать текст, которому некуда лечь, незачем: скрытый слой отсеиваем до диалога.
+        if (ctx.DrawTarget() is null) return;
         _lastClick = position;
         _ctx = ctx;
         TextRequested?.Invoke(position);
@@ -39,7 +41,7 @@ public sealed class TextTool : ITool
     public void CommitText(string text, float fontSize = 24f, string family = "Segoe UI")
     {
         if (_ctx is null || string.IsNullOrEmpty(text)) return;
-        if (_ctx.Document.ActiveLayer is not PixelLayer pl) return;
+        if (_ctx.DrawTarget() is not { } pl) return;
 
         using var typeface = SKTypeface.FromFamilyName(family);
         using var paint = new SKPaint

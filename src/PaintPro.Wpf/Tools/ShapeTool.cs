@@ -35,7 +35,7 @@ public abstract class ShapeTool : ITool
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
-        if (ctx.Document.ActiveLayer is not PixelLayer pl) return;
+        if (ctx.DrawTarget() is not { } pl) return;
         if (_drawing) Reset(ctx);
         _origin = position;
         _current = position;
