@@ -90,3 +90,32 @@ public class VersionLabelTests
         Assert.NotEqual("1.0.0", PaintPro.ViewModels.MainViewModel.AppVersion);
     }
 }
+
+/// <summary>
+/// Привязки XAML резолвятся через TypeDescriptor по экземпляру DataContext, и
+/// статические свойства так не находятся: привязка молча остаётся пустой, а увидеть
+/// это можно только запустив приложение. Проверяем тем же способом, каким это делает
+/// WPF, чтобы не полагаться на глаз.
+/// </summary>
+public class BindingPathTests
+{
+    [Theory]
+    [InlineData("VersionLabel")]
+    [InlineData("Palette")]
+    [InlineData("RecentColors")]
+    [InlineData("LayerItems")]
+    [InlineData("HistoryItems")]
+    [InlineData("PrimaryColorBrush")]
+    [InlineData("ToolSize")]
+    [InlineData("Opacity")]
+    [InlineData("Zoom")]
+    [InlineData("ShapeFill")]
+    [InlineData("ActiveTool")]
+    [InlineData("Document")]
+    public void MainViewModel_exposes_the_path_XAML_binds_to(string path)
+    {
+        var props = System.ComponentModel.TypeDescriptor.GetProperties(
+            typeof(PaintPro.ViewModels.MainViewModel));
+        Assert.NotNull(props[path]);
+    }
+}
