@@ -341,6 +341,28 @@ public partial class MainViewModel : ObservableObject
         InvalidateCanvas?.Invoke();
     }
 
+    /// <summary>
+    /// Версия приложения для статусбара и «О программе». Берётся из атрибутов сборки,
+    /// то есть из &lt;Version&gt; в csproj - единственного места, где она задана. Раньше
+    /// «Paint Pro 1.0» было вписано строкой в XAML и в обработчик «О программе», и к
+    /// 1.6.0 оба места отстали на шесть релизов.
+    /// </summary>
+    public static string AppVersion
+    {
+        get
+        {
+            var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            return v is null ? "" : $"{v.Major}.{v.Minor}.{v.Build}";
+        }
+    }
+
+    /// <summary>
+    /// Подпись «Paint Pro 1.6.0» для статусбара. Свойство экземпляра, а не статическое:
+    /// WPF резолвит путь привязки по экземпляру DataContext и статические свойства так не
+    /// находит - привязка молча осталась бы пустой.
+    /// </summary>
+    public string VersionLabel => $"Paint Pro {AppVersion}";
+
     /// <summary>History position at the last successful save; drives <see cref="IsDirty"/>.</summary>
     private int _savedAtCursor;
 

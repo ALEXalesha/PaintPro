@@ -20,7 +20,10 @@ public sealed class FillTool : ITool
         var seed = new SKPointI((int)position.X, (int)position.Y);
         var color = ctx.PrimaryColor.WithAlpha((byte)(255 * ctx.Opacity));
         var cmd = new FillCommand(seed, color);
-        ctx.History.ExecuteAndPush(cmd, ctx.Document);
+        // Не ExecuteAndPush: заливка бывает пустой (кликнули по уже залитому этим цветом
+        // или мимо холста), а запись в историю нужна только если пиксели изменились.
+        cmd.Execute(ctx.Document);
+        if (cmd.ChangedAnything) ctx.History.Push(cmd);
     }
 
     public void OnPointerMove(SKPoint position, ToolContext ctx) { }

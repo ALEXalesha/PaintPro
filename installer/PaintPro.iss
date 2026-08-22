@@ -4,7 +4,7 @@
 ; Build:  ISCC.exe installer\PaintPro.iss
 
 #define MyAppName "Paint Pro"
-#define MyAppVersion "1.6.0"
+#define MyAppVersion "1.7.0"
 #define MyAppPublisher "Paint Pro"
 #define MyAppExeName "PaintPro.exe"
 

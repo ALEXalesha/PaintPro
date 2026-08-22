@@ -91,7 +91,8 @@ public partial class MainWindow : Window
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
 
     private void OnAboutClick(object sender, RoutedEventArgs e)
-        => MessageBox.Show("Paint Pro 1.0 — C# + WPF + SkiaSharp.\nLiquid Glass build.", "О программе");
+        => MessageBox.Show($"Paint Pro {MainViewModel.AppVersion} — C# + WPF + SkiaSharp.\nLiquid Glass build.",
+                           "О программе");
 
     private void OnDrop(object sender, DragEventArgs e)
     {

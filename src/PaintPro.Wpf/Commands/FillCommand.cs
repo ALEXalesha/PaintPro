@@ -31,6 +31,14 @@ public sealed class FillCommand : IDocumentCommand
 
     public string DisplayName => "Fill";
 
+    /// <summary>
+    /// Изменила ли последняя <see cref="Execute"/> хоть один пиксель. Клик по области,
+    /// уже залитой этим цветом, и клик мимо холста не меняют ничего, и записи в истории
+    /// им взяться неоткуда: пустая запись включает признак несохранённой работы, и
+    /// приложение начинает спрашивать про сохранение после ничего.
+    /// </summary>
+    public bool ChangedAnything => _previousRegion is not null;
+
     public long ApproximateBytes => Bytes(_previousRegion);
 
     private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
