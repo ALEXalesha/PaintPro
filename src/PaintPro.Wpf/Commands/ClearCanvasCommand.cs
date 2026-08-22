@@ -4,15 +4,20 @@ using SkiaSharp;
 namespace PaintPro.Commands;
 
 /// <summary>
-/// Reset the active layer to a solid fill (default white) AND clear any pending
-/// floating pickup + selection. Directly addresses antipattern #1 from the spec
-/// — every transient state slice must be reset, not just the visible bitmap.
+/// Blank the document: every layer, plus any pending floating pickup and selection.
+/// Directly addresses antipattern #1 from the spec — every transient state slice must be
+/// reset, not just the visible bitmap.
+///
+/// Every layer, not the active one. This is what «Файл → Создать» runs, and clearing only
+/// the active layer left a document with two layers showing the old drawing through a
+/// supposedly blank canvas — and writing it to disk on the next Ctrl+S. The bottom layer
+/// goes back to the background colour because it is the paper; the ones above go to
+/// transparent, same rule as <see cref="ResizeCanvasCommand"/>.
 /// </summary>
 public sealed class ClearCanvasCommand : IDocumentCommand
 {
     private readonly SKColor _fill;
-    private Guid _layerId;
-    private SKBitmap? _previousBitmap;
+    private SKBitmap[]? _previousLayers;
     private FloatingPickup? _previousFloating;
     private Selection? _previousSelection;
 
@@ -20,16 +25,24 @@ public sealed class ClearCanvasCommand : IDocumentCommand
 
     public string DisplayName => "Clear canvas";
 
-    public long ApproximateBytes => Bytes(_previousBitmap);
-
-    private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
+    public long ApproximateBytes
+    {
+        get
+        {
+            if (_previousLayers is null) return 0;
+            long sum = 0;
+            foreach (var b in _previousLayers) sum += (long)b.RowBytes * b.Height;
+            return sum;
+        }
+    }
 
     public void Execute(Document doc)
     {
-        if (LayerTarget.Resolve(doc, ref _layerId) is { } pl)
+        _previousLayers ??= Snapshot(doc);
+        for (int i = 0; i < doc.Layers.Count; i++)
         {
-            _previousBitmap ??= pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height));
-            pl.Clear(_fill);
+            if (doc.Layers[i] is PixelLayer pl)
+                pl.Clear(i == 0 ? _fill : SKColors.Transparent);
         }
         _previousFloating = doc.FloatingPickup;
         _previousSelection = doc.Selection;
@@ -42,13 +55,29 @@ public sealed class ClearCanvasCommand : IDocumentCommand
 
     public void Undo(Document doc)
     {
-        if (LayerTarget.Resolve(doc, ref _layerId) is { } pl && _previousBitmap is not null)
+        if (_previousLayers is { } shots)
         {
-            using var canvas = new SKCanvas(pl.Bitmap);
-            canvas.Clear(SKColors.Transparent);
-            canvas.DrawBitmap(_previousBitmap, 0, 0);
+            for (int i = 0; i < doc.Layers.Count && i < shots.Length; i++)
+            {
+                if (doc.Layers[i] is not PixelLayer pl) continue;
+                using var canvas = new SKCanvas(pl.Bitmap);
+                canvas.Clear(SKColors.Transparent);
+                canvas.DrawBitmap(shots[i], 0, 0);
+            }
         }
         doc.FloatingPickup = _previousFloating;
         doc.Selection = _previousSelection;
+    }
+
+    private static SKBitmap[] Snapshot(Document doc)
+    {
+        var shots = new SKBitmap[doc.Layers.Count];
+        for (int i = 0; i < doc.Layers.Count; i++)
+        {
+            shots[i] = doc.Layers[i] is PixelLayer pl
+                ? pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height))
+                : new SKBitmap(1, 1);
+        }
+        return shots;
     }
 }

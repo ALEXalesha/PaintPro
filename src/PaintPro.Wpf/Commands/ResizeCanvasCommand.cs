@@ -57,6 +57,7 @@ public sealed class ResizeCanvasCommand : IDocumentCommand
         Rebuild(doc, _newWidth, _newHeight, null);
         doc.CanvasWidth = _newWidth;
         doc.CanvasHeight = _newHeight;
+        DropSelection(doc);
     }
 
     public void Undo(Document doc)
@@ -64,7 +65,16 @@ public sealed class ResizeCanvasCommand : IDocumentCommand
         Rebuild(doc, _previousWidth, _previousHeight, _previousLayers);
         doc.CanvasWidth = _previousWidth;
         doc.CanvasHeight = _previousHeight;
+        DropSelection(doc);
     }
+
+    /// <summary>
+    /// Смена размера холста обесценивает координаты выделения: рамка остаётся висеть там,
+    /// где холста уже нет, а клик внутрь поднимает не те пиксели. Снимает здесь, а не в
+    /// вызывающем коде, чтобы это работало и при откате по истории. В Electron-версии то
+    /// же самое сделано в 1.4.0.
+    /// </summary>
+    private static void DropSelection(Document doc) => doc.Selection = null;
 
     private static SKBitmap[] Snapshot(Document doc)
     {
