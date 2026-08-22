@@ -16,16 +16,20 @@
   - `Tools/` — `ITool` + 18 реализаций (Pencil, Brush, Marker, Eraser, Fill, Picker, Text,
     Line, Rect, Ellipse, Triangle, Star, Arrow, Heart, Select, Quad, Crop, Hand)
   - `Services/` — `HistoryManager`, `FileService`, `ClipboardService`, `GeometryMath`,
-    `BitmapKeying`, `PickupOps` (подъём пикселей и ленивое стирание), `SkiaBitmapBridge`
+    `BitmapKeying`, `PickupOps` (подъём пикселей, ленивое стирание и попадание мыши в
+    повёрнутый объект), `SkiaBitmapBridge`
   - `ViewModels/` — `MainViewModel`, `ColorEntryViewModel`
-  - `Views/` — `CanvasView` (SkiaSharp + overlay), `PromptDialog`
+  - `Views/` — `CanvasView` (SkiaSharp + overlay), `PromptDialog`. Сборку документа
+    (слои + превью инструмента + плавающий объект) держит `Document.Render` — одна и та
+    же для экрана и для сохраняемого файла
   - `Resources/` — `Themes.xaml`, `GlassStyles.xaml`, `ToolIcons.xaml`
 - `tools/generate-icon.ps1` — генератор многоразрешённого `.ico` (16/32/48/64/128/256)
 - `dist/PaintPro.exe` — финальный self-contained single-file билд (~78 МБ)
 - `paint-pro-electron/` — исходная Electron-версия, живёт параллельно и
   поддерживается. Её устройство и грабли: `paint-pro-electron/README.md` и
   `paint-pro-electron/DEV_CONTEXT.md`. Историю обеих версий ведёт общий
-  `CHANGELOG.md` (обе версии — 1.11.0).
+  `CHANGELOG.md`; C#-версия — 1.12.0, Electron-версия — 1.11.0 (правки 1.12.0
+  касаются только C#-стороны).
 
 ## Запуск из исходников
 

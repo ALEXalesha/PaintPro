@@ -569,29 +569,44 @@ public partial class MainViewModel : ObservableObject
         {
             // Не вырезаем, если копия не удалась: иначе пиксели пропадут в никуда.
             if (!CopyToClipboard()) return;
+            if (UndoOwnedPickup()) return;
             Document.DiscardFloating();
             InvalidateCanvas?.Invoke();
             return;
         }
         if (Document.Selection is null) return;
+        // Команду строим до копирования: по скрытому слою стирать нечего, и класть при
+        // этом пиксели в буфер обмена значило бы соврать, что вырезание состоялось.
+        var cut = BuildEraseCommand();
+        if (cut is null) return;
         if (!CopyToClipboard()) return;
-        EraseSelection();
+        Apply(cut);
     }
 
     /// <summary>Erase the current selection through history so it can be undone. Clears the selection.</summary>
     private void EraseSelection()
     {
-        var cmd = BuildEraseCommand();
-        if (cmd is null) return;
+        if (BuildEraseCommand() is { } cmd) Apply(cmd);
+    }
+
+    private void Apply(EraseRegionCommand cmd)
+    {
         Document.History.ExecuteAndPush(cmd, Document);
         Document.Selection = null;
         InvalidateCanvas?.Invoke();
     }
 
-    /// <summary>Translate the active selection into an undoable <see cref="EraseRegionCommand"/>, or null if there's nothing to erase.</summary>
+    /// <summary>
+    /// Translate the active selection into an undoable <see cref="EraseRegionCommand"/>, or null if there's nothing to erase.
+    ///
+    /// Через <see cref="ToolContext.DrawTarget"/>, как кисти, фигуры, заливка и текст:
+    /// стирание по скрытому слою уходило в его битмап целиком - на экране не менялось
+    /// ничего, зато в истории появлялась запись, документ считался изменённым, а Ctrl+X
+    /// ещё и клал в буфер обмена картинку, из которой ничего не вырезано.
+    /// </summary>
     private EraseRegionCommand? BuildEraseCommand()
     {
-        if (Document.ActiveLayer is not PixelLayer pl) return null;
+        if (ToolContext.DrawTarget() is not { } pl) return null;
         var canvasRect = new SKRectI(0, 0, pl.Width, pl.Height);
         var fill = PickupOps.EraseColor(Document, pl);
         switch (Document.Selection)
@@ -641,6 +656,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (Document.FloatingPickup is not null)
         {
+            if (UndoOwnedPickup()) return;
             // Drop the lifted pixels and keep the hole, recorded so it can be undone.
             Document.DiscardFloating();
             InvalidateCanvas?.Invoke();
@@ -648,6 +664,27 @@ public partial class MainViewModel : ObservableObject
         }
         if (Document.Selection is null) return;
         EraseSelection(); // undoable erase of the selected region
+    }
+
+    /// <summary>
+    /// Убрать пикап, который создала команда истории (вставка), - её же отменой.
+    /// False - пикап поднял пользователь, убирать его должен вызывающий.
+    ///
+    /// Delete, Ctrl+X и Escape по только что вставленной картинке снимали пикап напрямую:
+    /// с холста она пропадала, а запись «Вставка» оставалась текущей. История утверждала,
+    /// что вставка применена, документ считался изменённым, и Ctrl+Y картинку не возвращал -
+    /// курсор-то не двигался. То же правило, по которому это решает первый Ctrl+Z
+    /// (<see cref="HistoryManager.Undo"/>).
+    /// </summary>
+    private bool UndoOwnedPickup()
+    {
+        if (Document.FloatingPickup is not { Owner: { } owner }) return false;
+        // Отменяем только если вставка и есть последняя запись: между ней и удалением
+        // могла лечь другая правка, и отмена задела бы её.
+        if (!ReferenceEquals(Document.History.Current, owner)) return false;
+        Document.History.Undo(Document);
+        AfterHistoryWalk();
+        return true;
     }
     [RelayCommand] private void CommitFloating()
     {
@@ -657,8 +694,52 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand] private void CancelFloating()
     {
         if (Document.FloatingPickup is null) { Document.Selection = null; return; }
+        if (UndoOwnedPickup()) return;
         // Escape must leave no trace: the lifted pixels go back where they came from.
         Document.CancelFloating();
+        InvalidateCanvas?.Invoke();
+    }
+
+    /// <summary>
+    /// Повернуть поднятое выделение: «[» и «]» на ∓90°, с Shift - на ∓15°. Хоткей описан
+    /// и в спеке, и в Electron-версии, а в C#-версии его не было вовсе: нажатие не делало
+    /// ничего и молчало об этом.
+    ///
+    /// Выделение, которое ещё не поднимали, поднимается само - иначе хоткей молчал бы там,
+    /// где рамка на экране есть. Вместе с подъёмом включается «Выделение»: повёрнутые
+    /// пиксели надо чем-то двигать и прижимать, а кисть с ними ничего не умеет.
+    /// Угол четырёхугольника отдельно поворачивать не нужно - маска крутится вместе с
+    /// объектом (<see cref="Document.DrawPickup"/>).
+    /// </summary>
+    [RelayCommand]
+    private void RotateFloating(string? degrees)
+    {
+        if (!float.TryParse(degrees, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var deg)) return;
+
+        if (Document.FloatingPickup is null)
+        {
+            if (ToolContext.DrawTarget() is null) return;
+            switch (Document.Selection)
+            {
+                case RectSelection rs:
+                    if (ActiveTool is not (ToolKind.Select or ToolKind.Quad)) ActiveTool = ToolKind.Select;
+                    PickupOps.PromoteRect(Document, rs.Rect);
+                    break;
+                case PolygonSelection ps:
+                    if (ActiveTool is not (ToolKind.Select or ToolKind.Quad)) ActiveTool = ToolKind.Quad;
+                    PickupOps.PromoteQuad(Document, ps.Corners);
+                    break;
+                default:
+                    return;
+            }
+        }
+        if (Document.FloatingPickup is not { } fp) return;
+
+        // Поворот - такая же трансформация, как перетаскивание: исходную область пора стереть.
+        PickupOps.EnsureLazyErase(Document, fp);
+        fp.SetRotation(fp.Rotation + deg * MathF.PI / 180f);
+        Document.NotifyFloatingChanged();
         InvalidateCanvas?.Invoke();
     }
 

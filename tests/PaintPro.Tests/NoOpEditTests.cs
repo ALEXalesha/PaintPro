@@ -111,6 +111,7 @@ public class BindingPathTests
     [InlineData("Zoom")]
     [InlineData("ShapeFill")]
     [InlineData("ActiveTool")]
+    [InlineData("RotateFloatingCommand")]
     [InlineData("Document")]
     public void MainViewModel_exposes_the_path_XAML_binds_to(string path)
     {

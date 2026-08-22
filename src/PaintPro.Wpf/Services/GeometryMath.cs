@@ -153,6 +153,29 @@ public static class GeometryMath
     }
 
     /// <summary>
+    /// Лежит ли точка внутри многоугольника. Обычный ray casting: считаем, сколько рёбер
+    /// пересекает луч вправо от точки; нечётное число - внутри.
+    ///
+    /// Одна реализация на всех: по своей форме проверяются и выделение-многоугольник, и
+    /// поднятый quad. Пока копий было две, одна из них умела только габарит.
+    /// </summary>
+    public static bool PointInPolygon(IReadOnlyList<SKPoint> corners, SKPoint p)
+    {
+        bool inside = false;
+        for (int i = 0, j = corners.Count - 1; i < corners.Count; j = i++)
+        {
+            var pi = corners[i];
+            var pj = corners[j];
+            if (((pi.Y > p.Y) != (pj.Y > p.Y)) &&
+                (p.X < (pj.X - pi.X) * (p.Y - pi.Y) / (pj.Y - pi.Y) + pi.X))
+            {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    /// <summary>
     /// Angle (in radians, range −π..π) between (centre→from) and (centre→to).
     /// Used by the rotate-handle: delta = AngleBetween(prev, current).
     /// </summary>

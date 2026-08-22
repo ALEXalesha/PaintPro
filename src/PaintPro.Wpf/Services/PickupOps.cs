@@ -102,6 +102,35 @@ public static class PickupOps
         fp.OriginalAreaErased = true;
     }
 
+    /// <summary>
+    /// Точка мыши в системе координат пикапа: поворот снят, остальное как было.
+    ///
+    /// Пикап рисуется повёрнутым (<see cref="Document.DrawPickup"/> крутит канву), а хранит
+    /// неповёрнутые габарит и углы quad'а. Значит всё, что сравнивает мышь с этой
+    /// геометрией, обязано сначала снять поворот - иначе сравнение идёт с фигурой, которой
+    /// на экране нет.
+    /// </summary>
+    public static SKPoint ToLocal(FloatingPickup fp, SKPoint p)
+        => fp.Rotation == 0f ? p : GeometryMath.Rotate(p, fp.Center, -fp.Rotation);
+
+    /// <summary>
+    /// Попал ли клик в само тело пикапа (не в ручку).
+    ///
+    /// Повёрнутый объект проверяется по своей форме, а не по габариту: у прямоугольника,
+    /// повёрнутого на 45°, углы вылезают за габарит, а сам габарит по углам пуст. Пока
+    /// проверка шла по неповёрнутому <see cref="FloatingPickup.CurrentBBox"/>, клик по
+    /// видимому краю объекта прижимал его к холсту и начинал новое выделение, зато клик по
+    /// пустому углу габарита - таскал. Многоугольник так же: тянется он за то, что нарисовано,
+    /// а не за описанный вокруг прямоугольник. В Electron-версии это <c>hitFloating</c>.
+    /// </summary>
+    public static bool HitBody(FloatingPickup fp, SKPoint point)
+    {
+        var local = ToLocal(fp, point);
+        return fp.Quad is { } quad
+            ? GeometryMath.PointInPolygon(quad, local)
+            : fp.CurrentBBox.Contains(local);
+    }
+
     /// <summary>Index of the corner within <paramref name="radius"/> document px of the point, or -1.</summary>
     public static int HitCorner(IReadOnlyList<SKPoint> corners, SKPoint p, float radius)
     {

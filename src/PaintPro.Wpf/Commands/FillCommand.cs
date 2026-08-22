@@ -67,7 +67,15 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
 
         int seedOffset = _seed.Y * stride + _seed.X * 4;
         var target = ReadPixel(buffer, seedOffset);
-        var fill = Premultiply(_newColor);
+        // Заливка полупрозрачным цветом смешивается с тем, что под ней, а не заменяет его:
+        // раньше пиксель просто переписывался полупрозрачным цветом, и красная область,
+        // залитая чёрным на 50%, выходила серой - подложку выбрасывали вместо того, чтобы
+        // подмешать. Заливка непрозрачным цветом от этого не меняется ни на бит.
+        // В Electron-версии смешивание в floodFill было с самого начала.
+        var fill = Over(Premultiply(_newColor), target);
+        // Заливать нечем: цвет тот же самый или прозрачность нулевая. Заодно это защита
+        // от бесконечного цикла - залитый пиксель обязан перестать совпадать с исходным,
+        // иначе строка заполняется снова и снова.
         if (Same(target, fill)) return;
 
         var bounds = ScanlineFill(buffer, w, h, stride, _seed, target, fill);
@@ -171,6 +179,19 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
     {
         byte a = c.Alpha;
         return ((byte)(c.Blue * a / 255), (byte)(c.Green * a / 255), (byte)(c.Red * a / 255), a);
+    }
+
+    /// <summary>
+    /// Обычный source-over в предумноженных координатах: dst = src + dst·(1−srcA).
+    /// Именно так лёг бы полупрозрачный мазок кисти, и заливка не должна отличаться.
+    /// </summary>
+    private static (byte B, byte G, byte R, byte A) Over(
+        (byte B, byte G, byte R, byte A) src, (byte B, byte G, byte R, byte A) dst)
+    {
+        if (src.A == 255) return src;
+        int inv = 255 - src.A;
+        static byte Mix(byte s, byte d, int inv) => (byte)Math.Min(255, s + (d * inv + 127) / 255);
+        return (Mix(src.B, dst.B, inv), Mix(src.G, dst.G, inv), Mix(src.R, dst.R, inv), Mix(src.A, dst.A, inv));
     }
 
     private static SKBitmap CropBuffer(byte[] source, int stride, SKRectI region,

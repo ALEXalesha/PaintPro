@@ -287,6 +287,63 @@ public partial class Document : ObservableObject
         return new SKColor((byte)MathF.Round(r), (byte)MathF.Round(g), (byte)MathF.Round(b));
     }
 
+    /// <summary>
+    /// Собрать документ на канве: слои снизу вверх, а превью инструмента и плавающий
+    /// объект - на своём слое, а не поверх всех.
+    ///
+    /// Пока и то и другое рисовалось последним, штрих по нижнему слою во время
+    /// перетаскивания лежал поверх верхних, а на отпускании нырял под них: картинка
+    /// прыгала в момент, когда пользователь уже отвёл руку. Через эту же сборку идёт
+    /// <see cref="Services.FileService.Flatten"/>, чтобы сохранённый файл и экран не
+    /// расходились.
+    /// </summary>
+    /// <param name="preview">Превью активного инструмента или null.</param>
+    /// <param name="previewAlpha">Прозрачность, с которой превью ляжет на слой.</param>
+    public void Render(SKCanvas canvas, SKBitmap? preview = null, byte previewAlpha = 255,
+                       SKFilterQuality quality = SKFilterQuality.Low)
+    {
+        using var paint = new SKPaint { FilterQuality = quality };
+        var pickup = _floatingPickup;
+        bool pickupDrawn = false;
+
+        for (int i = 0; i < Layers.Count; i++)
+        {
+            var layer = Layers[i];
+            float opacity = Math.Clamp(layer.Opacity, 0f, 1f);
+
+            if (layer is PixelLayer pl)
+            {
+                if (pl.Visible)
+                {
+                    paint.Color = SKColors.White.WithAlpha((byte)(255 * opacity));
+                    canvas.DrawBitmap(pl.Bitmap, 0, 0, paint);
+                }
+            }
+            else layer.Render(canvas);
+
+            // Превью ложится на активный слой, поэтому и показывать его надо там же и с
+            // прозрачностью этого слоя: иначе на полупрозрачном слое штрих во время
+            // рисования темнее, чем окажется после.
+            if (preview is not null && i == Math.Clamp(ActiveLayerIndex, 0, Layers.Count - 1))
+            {
+                paint.Color = SKColors.White.WithAlpha((byte)(previewAlpha * opacity));
+                canvas.DrawBitmap(preview, 0, 0, paint);
+            }
+
+            // Плавающий объект - будущее содержимое того слоя, с которого его подняли.
+            // Видимость слоя ему не указ: он ещё не его часть, а спрятать то, что
+            // пользователь сейчас тащит, хуже любой нестыковки.
+            if (pickup is not null && layer.Id == pickup.SourceLayerId)
+            {
+                DrawPickup(canvas, pickup, (byte)(255 * opacity));
+                pickupDrawn = true;
+            }
+        }
+
+        // Слоя-источника уже нет (его удалили, пока объект висел) - кладём сверху.
+        if (pickup is not null && !pickupDrawn) DrawPickup(canvas, pickup);
+    }
+
     /// <summary>Composite a pickup (rotation + optional quad clip) onto a bitmap.</summary>
     public static void DrawPickup(SKBitmap destination, FloatingPickup pickup)
     {
@@ -299,7 +356,7 @@ public partial class Document : ObservableObject
     /// already on it. The live view and the flattened output must draw the pickup exactly
     /// the same way, so both go through here.
     /// </summary>
-    public static void DrawPickup(SKCanvas canvas, FloatingPickup pickup)
+    public static void DrawPickup(SKCanvas canvas, FloatingPickup pickup, byte alpha = 255)
     {
         canvas.Save();
         if (pickup.Rotation != 0f)
@@ -319,7 +376,8 @@ public partial class Document : ObservableObject
             clipPath.Close();
             canvas.ClipPath(clipPath, antialias: true);
         }
-        canvas.DrawBitmap(pickup.SourceBitmap, pickup.CurrentBBox);
+        using (var paint = alpha == 255 ? null : new SKPaint { Color = SKColors.White.WithAlpha(alpha) })
+            canvas.DrawBitmap(pickup.SourceBitmap, pickup.CurrentBBox, paint);
         canvas.Restore();
     }
 
@@ -340,7 +398,11 @@ public partial class Document : ObservableObject
 
         if (pickup.Quad is { } q)
         {
-            foreach (var p in q) Add(p);
+            // Углы quad'а хранятся неповёрнутыми, а рисуется он вместе с поворотом:
+            // копирование по неповёрнутым координатам брало область, в которой объекта
+            // уже нет. Повёрнутый габарит - ровно тот, что и у прямоугольного пикапа ниже.
+            var qc = pickup.Center;
+            foreach (var p in q) Add(pickup.Rotation == 0f ? p : Services.GeometryMath.Rotate(p, qc, pickup.Rotation));
         }
         else
         {

@@ -156,41 +156,18 @@ public partial class CanvasView : UserControl
         var sx = (float)infoW / docW;
         canvas.Scale(sx, sx);
 
+        // Слои, превью активного инструмента и плавающий объект - одной сборкой, той же,
+        // через которую идёт сохранение файла. Превью и объект ложатся на свой слой, а не
+        // поверх всех: инструменты рисуют штрих непрозрачным и отдают прозрачность
+        // отдельно, поэтому она передаётся рядом с битмапом.
+        //
         // When zoomed in past 1:1 we want crisp nearest-neighbour pixels so the user
         // sees individual document pixels. When zoomed out, linear sampling smooths the result.
-        var samplePaint = new SKPaint
-        {
-            FilterQuality = sx > 1f ? SKFilterQuality.None : SKFilterQuality.Low,
-        };
-
-        foreach (var layer in _vm.Document.Layers)
-        {
-            if (layer is PixelLayer pl && pl.Visible)
-            {
-                samplePaint.Color = SKColors.White.WithAlpha((byte)(255 * pl.Opacity));
-                canvas.DrawBitmap(pl.Bitmap, 0, 0, samplePaint);
-            }
-            else
-            {
-                layer.Render(canvas);
-            }
-        }
-
-        // Active tool's preview bitmap (rubber-banded shape, brush ghost).
-        // Tools draw their stroke opaque and report the alpha separately, so the preview
-        // has to be composited at that alpha to match what will land on the layer.
-        var preview = _vm.ActiveToolInstance.PreviewBitmap;
-        if (preview is not null)
-        {
-            samplePaint.Color = SKColors.White.WithAlpha(_vm.ActiveToolInstance.PreviewAlpha);
-            canvas.DrawBitmap(preview, 0, 0, samplePaint);
-        }
-
-        samplePaint.Dispose();
-
-        // Floating pickup on top.
-        if (_vm.Document.FloatingPickup is { } fp)
-            Document.DrawPickup(canvas, fp);
+        _vm.Document.Render(
+            canvas,
+            _vm.ActiveToolInstance.PreviewBitmap,
+            _vm.ActiveToolInstance.PreviewAlpha,
+            sx > 1f ? SKFilterQuality.None : SKFilterQuality.Low);
     }
 
     // ───────── Overlay (selection / handles) ─────────
@@ -264,8 +241,12 @@ public partial class CanvasView : UserControl
                 AddRotateHandle(fp, s);
             }
 
+            // Точки углов - там же, где нарисован сам объект: углы хранятся неповёрнутыми,
+            // а рисуется quad вместе с поворотом. Хват углов в QuadTool снимает поворот с
+            // мыши, так что точка и хват стоят в одном месте.
             if (fp.Quad is { } quad)
-                foreach (var c in quad) AddQuadCornerDot(c, s);
+                foreach (var c in quad)
+                    AddQuadCornerDot(fp.Rotation == 0f ? c : GeometryMath.Rotate(c, fp.Center, fp.Rotation), s);
         }
     }
 

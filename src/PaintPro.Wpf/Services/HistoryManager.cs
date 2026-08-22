@@ -150,7 +150,7 @@ public partial class HistoryManager : ObservableObject
         // текущей: история говорила, что вставка применена, а на холсте её не было, и
         // Ctrl+Y картинку не возвращал - курсор-то не двигался. Такой пикап снимает
         // отмена самой команды, парой строк ниже.
-        if (doc.FloatingPickup is { OwnedByCommand: false }) { doc.CancelFloating(); Notify(); return true; }
+        if (doc.FloatingPickup is { Owner: null }) { doc.CancelFloating(); Notify(); return true; }
         if (_cursor == 0) return false;
         _applying = true;
         try

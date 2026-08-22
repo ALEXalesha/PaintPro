@@ -25,14 +25,21 @@ public sealed class SelectTool : ITool
     {
         // Commit any floating pickup so we don't leave half-state behind.
         ctx.Document.CommitFloating();
+        // Инструмент меняют горячей клавишей, в том числе посреди жеста: кнопка мыши
+        // ещё нажата, а MouseUp придёт уже другому инструменту, и сюда мы больше не
+        // вернёмся. Брошенный включённым IsDrawing прячет ручки плавающего объекта
+        // насовсем - взяться откуда-то ещё выключению неоткуда.
+        _isCreatingRect = false;
+        _isMovingFloating = false;
+        ctx.IsDrawing = false;
     }
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
         var doc = ctx.Document;
 
-        // Click inside floating bbox → move it.
-        if (doc.FloatingPickup is { } fp && fp.CurrentBBox.Contains(position))
+        // Клик по самому объекту (с учётом поворота) → тащим его.
+        if (doc.FloatingPickup is { } fp && Services.PickupOps.HitBody(fp, position))
         {
             _isMovingFloating = true;
             _lastMovePoint = position;

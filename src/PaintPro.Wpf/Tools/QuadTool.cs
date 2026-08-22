@@ -31,7 +31,16 @@ public sealed class QuadTool : ITool
     private SKPoint _lastMove;
 
     public void OnActivate(ToolContext ctx) { }
-    public void OnDeactivate(ToolContext ctx) => ctx.Document.CommitFloating();
+
+    public void OnDeactivate(ToolContext ctx)
+    {
+        ctx.Document.CommitFloating();
+        // Смена инструмента посреди жеста - см. SelectTool.OnDeactivate.
+        _isCreating = false;
+        _isMovingFloating = false;
+        _draggingCorner = -1;
+        ctx.IsDrawing = false;
+    }
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
@@ -41,8 +50,10 @@ public sealed class QuadTool : ITool
         {
             // Corner handles win over the body: they sit on the outline, which is inside
             // the bbox, so testing them first is what makes them reachable at all.
+            // Углы хранятся неповёрнутыми, а нарисованы повёрнутыми: мышь приводим к
+            // системе координат пикапа, иначе хват попадает мимо видимой точки.
             int pickupCorner = fp.Quad is { } quad
-                ? PickupOps.HitCorner(quad, position, CornerRadius)
+                ? PickupOps.HitCorner(quad, PickupOps.ToLocal(fp, position), CornerRadius)
                 : -1;
             if (pickupCorner >= 0)
             {
@@ -50,7 +61,7 @@ public sealed class QuadTool : ITool
                 ctx.IsDrawing = true;
                 return;
             }
-            if (fp.CurrentBBox.Contains(position))
+            if (PickupOps.HitBody(fp, position))
             {
                 _isMovingFloating = true;
                 _lastMove = position;
@@ -109,9 +120,9 @@ public sealed class QuadTool : ITool
         {
             // Reshaping the clip is not a transform, so it deliberately does NOT trigger
             // the lazy erase — the source pixels stay put until the pickup actually moves.
-            if (doc.FloatingPickup is { Quad: { } quad })
+            if (doc.FloatingPickup is { Quad: { } quad } lifted)
             {
-                quad[_draggingCorner] = position;
+                quad[_draggingCorner] = PickupOps.ToLocal(lifted, position);
                 doc.NotifyFloatingChanged();
             }
             else if (doc.Selection is PolygonSelection ps)

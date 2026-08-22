@@ -60,6 +60,12 @@
         <KeyBinding Key="Escape" Command="{Binding CancelFloatingCommand}"/>
         <KeyBinding Key="Enter"  Command="{Binding CommitFloatingCommand}"/>
 
+        <!-- Поворот поднятого выделения: ±90°, с Shift ±15°. -->
+        <KeyBinding Key="OemOpenBrackets"  Command="{Binding RotateFloatingCommand}" CommandParameter="-90"/>
+        <KeyBinding Key="OemCloseBrackets" Command="{Binding RotateFloatingCommand}" CommandParameter="90"/>
+        <KeyBinding Key="OemOpenBrackets"  Modifiers="Shift" Command="{Binding RotateFloatingCommand}" CommandParameter="-15"/>
+        <KeyBinding Key="OemCloseBrackets" Modifiers="Shift" Command="{Binding RotateFloatingCommand}" CommandParameter="15"/>
+
         <KeyBinding Key="OemPlus"  Modifiers="Ctrl" Command="{Binding ZoomInCommand}"/>
         <KeyBinding Key="Add"      Modifiers="Ctrl" Command="{Binding ZoomInCommand}"/>
         <KeyBinding Key="OemMinus" Modifiers="Ctrl" Command="{Binding ZoomOutCommand}"/>

@@ -154,16 +154,19 @@ public sealed class FileService
         return new SaveOutcome(changed ? SaveStatus.FormatChanged : SaveStatus.Ok, path);
     }
 
-    /// <summary>Flatten all visible layers (and any floating pickup) into a single bitmap.</summary>
+    /// <summary>
+    /// Flatten all visible layers (and any floating pickup) into a single bitmap.
+    /// Сборка - общая с экраном (<see cref="Document.Render"/>): файл обязан совпадать с
+    /// тем, что видит пользователь, вплоть до того, на каком слое лежит поднятый объект.
+    /// </summary>
     public static SKBitmap Flatten(Document doc)
     {
         var bmp = new SKBitmap(doc.CanvasWidth, doc.CanvasHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
         using (var canvas = new SKCanvas(bmp))
         {
             canvas.Clear(SKColors.White);
-            foreach (var layer in doc.Layers) layer.Render(canvas);
+            doc.Render(canvas);
         }
-        if (doc.FloatingPickup is { } fp) Document.DrawPickup(bmp, fp);
         return bmp;
     }
 }

@@ -65,20 +65,5 @@ public sealed class PolygonSelection : Selection
         }
     }
 
-    public override bool Contains(SKPoint p)
-    {
-        // Standard ray-casting point-in-polygon for n=4.
-        bool inside = false;
-        for (int i = 0, j = 3; i < 4; j = i++)
-        {
-            var pi = _corners[i];
-            var pj = _corners[j];
-            if (((pi.Y > p.Y) != (pj.Y > p.Y)) &&
-                (p.X < (pj.X - pi.X) * (p.Y - pi.Y) / (pj.Y - pi.Y) + pi.X))
-            {
-                inside = !inside;
-            }
-        }
-        return inside;
-    }
+    public override bool Contains(SKPoint p) => Services.GeometryMath.PointInPolygon(_corners, p);
 }
