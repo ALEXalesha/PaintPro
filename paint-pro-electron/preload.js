@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Забыть текущий файл — следующий Ctrl+S спросит путь заново
   clearSavePath: () => ipcRenderer.invoke('clear-save-path'),
 
+  // Закрытие окна. Признак несохранённой работы знает только renderer, поэтому
+  // main сначала спрашивает его, а окно отпускает лишь по confirmClose.
+  askUnsaved: () => ipcRenderer.invoke('ask-unsaved'),
+  confirmClose: () => ipcRenderer.send('confirm-close'),
+
   // Открытие через нативный диалог
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
 

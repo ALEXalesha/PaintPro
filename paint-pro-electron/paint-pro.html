@@ -1616,6 +1616,9 @@ let state = {
   lastY: 0,
   history: [],
   historyIndex: -1,
+  // Позиция в истории на момент последнего сохранения. Сравнение с historyIndex
+  // и даёт признак несохранённой работы - см. isDirty().
+  savedHistoryIndex: 0,
   selection: null, // {x, y, w, h}
   selectionData: null, // ImageData для перемещения
   cropping: false,
@@ -1645,6 +1648,12 @@ let state = {
 // Глубина истории отмен. Снимки — полные PNG холста, поэтому не задираем до тысяч,
 // но 150 шагов — это «намного длиннее» прежних 50.
 const MAX_HISTORY = 150;
+
+// Потолок памяти под историю. Одной глубины мало: снимок холста 4000×3000 - это
+// единицы мегабайт в base64, и полтораста таких кадров кладут вкладку задолго до
+// того, как счётчик шагов дойдёт до 150. В WPF-версии такой потолок есть с самого
+// начала (HistoryManager.MaxBytes), сюда он не доехал.
+const MAX_HISTORY_BYTES = 512 * 1024 * 1024;
 
 // Инициализация белого фона
 function fillWhite() {
@@ -1735,7 +1744,9 @@ const toolNames = {
   select: 'Выделение', quad: 'Полигон 4 точками', crop: 'Обрезка'
 };
 
-const DRAWING_TOOLS = ['pencil','brush','marker','eraser','line','rect','ellipse','triangle','star','arrow','heart'];
+// Список фигур был скопирован инлайном в трёх местах. Один список на все ветки.
+const SHAPE_TOOLS = ['line','rect','ellipse','triangle','star','arrow','heart'];
+const DRAWING_TOOLS = ['pencil','brush','marker','eraser', ...SHAPE_TOOLS];
 
 // Фактическая толщина мазка в пикселях холста. Заданный размер - не то же самое,
 // что ляжет на холст: карандаш рисует вдвое тоньше, маркер - в полтора раза
@@ -1926,27 +1937,15 @@ function onDown(e) {
     selOverlay.classList.add('drawing');
   }
 
-  if (t === 'pencil' || t === 'brush') {
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    applyBrushStyle();
-    ctx.lineTo(x + 0.01, y + 0.01);
-    ctx.stroke();
-  } else if (t === 'marker') {
-    // Маркер рисуем на previewCanvas при alpha=1, чтобы перекрытия round-cap
-    // в стыках сегментов не складывались в тёмные точки. Полупрозрачность
-    // даём через CSS opacity слоя, и одним drawImage переносим на холст в onUp.
-    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-    previewCtx.strokeStyle = state.color;
-    previewCtx.lineCap = 'round';
-    previewCtx.lineJoin = 'round';
-    previewCtx.lineWidth = strokeWidthFor('marker', state.size);
-    previewCtx.globalAlpha = 1;
-    previewCanvas.style.opacity = String(state.opacity * 0.4);
+  if (t === 'pencil' || t === 'brush' || t === 'marker') {
+    beginPreviewStroke(t);
+    applyStrokeStyle(previewCtx);
     previewCtx.beginPath();
     previewCtx.moveTo(x, y);
     previewCtx.lineTo(x + 0.01, y + 0.01);
     previewCtx.stroke();
+  } else if (SHAPE_TOOLS.includes(t)) {
+    beginPreviewStroke(t);
   } else if (t === 'eraser') {
     // Ластик рисует белым - как в классическом Paint. Так нет проблем с
     // полупрозрачными пикселями и сохранение в PNG/JPEG даёт ожидаемый
@@ -2033,15 +2032,7 @@ function onMove(e) {
 
   const t = state.tool;
 
-  if (t === 'pencil' || t === 'brush') {
-    applyBrushStyle();
-    ctx.beginPath();
-    ctx.moveTo(state.lastX, state.lastY);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    state.lastX = x;
-    state.lastY = y;
-  } else if (t === 'marker') {
+  if (t === 'pencil' || t === 'brush' || t === 'marker') {
     previewCtx.beginPath();
     previewCtx.moveTo(state.lastX, state.lastY);
     previewCtx.lineTo(x, y);
@@ -2063,7 +2054,7 @@ function onMove(e) {
     ctx.restore();
     state.lastX = x;
     state.lastY = y;
-  } else if (['line','rect','ellipse','triangle','star','arrow','heart'].includes(t)) {
+  } else if (SHAPE_TOOLS.includes(t)) {
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     drawShape(previewCtx, t, state.startX, state.startY, x, y);
   } else if (t === 'select' || t === 'crop' || t === 'quad') {
@@ -2093,43 +2084,42 @@ function onUp(e) {
 
   const t = state.tool;
 
-  if (['pencil','brush','eraser'].includes(t)) {
-    saveHistory(t === 'eraser' ? 'Ластик' : 'Штрих');
-  } else if (t === 'marker') {
-    // Сливаем буфер-маркер на холст одним drawImage с marker-альфой
-    ctx.save();
-    ctx.globalAlpha = state.opacity * 0.4;
-    ctx.drawImage(previewCanvas, 0, 0);
-    ctx.restore();
-    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-    previewCanvas.style.opacity = '';
-    saveHistory('Маркер');
-  } else if (['line','rect','ellipse','triangle','star','arrow','heart'].includes(t)) {
+  if (t === 'pencil' || t === 'brush' || t === 'marker') {
+    mergePreviewStroke(t);
+    saveHistory(t === 'marker' ? 'Маркер' : 'Штрих');
+  } else if (t === 'eraser') {
+    saveHistory('Ластик');
+  } else if (SHAPE_TOOLS.includes(t)) {
     const {x, y} = getPos(e);
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-    drawShape(ctx, t, state.startX, state.startY, x, y);
+    drawShape(previewCtx, t, state.startX, state.startY, x, y);
+    mergePreviewStroke(t);
     saveHistory('Фигура');
   } else if (t === 'select') {
-    if (state.selection && state.selection.w > 2 && state.selection.h > 2) {
+    const sel = normalizeSelection();
+    if (sel && sel.w > 2 && sel.h > 2) {
       // Помечаем, что выделение готово к перемещению. Сам подъём пикселей и стирание
       // фона происходят при клике внутрь (promoteSelectionToFloating), а не сейчас —
       // так холст не трогается, пока пользователь не начал двигать.
-      state.selectionData = ctx.getImageData(
-        state.selection.x, state.selection.y,
-        state.selection.w, state.selection.h
-      );
+      state.selectionData = ctx.getImageData(sel.x, sel.y, sel.w, sel.h);
+    } else {
+      hideSelection();
     }
   } else if (t === 'crop') {
-    if (state.selection && state.selection.w > 2 && state.selection.h > 2) {
+    const sel = normalizeSelection();
+    if (sel && sel.w > 2 && sel.h > 2) {
       state.cropping = true;
       showCropControls();
+    } else {
+      hideSelection();
     }
   } else if (t === 'quad') {
     // Polygon-selection. promote БЕЗ стирания bbox — pickup идентичен canvas,
     // визуально нет «дырки». originalQuad НЕ сохраняем сразу — он будет сделан
     // как snapshot ТЕКУЩЕЙ формы при первом translate/scale/rotate. Так пользователь
     // может свободно менять форму corner-drag без побочного стирания canvas.
-    if (state.selection && state.selection.w >= 20 && state.selection.h >= 20) {
+    const sel = normalizeSelection();
+    if (sel && sel.w >= 20 && sel.h >= 20) {
       const f = promoteSelectionToFloating({ eraseBbox: false });
       if (f) {
         f.quad = [
@@ -2147,23 +2137,61 @@ function onUp(e) {
   }
 }
 
-function applyBrushStyle() {
-  ctx.strokeStyle = state.color;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.globalAlpha = state.opacity;
+// ============ ПРОЗРАЧНОСТЬ: ОДНО НАЛОЖЕНИЕ НА МАЗОК ============
+// Инвариант: ctx.globalAlpha всегда 1 вне пар save/restore. Прозрачность
+// накладывается ровно один раз - когда готовый мазок переносится с previewCanvas
+// на холст. Прежний applyBrushStyle писал state.opacity прямо в ctx и не возвращал
+// обратно, а globalAlpha - состояние контекста, а не операции: значение оставалось
+// висеть, и следующий Ctrl+Z, «Очистить холст», поворот, отражение или открытие
+// файла рисовали полупрозрачно. Одна отмена после мазка с прозрачностью 40%
+// делала весь лист прозрачным на 60%.
+//
+// Побочная выгода та же, ради которой так уже был сделан маркер: перекрытия
+// round-cap в стыках сегментов не складываются, и мазок при opacity<1 не
+// превращается в цепочку тёмных пятен.
 
-  ctx.lineWidth = strokeWidthFor(state.tool, state.size);
-  // marker рисуется через previewCanvas — стили задаются в onDown
+// Итоговая альфа мазка. Маркер всегда бледнее заданного - он маркер.
+function strokeAlphaFor(tool) {
+  return tool === 'marker' ? state.opacity * 0.4 : state.opacity;
 }
 
+// Начать мазок в буфере: рисуем непрозрачно, а видимую прозрачность на время
+// рисования даёт CSS-слой previewCanvas.
+function beginPreviewStroke(tool) {
+  previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  previewCtx.globalAlpha = 1;
+  previewCanvas.style.opacity = String(strokeAlphaFor(tool));
+}
+
+// Перенести готовый мазок из буфера на холст. Единственное место, где
+// прозрачность вообще применяется к ctx.
+function mergePreviewStroke(tool) {
+  ctx.save();
+  ctx.globalAlpha = strokeAlphaFor(tool);
+  ctx.drawImage(previewCanvas, 0, 0);
+  ctx.restore();
+  previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  previewCanvas.style.opacity = '';
+}
+
+function applyStrokeStyle(g) {
+  g.strokeStyle = state.color;
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.globalAlpha = 1;
+  g.lineWidth = strokeWidthFor(state.tool, state.size);
+}
+
+// Рисует всегда в previewCanvas и всегда непрозрачно: альфу накладывает
+// mergePreviewStroke. У режима «контур + заливка» это заодно убирает двойное
+// наложение на границе, где обводка ложилась поверх заливки.
 function drawShape(context, type, x1, y1, x2, y2) {
   context.strokeStyle = state.color;
   context.fillStyle = state.color;
   context.lineWidth = state.size;
   context.lineCap = 'round';
   context.lineJoin = 'round';
-  context.globalAlpha = state.opacity;
+  context.globalAlpha = 1;
 
   const doFill = state.fillMode === 'solid' || state.fillMode === 'both';
   const doStroke = state.fillMode === 'outline' || state.fillMode === 'both';
@@ -2319,6 +2347,25 @@ function updateSelectionOverlay() {
   selOverlay.classList.toggle('small-y', hPx < 50);
 }
 
+// Приводим выделение к целым пикселям и зажимаем границами холста сразу, как
+// только пользователь отпустил мышь. Дробные границы дважды пересэмплировали
+// картинку: подъём во floating округлял размер снимка, а укладка обратно рисовала
+// его в дробный прямоугольник, и выделение мылилось от одного перетаскивания.
+// Заодно это чинит рамку, уехавшую за край: mousemove координаты не ограничивал,
+// и протяжка мимо холста давала выделение с отрицательным x.
+function normalizeSelection() {
+  if (!state.selection) return null;
+  const sel = state.selection;
+  const x = Math.max(0, Math.min(canvas.width, Math.round(sel.x)));
+  const y = Math.max(0, Math.min(canvas.height, Math.round(sel.y)));
+  const w = Math.max(0, Math.min(canvas.width - x, Math.round(sel.x + sel.w) - x));
+  const h = Math.max(0, Math.min(canvas.height - y, Math.round(sel.y + sel.h) - y));
+  state.selection = { x, y, w, h };
+  updateSelectionOverlay();
+  document.getElementById('sel-size').textContent = `${w} × ${h}`;
+  return state.selection;
+}
+
 function hideSelection() {
   selOverlay.style.display = 'none';
   state.selection = null;
@@ -2384,10 +2431,27 @@ function cancelCrop() {
 
 // История undo/redo. Каждая запись — { url, label }: url для восстановления,
 // label для списка в панели «История изменений».
+// Сколько байт держит история. Длина base64-строки и есть её вес в памяти.
+function historyBytes() {
+  let total = 0;
+  for (const entry of state.history) total += entry.url.length;
+  return total;
+}
+
 function saveHistory(label) {
   state.history = state.history.slice(0, state.historyIndex + 1);
   state.history.push({ url: canvas.toDataURL(), label: label || 'Изменение' });
-  if (state.history.length > MAX_HISTORY) state.history.shift();
+  // Самый свежий кадр не выбрасываем никогда, каким бы тяжёлым он ни был: потерять
+  // отмену только что сделанной правки хуже, чем занять память.
+  let bytes = historyBytes();
+  while (state.history.length > 1 &&
+         (state.history.length > MAX_HISTORY || bytes > MAX_HISTORY_BYTES)) {
+    bytes -= state.history[0].url.length;
+    state.history.shift();
+    // Все индексы съехали на один. Метка «здесь было сохранено» должна ехать
+    // вместе с ними, иначе после переполнения сохранённый файл считается изменённым.
+    state.savedHistoryIndex--;
+  }
   state.historyIndex = state.history.length - 1;
   renderHistoryPanel();
 }
@@ -2694,6 +2758,9 @@ function floatingBounds(f) {
 }
 
 function renderFloating() {
+  // previewCanvas делят мазок и плавающий объект: без сброса объект унаследовал бы
+  // прозрачность недорисованного мазка.
+  previewCanvas.style.opacity = '';
   if (!state.floating) {
     floatingFrame.classList.remove('active', 'quad-mode');
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
@@ -3091,14 +3158,10 @@ let currentTextX = 0, currentTextY = 0;
 function startTextEdit(x, y) {
   currentTextX = x;
   currentTextY = y;
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = rect.width / canvas.width;
-  const scaleY = rect.height / canvas.height;
 
   textEditor.innerHTML = '';
   textEditor.style.display = 'block';
-  textEditor.style.left = (x * scaleX) + 'px';
-  textEditor.style.top = (y * scaleY) + 'px';
+  positionTextEditor();
   textEditor.style.color = state.color;
   textEditor.style.opacity = state.opacity;
   const fontSize = clampTextSize(document.getElementById('text-size').value);
@@ -3121,6 +3184,27 @@ function startTextEdit(x, y) {
 
   // Фокус
   setTimeout(() => textEditor.focus(), 10);
+}
+
+// Редактор задаёт размеры в пикселях холста, а живёт в экранных. Позицию раньше
+// умножали на зум, а размер шрифта - нет: на масштабе 200% буквы в рамке были
+// вдвое мельче тех, что ложились на холст, а смена зума оставляла рамку на старом
+// месте. Масштабируем элемент целиком одним transform - тогда и padding, по
+// которому commitText считает смещение, остаётся в координатах холста.
+function positionTextEditor() {
+  const rect = canvas.getBoundingClientRect();
+  const z = rect.width / canvas.width;
+  textEditor.style.transformOrigin = '0 0';
+  textEditor.style.transform = `scale(${z})`;
+  textEditor.style.left = (currentTextX * z) + 'px';
+  textEditor.style.top = (currentTextY * z) + 'px';
+}
+
+// Рамка и её тулбар держатся за одну точку холста, значит двигаются вместе.
+function positionTextOverlay() {
+  if (textEditor.style.display !== 'block') return;
+  positionTextEditor();
+  positionTextToolbar();
 }
 
 function positionTextToolbar() {
@@ -3359,6 +3443,7 @@ function newCanvas() {
   document.title = 'Paint Pro';
   if (window.electronAPI && window.electronAPI.clearSavePath) window.electronAPI.clearSavePath();
   saveHistory('Новый холст');
+  state.savedHistoryIndex = state.historyIndex;
 }
 
 // MIME-тип и качество по расширению файла. toDataURL молча падает обратно на PNG
@@ -3370,13 +3455,21 @@ function encoderFor(filePath) {
   return { mime: 'image/png', quality: undefined };
 }
 
+// Возвращает true, если файл действительно записан. По этому диалог закрытия
+// решает, отпускать окно или оставить.
 async function saveCanvas(saveAs = false) {
+  // Плавающий объект живёт на previewCanvas, текст - в contenteditable поверх
+  // холста. canvas.toDataURL не видит ни того, ни другого, а pick-save-path без
+  // saveAs пишет в открытый файл не спрашивая: Ctrl+S сразу после «Открыть»
+  // клал поверх фотографии чистый белый лист.
+  if (textEditor.style.display === 'block') commitText();
+  if (state.floating) commitFloating();
   const defaultName = state.currentFileName || 'paint-pro-' + Date.now() + '.png';
 
   // Electron: сначала спрашиваем путь, потом кодируем под его расширение.
   if (window.electronAPI) {
     const target = await window.electronAPI.pickSavePath(defaultName, saveAs);
-    if (!target || target.canceled || !target.filePath) return;
+    if (!target || target.canceled || !target.filePath) return false;
     if (target.changed) {
       alert('Этот формат записывать нельзя, файл сохранён как PNG:\n' + target.filePath);
     }
@@ -3386,10 +3479,11 @@ async function saveCanvas(saveAs = false) {
     if (result && result.success) {
       state.currentFileName = result.filePath.split(/[\\/]/).pop();
       document.title = 'Paint Pro — ' + state.currentFileName;
-    } else if (result && result.error) {
-      alert('Ошибка сохранения: ' + result.error);
+      state.savedHistoryIndex = state.historyIndex;
+      return true;
     }
-    return;
+    if (result && result.error) alert('Ошибка сохранения: ' + result.error);
+    return false;
   }
 
   // Браузер: классическое скачивание
@@ -3397,6 +3491,28 @@ async function saveCanvas(saveAs = false) {
   link.download = defaultName;
   link.href = canvas.toDataURL('image/png');
   link.click();
+  state.savedHistoryIndex = state.historyIndex;
+  return true;
+}
+
+// ============ НЕСОХРАНЁННАЯ РАБОТА ============
+// Закрытие окна молча теряло рисунок: в WPF-версии вопрос появился ещё в 1.2.0,
+// сюда правка не доехала. Признак изменений живёт здесь, а не копией в
+// main-процессе - иначе его пришлось бы синхронизировать из десятка мест.
+function isDirty() {
+  return state.historyIndex !== state.savedHistoryIndex
+      || !!state.floating
+      || textEditor.style.display === 'block';
+}
+
+// Ответ на запрос закрытия от main-процесса.
+async function handleCloseRequest() {
+  if (!isDirty()) { window.electronAPI.confirmClose(); return; }
+  // Три кнопки вместо confirm(): «не сохранять» и «отмена» - разные вещи.
+  const answer = await window.electronAPI.askUnsaved();
+  if (answer === 2) return;                                  // отмена
+  if (answer === 1) { window.electronAPI.confirmClose(); return; }  // не сохранять
+  if (await saveCanvas(false)) window.electronAPI.confirmClose();
 }
 
 function clearCanvas() {
@@ -3514,19 +3630,24 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.ctrlKey || e.metaKey) {
-    if (e.key === 'z') { e.preventDefault(); undo(); }
-    else if (e.key === 'y') { e.preventDefault(); redo(); }
-    else if (e.key === 's') { e.preventDefault(); saveCanvas(); }
-    else if (e.key === 'c') {
+    // С зажатым Shift e.key приходит заглавной. Сравнение с маленькой буквой
+    // убивало все шифтованные сочетания: «Сохранить как… Ctrl ⇧ S» стояло в меню,
+    // но не работало. Ctrl+N там же стоял и не был заведён вовсе.
+    const k = e.key.toLowerCase();
+    if (k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+    else if (k === 'y') { e.preventDefault(); redo(); }
+    else if (k === 's') { e.preventDefault(); saveCanvas(e.shiftKey); }
+    else if (k === 'n') { e.preventDefault(); newCanvas(); }
+    else if (k === 'c') {
       if ((state.selection || state.floating) && copySelection()) e.preventDefault();
     }
-    else if (e.key === 'x') {
+    else if (k === 'x') {
       if (state.selection || state.floating) { e.preventDefault(); cutSelection(); }
     }
-    else if (e.key === 'a') { e.preventDefault(); selectAll(); }
-    else if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); }
-    else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); }
-    else if (e.key === '0') { e.preventDefault(); zoomReset(); }
+    else if (k === 'a') { e.preventDefault(); selectAll(); }
+    else if (k === '=' || k === '+') { e.preventDefault(); zoomIn(); }
+    else if (k === '-' || k === '_') { e.preventDefault(); zoomOut(); }
+    else if (k === '0') { e.preventDefault(); zoomReset(); }
     return;
   }
   const map = {s:'select', h:'hand', p:'pencil', b:'brush', m:'marker', e:'eraser', g:'fill', i:'picker', t:'text', q:'quad'};
@@ -3600,7 +3721,7 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('canvas-area').addEventListener('scroll', () => {
   updateSelectionOverlay();
   updateFloatingFrame();
-  if (textEditor.style.display === 'block') positionTextToolbar();
+  positionTextOverlay();
 });
 window.addEventListener('resize', () => {
   updateSelectionOverlay();
@@ -3738,7 +3859,7 @@ function applyPan() {
   wrapper.style.transform = `translate(${state.panX}px, ${state.panY}px)`;
   updateSelectionOverlay();
   updateFloatingFrame();
-  if (textEditor.style.display === 'block') positionTextToolbar();
+  positionTextOverlay();
 }
 
 function resetPan() {
@@ -3816,7 +3937,7 @@ function applyZoom() {
   // Обновляем overlays
   updateSelectionOverlay();
   updateFloatingFrame();
-  if (textEditor.style.display === 'block') positionTextToolbar();
+  positionTextOverlay();
   // Курсор-кружок зависит от зума (пиксели холста × зум = пиксели экрана)
   if (typeof updateBrushCursor === 'function') updateBrushCursor();
 }
@@ -3903,6 +4024,7 @@ if (window.electronAPI) {
         pasteFromClipboard();
         break;
       case 'select-all': selectAll(); break;
+      case 'request-close': handleCloseRequest(); break;
       case 'zoom-in': zoomIn(); break;
       case 'zoom-out': zoomOut(); break;
       case 'zoom-reset': zoomReset(); break;
@@ -3966,7 +4088,7 @@ if (window.electronAPI) {
 
   // Убираем обычное поведение Ctrl+O (браузерный диалог) - заменяем на Electron
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
       e.preventDefault();
       window.electronAPI.openFileDialog().then(data => {
         if (data && data.dataUrl) loadImageFromDataUrl(data.dataUrl, data.fileName);

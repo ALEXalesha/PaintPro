@@ -334,6 +334,10 @@ public partial class MainViewModel : ObservableObject
             Document.History.ExecuteAndPush(
                 new RegionDiffCommand("Открытие", pl.Id, full, before, after), Document);
         }
+        // Только что открытый файл - это не несохранённая работа. Без сдвига метки
+        // окно сразу после «Открыть» спрашивало про сохранение и по «Да» переписывало
+        // файл тем же содержимым.
+        _savedAtCursor = Document.History.Cursor;
         InvalidateCanvas?.Invoke();
     }
 
