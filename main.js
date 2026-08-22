@@ -196,6 +196,9 @@ ipcMain.on('confirm-close', () => {
 });
 
 // Открытие файла через системный диалог
+// Чтение без try/catch отклоняло invoke, а renderer ждал результат без catch:
+// «Открыть…» на нечитаемом файле не делало вообще ничего. Ошибку возвращаем полем
+// error - так же, как это давно делает read-dropped-file ниже.
 ipcMain.handle('open-file-dialog', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
@@ -206,17 +209,22 @@ ipcMain.handle('open-file-dialog', async () => {
   });
   if (result.canceled || !result.filePaths.length) return null;
   const filePath = result.filePaths[0];
-  const data = fs.readFileSync(filePath);
-  const ext = path.extname(filePath).toLowerCase().slice(1);
-  const mimeMap = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', bmp:'image/bmp', gif:'image/gif', webp:'image/webp' };
-  const mime = mimeMap[ext] || 'image/png';
-  // Открытый файл становится "текущим" для последующего Ctrl+S.
-  global.lastSavedPath = filePath;
-  return {
-    dataUrl: `data:${mime};base64,${data.toString('base64')}`,
-    fileName: path.basename(filePath),
-    filePath
-  };
+  try {
+    const data = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase().slice(1);
+    const mimeMap = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', bmp:'image/bmp', gif:'image/gif', webp:'image/webp' };
+    const mime = mimeMap[ext] || 'image/png';
+    // Открытый файл становится "текущим" для последующего Ctrl+S. Ставим только после
+    // удачного чтения: иначе Ctrl+S нацелился бы на файл, который так и не открылся.
+    global.lastSavedPath = filePath;
+    return {
+      dataUrl: `data:${mime};base64,${data.toString('base64')}`,
+      fileName: path.basename(filePath),
+      filePath
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
 });
 
 // Чтение файла по пути (для drag & drop)

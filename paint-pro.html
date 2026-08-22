@@ -1958,9 +1958,12 @@ function onDown(e) {
     ctx.fill();
     ctx.restore();
   } else if (t === 'fill') {
-    floodFill(Math.floor(x), Math.floor(y), state.color);
+    // Не безусловный saveHistory: заливка бывает пустой (кликнули по области, уже
+    // залитой этим же цветом), а запись нужна только если пиксели изменились. Пустая
+    // включает признак несохранённой работы, и приложение спрашивает про сохранение
+    // после действия, которое ничего не сделало. В WPF-версии это починено в 1.7.0.
+    if (floodFill(Math.floor(x), Math.floor(y), state.color)) saveHistory('Заливка');
     state.drawing = false;
-    saveHistory('Заливка');
   } else if (t === 'picker') {
     // Сэмплим из композита: основной холст + текущий floating сверху. Так
     // пользователь подбирает цвет ровно того, что видит, не теряя плавающий
@@ -2274,18 +2277,24 @@ function drawHeart(c, x, y, w, h) {
   c.closePath();
 }
 
-// Заливка (flood fill) с учётом прозрачности
+// Заливка (flood fill) с учётом прозрачности.
+// Возвращает true, если хоть один пиксель изменился: по этому вызывающий код решает,
+// писать ли запись в историю.
 function floodFill(x, y, fillHex) {
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = img.data;
   const w = canvas.width, h = canvas.height;
+  // Клик у самого правого или нижнего края даёт после Math.floor координату, равную
+  // размеру холста: getPixel читает за буфер и возвращает undefined, заливать нечего.
+  if (x < 0 || y < 0 || x >= w || y >= h) return false;
+
+  const img = ctx.getImageData(0, 0, w, h);
+  const data = img.data;
   const alpha = state.opacity;
 
   const target = getPixel(data, x, y, w);
   const fillRgb = hexToRgbArr(fillHex);
 
   // Если цвет заливки такой же как целевой при непрозрачности 100% - выходим
-  if (alpha >= 1 && colorsMatch(target, fillRgb)) return;
+  if (alpha >= 1 && colorsMatch(target, fillRgb)) return false;
 
   // Флаги посещённых пикселей. Без них при непрозрачности меньше 100% и цвете
   // заливки, близком к исходному, смешанный результат остаётся в пределах
@@ -2295,6 +2304,7 @@ function floodFill(x, y, fillHex) {
   // пар набегают миллионы, и каждая - отдельный объект для сборщика мусора.
   const seen = new Uint8Array(w * h);
   const stack = [x, y];
+  let filled = 0;
   while (stack.length) {
     const cy = stack.pop();
     const cx = stack.pop();
@@ -2309,9 +2319,12 @@ function floodFill(x, y, fillHex) {
     const g = Math.round(p[1] * (1 - alpha) + fillRgb[1] * alpha);
     const b = Math.round(p[2] * (1 - alpha) + fillRgb[2] * alpha);
     setPixel(data, cx, cy, w, [r, g, b]);
+    filled++;
     stack.push(cx + 1, cy, cx - 1, cy, cx, cy + 1, cx, cy - 1);
   }
+  if (!filled) return false;
   ctx.putImageData(img, 0, 0);
+  return true;
 }
 
 function getPixel(d, x, y, w) {
@@ -2416,6 +2429,9 @@ function updateOverlays() {
 // что в WPF-версии (ResizeCanvasCommand.MaxDimension / MaxPixels).
 const MAX_CANVAS_SIDE = 20000;
 const MAX_CANVAS_PIXELS = 120000000;
+// Нижняя граница для поля ввода. Перетаскивание ручки холста зажимается своим
+// минимумом в clampCanvasSize: отказывать посреди жеста некуда.
+const MIN_CANVAS_SIDE = 10;
 
 function canvasSizeAllowed(w, h) {
   return w >= 1 && h >= 1
@@ -3637,10 +3653,13 @@ function clearCanvas() {
 function resizeCanvas() {
   const w = parseInt(document.getElementById('width-input').value);
   const h = parseInt(document.getElementById('height-input').value);
-  if (!w || !h || w < 10 || h < 10) return;
-  if (!canvasSizeAllowed(w, h)) {
-    alert('Размер должен быть от 10 до ' + MAX_CANVAS_SIDE + ' по каждой стороне\n'
-        + 'и не больше ' + (MAX_CANVAS_PIXELS / 1000000) + ' млн пикселей всего.');
+  // Раньше слишком маленький размер отваливался молча и без updateCanvasInfo: в поле
+  // оставалось отвергнутое число, холст был прежний, и понять, что произошло, было
+  // нельзя. Верхняя и нижняя границы отказывают одинаково.
+  if (!w || !h || w < MIN_CANVAS_SIDE || h < MIN_CANVAS_SIDE || !canvasSizeAllowed(w, h)) {
+    alert('Размер должен быть от ' + MIN_CANVAS_SIDE + ' до ' + MAX_CANVAS_SIDE
+        + ' по каждой стороне\nи не больше ' + (MAX_CANVAS_PIXELS / 1000000)
+        + ' млн пикселей всего.');
     updateCanvasInfo();
     return;
   }
@@ -4031,7 +4050,9 @@ function resetPan() {
 // Меняет CSS transform canvas-wrapper, не трогает реальные размеры
 
 state.zoom = 1;
-const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8];
+// Тот же набор, что в WPF (GeometryMath.NextZoomStep). Здесь не хватало 0.67, и одна
+// и та же кнопка «уменьшить» с 75% уводила в разных версиях в разные места.
+const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8];
 
 function applyZoom() {
   // setCanvasSize зовёт applyZoom и может сработать раньше, чем ниже по файлу
@@ -4179,6 +4200,7 @@ if (window.electronAPI) {
       const filePath = window.electronAPI.getFilePath(file);
       if (filePath) {
         const result = await window.electronAPI.readDroppedFile(filePath);
+        if (result && result.error) { alert('Не удалось открыть файл: ' + result.error); break; }
         if (result && result.dataUrl) {
           loadImageFromDataUrl(result.dataUrl, result.fileName);
           break; // Открываем только первый файл
@@ -4193,24 +4215,32 @@ if (window.electronAPI) {
     }
   });
 
+  // Открытие через диалог. Ошибку чтения раньше не показывал никто: main-процесс читал
+  // файл без try/catch, invoke отклонялся, а оба вызывающих места ждали результат без
+  // catch. Файл удалили после показа диалога, нет прав, отвалился сетевой диск - окно
+  // закрывалось, и дальше не происходило ровно ничего.
+  async function openViaDialog() {
+    try {
+      const data = await window.electronAPI.openFileDialog();
+      if (!data) return;                       // диалог отменили
+      if (data.error) { alert('Не удалось открыть файл: ' + data.error); return; }
+      loadImageFromDataUrl(data.dataUrl, data.fileName);
+    } catch (err) {
+      alert('Не удалось открыть файл: ' + (err && err.message ? err.message : err));
+    }
+  }
+
   // Убираем обычное поведение Ctrl+O (браузерный диалог) - заменяем на Electron
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
       e.preventDefault();
-      window.electronAPI.openFileDialog().then(data => {
-        if (data && data.dataUrl) loadImageFromDataUrl(data.dataUrl, data.fileName);
-      });
+      openViaDialog();
     }
   });
 
   // Перекрываем пункт «Открыть…» в меню «Файл»
   const openBtn = document.querySelector('.mb-dd-item[onclick*="file-input"]');
-  if (openBtn) {
-    openBtn.onclick = async () => {
-      const data = await window.electronAPI.openFileDialog();
-      if (data && data.dataUrl) loadImageFromDataUrl(data.dataUrl, data.fileName);
-    };
-  }
+  if (openBtn) openBtn.onclick = openViaDialog;
 }
 
 setColor('#000000');
