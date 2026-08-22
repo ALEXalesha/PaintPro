@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -99,8 +99,9 @@ public partial class MainWindow : Window
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         var files = (string[])e.Data.GetData(DataFormats.FileDrop);
         if (files.Length == 0) return;
-        var bmp = Vm.FileService.OpenImage(files[0]);
-        if (bmp is not null) Vm.ApplyOpenedBitmap(bmp);
+        // Ошибка чтения доходит до пользователя: раньше перетаскивание папки или битого
+        // файла не делало вообще ничего.
+        Vm.OpenPath(files[0]);
     }
 
     /// <summary>Click on the layer name → make that layer active.</summary>

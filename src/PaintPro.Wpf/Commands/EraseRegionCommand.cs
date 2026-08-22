@@ -8,7 +8,7 @@ namespace PaintPro.Commands;
 /// Snapshots the affected region's pixels before Execute so Undo restores them —
 /// this is what makes Cut / Delete reversible (previously they bypassed history).
 /// </summary>
-public sealed class EraseRegionCommand : IDocumentCommand
+public sealed class EraseRegionCommand : IDocumentCommand, IDisposable
 {
     private readonly SKRectI _bounds;
     private readonly SKPoint[]? _polygon; // null => fill the whole bounds rect
@@ -55,6 +55,12 @@ public sealed class EraseRegionCommand : IDocumentCommand
         {
             canvas.DrawRect(new SKRect(_bounds.Left, _bounds.Top, _bounds.Right, _bounds.Bottom), paint);
         }
+    }
+
+    public void Dispose()
+    {
+        _underlying?.Dispose();
+        _underlying = null;
     }
 
     public void Undo(Document doc)

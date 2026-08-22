@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using PaintPro.Commands;
 using PaintPro.Models;
 
@@ -41,6 +41,9 @@ public partial class HistoryManager : ObservableObject
     /// <summary>How many commands are currently applied. Entries at index &gt;= Cursor are redoable.</summary>
     public int Cursor => _cursor;
 
+    /// <summary>Последняя применённая команда или null. Нужна склейке подряд идущих однотипных правок.</summary>
+    public IDocumentCommand? Current => _cursor > 0 ? _commands[_cursor - 1] : null;
+
     public int UndoDepth => _cursor;
     public int RedoDepth => _commands.Count - _cursor;
 
@@ -53,6 +56,9 @@ public partial class HistoryManager : ObservableObject
     /// состояние вытеснено совсем: вернуться к нему уже нельзя, значит работа изменена.
     /// </summary>
     private int _savedCursor;
+
+    /// <summary>Позиция, которой курсор не достигает никогда: сохранённого состояния больше нет в списке.</summary>
+    private const int Unreachable = -1;
 
     /// <summary>Запомнить текущую позицию как сохранённую.</summary>
     public void MarkSaved() => _savedCursor = _cursor;
@@ -81,7 +87,15 @@ public partial class HistoryManager : ObservableObject
     {
         if (_applying) return;
         if (_cursor < _commands.Count)
+        {
+            // Сохранённое состояние могло лежать в срезаемом хвосте: вернуться к нему
+            // уже нельзя, а курсор сейчас встанет на то же число. Пока метка оставалась
+            // на месте, «сохранили → Ctrl+Z → нарисовали заново» давало чистый документ
+            // при другом содержимом файла, и окно закрывалось без вопроса.
+            if (_savedCursor > _cursor) _savedCursor = Unreachable;
+            for (int i = _cursor; i < _commands.Count; i++) Release(_commands[i]);
             _commands.RemoveRange(_cursor, _commands.Count - _cursor);
+        }
         _commands.Add(cmd);
         _cursor = _commands.Count;
         Trim();
@@ -97,6 +111,12 @@ public partial class HistoryManager : ObservableObject
 
     public bool Undo(Document doc)
     {
+        // Поднятое выделение — это правка, которой в списке ещё нет, и первый Ctrl+Z отменяет
+        // именно её. Заодно это единственный способ не сломать историю: пикап держит снимок слоя
+        // на момент подъёма, и после отката этот снимок относится к состоянию, которого
+        // больше нет: коммит записал бы в историю diff со старыми пикселями и воскрешал штрих,
+        // который уже отменили. В Electron-версии это закрыто в restoreHistory.
+        if (doc.FloatingPickup is not null) { doc.CancelFloating(); Notify(); return true; }
         if (_cursor == 0) return false;
         _applying = true;
         try
@@ -112,6 +132,7 @@ public partial class HistoryManager : ObservableObject
     public bool Redo(Document doc)
     {
         if (_cursor >= _commands.Count) return false;
+        doc.CancelFloating();
         _applying = true;
         try
         {
@@ -132,6 +153,7 @@ public partial class HistoryManager : ObservableObject
     {
         target = Math.Clamp(target, 0, _commands.Count);
         if (target == _cursor) return;
+        doc.CancelFloating();
         _applying = true;
         try
         {
@@ -144,6 +166,7 @@ public partial class HistoryManager : ObservableObject
 
     public void Clear()
     {
+        foreach (var c in _commands) Release(c);
         _commands.Clear();
         _cursor = 0;
         _savedCursor = 0;
@@ -171,9 +194,19 @@ public partial class HistoryManager : ObservableObject
     /// <summary>Drop the oldest <paramref name="count"/> commands, keeping the cursor on the same edit.</summary>
     private void Drop(int count)
     {
+        // Битмапы внутри команды — нативная память, давления на сборщик она не создаёт.
+        // Без явного Dispose обрезка по MaxBytes освобождала ссылку, но не память, и лимит
+        // был лимитом только на бумаге.
+        for (int i = 0; i < count; i++) Release(_commands[i]);
         _commands.RemoveRange(0, count);
         _cursor = Math.Max(0, _cursor - count);
-        _savedCursor -= count;
+        if (_savedCursor >= 0) _savedCursor -= count;
+    }
+
+    /// <summary>Отпустить пиксели, которые держала выброшенная запись.</summary>
+    private static void Release(IDocumentCommand cmd)
+    {
+        if (cmd is IDisposable d) d.Dispose();
     }
 
     private void Notify()

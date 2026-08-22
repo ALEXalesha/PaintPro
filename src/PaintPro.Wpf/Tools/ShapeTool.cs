@@ -1,4 +1,4 @@
-using System.Windows.Input;
+﻿using System.Windows.Input;
 using PaintPro.Commands;
 using PaintPro.Models;
 using SkiaSharp;
@@ -36,6 +36,7 @@ public abstract class ShapeTool : ITool
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
         if (ctx.Document.ActiveLayer is not PixelLayer pl) return;
+        if (_drawing) Reset(ctx);
         _origin = position;
         _current = position;
         // Render opaque, composite once with this alpha: a filled shape draws its fill and

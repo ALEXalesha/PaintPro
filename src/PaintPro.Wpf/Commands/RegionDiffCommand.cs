@@ -9,7 +9,7 @@ namespace PaintPro.Commands;
 /// rotated selection, where the net change spans the source and destination areas.
 /// Execute re-applies the "after" pixels; Undo restores the "before" pixels.
 /// </summary>
-public sealed class RegionDiffCommand : IDocumentCommand
+public sealed class RegionDiffCommand : IDocumentCommand, IDisposable
 {
     private readonly Guid _layerId;
     private readonly SKRectI _bounds;
@@ -33,6 +33,12 @@ public sealed class RegionDiffCommand : IDocumentCommand
     public long ApproximateBytes => Bytes(_before) + Bytes(_after);
 
     private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
+
+    public void Dispose()
+    {
+        _before.Dispose();
+        _after.Dispose();
+    }
 
     public void Execute(Document doc) => Blit(doc, _after);
     public void Undo(Document doc) => Blit(doc, _before);

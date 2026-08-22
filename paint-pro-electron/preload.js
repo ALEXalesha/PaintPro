@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // main сначала спрашивает его, а окно отпускает лишь по confirmClose.
   askUnsaved: () => ipcRenderer.invoke('ask-unsaved'),
   confirmClose: () => ipcRenderer.send('confirm-close'),
+  // «Вопрос сейчас будет» - снимает страховочный таймер в main.
+  closeAck: () => ipcRenderer.send('close-ack'),
 
   // Открытие через нативный диалог
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),

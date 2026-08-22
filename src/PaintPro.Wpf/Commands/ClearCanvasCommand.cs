@@ -16,7 +16,7 @@ namespace PaintPro.Commands;
 /// goes back to the background colour because it is the paper; the ones above go to
 /// transparent, same rule as <see cref="ResizeCanvasCommand"/>.
 /// </summary>
-public sealed class ClearCanvasCommand : IDocumentCommand
+public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
 {
     private readonly SKColor _fill;
     private SKBitmap[]? _previousLayers;
@@ -35,6 +35,13 @@ public sealed class ClearCanvasCommand : IDocumentCommand
             foreach (var b in _previousLayers) sum += (long)b.RowBytes * b.Height;
             return sum;
         }
+    }
+
+    public void Dispose()
+    {
+        if (_previousLayers is null) return;
+        foreach (var b in _previousLayers) b.Dispose();
+        _previousLayers = null;
     }
 
     public void Execute(Document doc)

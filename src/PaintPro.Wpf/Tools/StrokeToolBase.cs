@@ -1,4 +1,4 @@
-using System.Windows.Input;
+﻿using System.Windows.Input;
 using PaintPro.Commands;
 using PaintPro.Models;
 using SkiaSharp;
@@ -41,6 +41,9 @@ public abstract class StrokeToolBase : ITool
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
         if (ctx.Document.ActiveLayer is not PixelLayer pl) return;
+        // Прошлый штрих мог не получить PointerUp - например, у него отобрали захват мыши.
+        // Без сброса его битмап размером с холст просто терялся вместе со ссылкой.
+        if (_drawing) ResetStroke(ctx);
         _canvasSize = new SKRectI(0, 0, pl.Width, pl.Height);
         _strokeBitmap = new SKBitmap(pl.Width, pl.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         _strokeCanvas = new SKCanvas(_strokeBitmap);

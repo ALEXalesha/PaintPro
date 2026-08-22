@@ -11,7 +11,7 @@ namespace PaintPro.Commands;
 /// its original <see cref="Layer.Id"/>, so history entries recorded against that layer
 /// start resolving again after an undo.
 /// </summary>
-public sealed class LayerStackCommand : IDocumentCommand
+public sealed class LayerStackCommand : IDocumentCommand, IDisposable
 {
     private readonly bool _isAdd;
     private readonly int _index;
@@ -53,6 +53,12 @@ public sealed class LayerStackCommand : IDocumentCommand
     public long ApproximateBytes => Bytes(_content);
 
     private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
+
+    public void Dispose()
+    {
+        _content?.Dispose();
+        _content = null;
+    }
 
     public void Execute(Document doc)
     {

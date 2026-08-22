@@ -1,4 +1,4 @@
-using PaintPro.Models;
+﻿using PaintPro.Models;
 using SkiaSharp;
 
 namespace PaintPro.Commands;
@@ -13,7 +13,7 @@ namespace PaintPro.Commands;
 /// the whole layer anyway. Layer identity, name, visibility and opacity are preserved so
 /// history commands recorded against those layers keep resolving.
 /// </summary>
-public sealed class ReplaceAllLayersCommand : IDocumentCommand
+public sealed class ReplaceAllLayersCommand : IDocumentCommand, IDisposable
 {
     private readonly SKBitmap[] _before;
     private readonly int _beforeW, _beforeH;
@@ -41,6 +41,12 @@ public sealed class ReplaceAllLayersCommand : IDocumentCommand
         long sum = 0;
         foreach (var b in set) sum += (long)b.RowBytes * b.Height;
         return sum;
+    }
+
+    public void Dispose()
+    {
+        foreach (var b in _before) b.Dispose();
+        foreach (var b in _after) b.Dispose();
     }
 
     public void Execute(Document doc) => Install(doc, _after, _afterW, _afterH);

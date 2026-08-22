@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using PaintPro.Models;
 using PaintPro.Services;
 using SkiaSharp;
@@ -35,12 +35,12 @@ public class FileTargetAndPickupBoundsTests
             var doc = new Document(8, 8);
 
             // Как будто пользователь уже сохранялся в первый файл.
-            using (var first = fs.OpenImage(saved)!) { }
+            using (fs.OpenImage(saved).Bitmap) { }
             fs.SaveOrSaveAs(doc);
             Assert.Equal(saved, fs.LastSavedPath);
 
             // Теперь открывает второй — Ctrl+S должен уйти в него, а не в первый.
-            using var bmp = fs.OpenImage(opened)!;
+            using var bmp = fs.OpenImage(opened).Bitmap!;
             Assert.Equal(opened, fs.LastOpenedPath);
 
             var outcome = fs.SaveOrSaveAs(doc);
@@ -61,7 +61,7 @@ public class FileTargetAndPickupBoundsTests
         try
         {
             var fs = new FileService();
-            using var bmp = fs.OpenImage(path)!;
+            using var bmp = fs.OpenImage(path).Bitmap!;
             Assert.NotNull(fs.LastOpenedPath);
 
             fs.Detach();

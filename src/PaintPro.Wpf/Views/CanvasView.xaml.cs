@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -35,6 +35,12 @@ public partial class CanvasView : UserControl
         Skia.MouseDown += OnSkiaMouseDown;
         Skia.MouseMove += OnSkiaMouseMove;
         Skia.MouseUp   += OnSkiaMouseUp;
+        // Захват мыши может уйти посреди штриха: чужое окно вышло вперёд, Alt+Tab,
+        // модальный диалог. MouseUp тогда не придёт совсем, а вместе с ним не придёт и
+        // запись штриха в слой: нарисованное оставалось висеть превью до следующего клика
+        // и пропадало, а битмап размером с холст утекал. Ручки это пережили ещё в 1.8.0
+        // (Overlay.LostMouseCapture), сам холст - нет.
+        Skia.LostMouseCapture += (_, _) => EndCanvasGesture();
         Skia.MouseLeave += (_, _) => PixelPositionChanged?.Invoke(null);
 
         // Ctrl+wheel zoom with focal point under the cursor.
@@ -447,6 +453,9 @@ public partial class CanvasView : UserControl
     /// jitters. Viewport coordinates are unaffected by the scroll offset.
     /// </summary>
     private System.Windows.Point? _panAnchor;
+
+    /// <summary>Последняя позиция курсора в координатах документа: ею завершается жест, потерявший захват.</summary>
+    private SKPoint _lastDocPos;
     private SKPoint ToDoc(System.Windows.Point p)
     {
         var s = _vm?.Zoom ?? 1;
@@ -463,6 +472,7 @@ public partial class CanvasView : UserControl
         _captured = true;
         if (_vm.ActiveTool == ToolKind.Hand) _panAnchor = e.GetPosition(Scroll);
         var pos = ToDoc(e.GetPosition(Skia));
+        _lastDocPos = pos;
         _vm.ActiveToolInstance.OnPointerDown(pos, _vm.ToolContext);
         QueueRender();
     }
@@ -474,6 +484,7 @@ public partial class CanvasView : UserControl
     {
         if (_vm is null) return;
         var pos = ToDoc(e.GetPosition(Skia));
+        _lastDocPos = pos;
         var now = DateTime.UtcNow;
         if ((now - _lastStatusUpdate).TotalMilliseconds > 33)
         {
@@ -506,9 +517,25 @@ public partial class CanvasView : UserControl
         if (_vm is null) return;
         if (e.ChangedButton != MouseButton.Left) return;
         _panAnchor = null;
-        if (_captured) { Skia.ReleaseMouseCapture(); _captured = false; }
+        // Сначала снимаем флаг, потом отпускаем захват: ReleaseMouseCapture синхронно
+        // стреляет LostMouseCapture, и обработчик потери завершил бы жест вторым разом.
+        if (_captured) { _captured = false; Skia.ReleaseMouseCapture(); }
         var pos = ToDoc(e.GetPosition(Skia));
+        _lastDocPos = pos;
         _vm.ActiveToolInstance.OnPointerUp(pos, _vm.ToolContext);
+        QueueRender();
+    }
+
+    /// <summary>
+    /// Завершить жест на холсте, когда захват ушёл сам. Инструмент дорисовывает по
+    /// последней известной позиции: штрих уже сделан пользователем, терять его незачем.
+    /// </summary>
+    private void EndCanvasGesture()
+    {
+        if (!_captured || _vm is null) return;
+        _captured = false;
+        _panAnchor = null;
+        _vm.ActiveToolInstance.OnPointerUp(_lastDocPos, _vm.ToolContext);
         QueueRender();
     }
 

@@ -98,7 +98,10 @@ public partial class MainViewModel : ObservableObject
         LayerItems.Clear();
         for (int i = 0; i < Document.Layers.Count; i++)
         {
-            var item = new LayerListItemViewModel(Document.Layers[i]) { IsActive = i == Document.ActiveLayerIndex };
+            var item = new LayerListItemViewModel(Document.Layers[i], ApplyLayerProperties)
+            {
+                IsActive = i == Document.ActiveLayerIndex,
+            };
             item.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName is nameof(LayerListItemViewModel.Visible)
@@ -107,6 +110,28 @@ public partial class MainViewModel : ObservableObject
             };
             LayerItems.Add(item);
         }
+    }
+
+    /// <summary>
+    /// Правка видимости/прозрачности слоя из панели - через историю.
+    /// Подряд идущие правки одного слоя дописываются в ту же запись: перетаскивание
+    /// ползунка иначе оставляет по записи на каждый его пиксель.
+    /// </summary>
+    private void ApplyLayerProperties(Layer layer, bool visible, float opacity)
+    {
+        if (layer.Visible == visible && Math.Abs(layer.Opacity - opacity) < 0.0001f) return;
+
+        if (Document.History.Current is LayerPropertyCommand last && last.LayerId == layer.Id)
+        {
+            last.MergeInto(Document, visible, opacity);
+        }
+        else
+        {
+            var cmd = new LayerPropertyCommand(layer, visible, opacity);
+            if (!cmd.ChangedAnything) return;
+            Document.History.ExecuteAndPush(cmd, Document);
+        }
+        InvalidateCanvas?.Invoke();
     }
 
     [RelayCommand]
@@ -236,12 +261,22 @@ public partial class MainViewModel : ObservableObject
 
     // ───────── History ─────────
     [RelayCommand(CanExecute = nameof(CanUndo))]
-    private void Undo() { Document.History.Undo(Document); InvalidateCanvas?.Invoke(); }
+    private void Undo() { Document.History.Undo(Document); AfterHistoryWalk(); }
     private bool CanUndo => Document.History.CanUndo;
 
     [RelayCommand(CanExecute = nameof(CanRedo))]
-    private void Redo() { Document.History.Redo(Document); InvalidateCanvas?.Invoke(); }
+    private void Redo() { Document.History.Redo(Document); AfterHistoryWalk(); }
     private bool CanRedo => Document.History.CanRedo;
+
+    /// <summary>
+    /// Откат мог поменять видимость и прозрачность слоя, а строки панели держат свои копии
+    /// этих значений. Пересобираем их, иначе флажок показывает одно, а холст рисует другое.
+    /// </summary>
+    private void AfterHistoryWalk()
+    {
+        RebuildLayerItems();
+        InvalidateCanvas?.Invoke();
+    }
 
     /// <summary>Timeline rows for the History panel; rebuilt whenever the history changes.</summary>
     public ObservableCollection<HistoryEntryViewModel> HistoryItems { get; } = new();
@@ -251,7 +286,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (entry is null) return;
         Document.History.JumpTo(entry.Target, Document);
-        InvalidateCanvas?.Invoke();
+        AfterHistoryWalk();
     }
 
     private void RebuildHistoryItems()
@@ -284,6 +319,8 @@ public partial class MainViewModel : ObservableObject
         "Paste"           => "Вставка",
         "Crop"            => "Кадрирование",
         "Erase selection" => "Удаление выделения",
+        "Layer properties" => "Свойства слоя",
+        "Открытие"        => "Открытие",
         "Rotate CW"       => "Поворот по часовой",
         "Rotate CCW"      => "Поворот против часовой",
         "Flip horizontal" => "Отражение по горизонтали",
@@ -292,8 +329,26 @@ public partial class MainViewModel : ObservableObject
     };
 
     // ───────── File ─────────
+    /// <summary>
+    /// Спросить про несохранённую работу перед тем, как заменить документ.
+    /// False - пользователь передумал. «Создать» и «Открыть» затирают холст целиком, и до
+    /// этого вопроса единственным предупреждением был вопрос при закрытии окна, которого
+    /// после замены документа уже не будет: метка сохранения сдвигается.
+    /// </summary>
+    private bool ConfirmDiscard(string action)
+    {
+        if (!IsDirty) return true;
+        var answer = MessageBox.Show(
+            $"Рисунок изменён. Сохранить перед тем, как {action}?",
+            "Paint Pro", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Cancel) return false;
+        if (answer == MessageBoxResult.Yes) return TrySaveForClose();
+        return true;
+    }
+
     [RelayCommand] private void NewDocument()
     {
+        if (!ConfirmDiscard("создать новый")) return;
         var cmd = new ClearCanvasCommand();
         Document.History.ExecuteAndPush(cmd, Document);
         // Новый документ - это уже не тот файл. Без отвязки Ctrl+S уходил в
@@ -307,9 +362,28 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void Open()
     {
-        var bmp = FileService.OpenImageDialog();
-        if (bmp is null) return;
-        ApplyOpenedBitmap(bmp);
+        if (!ConfirmDiscard("открыть другой файл")) return;
+        ReportOpen(FileService.OpenImageDialog());
+    }
+
+    /// <summary>Открыть файл по пути - drag &amp; drop.</summary>
+    public void OpenPath(string path)
+    {
+        if (!ConfirmDiscard("открыть другой файл")) return;
+        ReportOpen(FileService.OpenImage(path));
+    }
+
+    private void ReportOpen(OpenOutcome outcome)
+    {
+        if (outcome.Status == OpenStatus.Failed)
+        {
+            MessageBox.Show($"Не удалось открыть файл.\n{outcome.Error}",
+                "Ошибка открытия", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        if (outcome.Bitmap is not { } bmp) return;
+        // Команда рисует картинку в свои битмапы, оригинал ей после этого не нужен.
+        using (bmp) ApplyOpenedBitmap(bmp);
     }
 
     public void ApplyOpenedBitmap(SKBitmap bmp)

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Microsoft.Win32;
 using PaintPro.Models;
 using SkiaSharp;
@@ -16,6 +16,18 @@ public enum SaveStatus
 
 /// <param name="Path">Where the file actually landed (may differ from the requested path).</param>
 public readonly record struct SaveOutcome(SaveStatus Status, string? Path = null, string? Error = null);
+
+public enum OpenStatus
+{
+    Ok,
+    Cancelled,
+    /// <summary>Файл не читается или это не картинка.</summary>
+    Failed,
+}
+
+/// <param name="Bitmap">Декодированная картинка; владение переходит вызывающему.</param>
+public readonly record struct OpenOutcome(
+    OpenStatus Status, SKBitmap? Bitmap = null, string? Path = null, string? Error = null);
 
 /// <summary>
 /// File I/O: open / save raster formats via SkiaSharp.
@@ -36,25 +48,41 @@ public sealed class FileService
     /// <summary>Only the containers Skia can actually encode are offered when saving.</summary>
     private const string SaveFilter = "PNG|*.png|JPEG|*.jpg;*.jpeg|WebP|*.webp";
 
-    /// <summary>Show an Open dialog and load the picked image. Returns null on cancel.</summary>
-    public SKBitmap? OpenImageDialog()
+    /// <summary>Show an Open dialog and load the picked image.</summary>
+    public OpenOutcome OpenImageDialog()
     {
         var dlg = new OpenFileDialog { Filter = OpenFilter };
-        if (dlg.ShowDialog() != true) return null;
+        if (dlg.ShowDialog() != true) return new OpenOutcome(OpenStatus.Cancelled);
         return OpenImage(dlg.FileName);
     }
 
-    /// <summary>Load <paramref name="path"/> into a bitmap (no dialog).</summary>
-    public SKBitmap? OpenImage(string path)
+    /// <summary>
+    /// Load <paramref name="path"/> into a bitmap (no dialog).
+    ///
+    /// Отказ отличается от отмены: <see cref="SKBitmap.Decode(string)"/> возвращает null и на
+    /// удалённый файл, и на папку, и на битые байты. Пока оба случая были одним null,
+    /// «Открыть» на нечитаемом файле не делало ровно ничего и молчало. В Electron-версии это
+    /// починено в 1.8.0.
+    /// </summary>
+    public OpenOutcome OpenImage(string path)
     {
-        var bmp = SKBitmap.Decode(path);
-        if (bmp is null) return null;
+        SKBitmap? bmp;
+        try
+        {
+            bmp = SKBitmap.Decode(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return new OpenOutcome(OpenStatus.Failed, null, path, ex.Message);
+        }
+        if (bmp is null)
+            return new OpenOutcome(OpenStatus.Failed, null, path, "Файл повреждён или это не изображение.");
         LastOpenedPath = path;
         // Только что открытый файл и есть цель следующего Ctrl+S. Без сброса
         // SaveOrSaveAs брал LastSavedPath - то есть картинку, сохранённую до
         // открытия, - и молча записывал в неё содержимое нового документа.
         LastSavedPath = null;
-        return bmp;
+        return new OpenOutcome(OpenStatus.Ok, bmp, path);
     }
 
     /// <summary>Отвязать документ от файла: следующий Ctrl+S спросит путь заново.</summary>

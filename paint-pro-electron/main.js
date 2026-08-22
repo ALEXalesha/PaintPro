@@ -189,6 +189,13 @@ ipcMain.handle('ask-unsaved', async () => {
   return response;
 });
 
+// Renderer отозвался: он жив и сам спросит про несохранённое. Страховку снимаем, иначе
+// пять секунд раздумий над большим холстом выглядели как сломанный скрипт и окно
+// закрывалось вместе с работой.
+ipcMain.on('close-ack', () => {
+  cancelCloseFallback();
+});
+
 ipcMain.on('confirm-close', () => {
   cancelCloseFallback();
   closeConfirmed = true;

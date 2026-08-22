@@ -11,7 +11,7 @@ namespace PaintPro.Commands;
 /// wants to drag the paste before it lands. Committing happens on tool-switch
 /// or on Enter, and records its own diff so it stays undoable.
 /// </summary>
-public sealed class PasteCommand : IDocumentCommand
+public sealed class PasteCommand : IDocumentCommand, IDisposable
 {
     private readonly SKBitmap _bitmap;
     private readonly SKPoint _topLeft;
@@ -33,6 +33,9 @@ public sealed class PasteCommand : IDocumentCommand
     public long ApproximateBytes => Bytes(_bitmap);
 
     private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
+
+    /// <summary>Только свою копию: созданный пикап может ещё лежать на холсте, его освобождает документ.</summary>
+    public void Dispose() => _bitmap.Dispose();
 
     public void Execute(Document doc)
     {

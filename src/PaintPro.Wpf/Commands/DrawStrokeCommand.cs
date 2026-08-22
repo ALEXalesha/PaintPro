@@ -12,7 +12,7 @@ namespace PaintPro.Commands;
 /// applied here, at merge time. Doing it the other way round makes every overlapping
 /// segment of a single semi-transparent stroke darken the one below it.
 /// </summary>
-public sealed class DrawStrokeCommand : IDocumentCommand
+public sealed class DrawStrokeCommand : IDocumentCommand, IDisposable
 {
     private readonly SKBitmap _strokeBitmap;
     private readonly SKRectI _bounds;
@@ -47,6 +47,14 @@ public sealed class DrawStrokeCommand : IDocumentCommand
             Color = SKColors.White.WithAlpha(_alpha),
         };
         canvas.DrawBitmap(_strokeBitmap, new SKPoint(_bounds.Left, _bounds.Top), paint);
+    }
+
+    /// <summary>Запись вытеснена из истории: её битмапы больше никому не нужны.</summary>
+    public void Dispose()
+    {
+        _strokeBitmap.Dispose();
+        _underlying?.Dispose();
+        _underlying = null;
     }
 
     public void Undo(Document doc)

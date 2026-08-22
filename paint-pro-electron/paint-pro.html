@@ -1980,7 +1980,12 @@ function onDown(e) {
       drawFloatingOnto(cc);
       sampleCtx = cc;
     }
-    const pixel = sampleCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+    // Клик у правой или нижней кромки даёт после Math.floor координату, равную размеру
+    // холста: getImageData отдаёт нули, и пипетка брала чёрный вместо цвета под курсором.
+    // Ровно та же кромка, что чинилась в floodFill.
+    const px = Math.min(canvas.width - 1, Math.max(0, Math.floor(x)));
+    const py = Math.min(canvas.height - 1, Math.max(0, Math.floor(y)));
+    const pixel = sampleCtx.getImageData(px, py, 1, 1).data;
     const hex = '#' + [pixel[0], pixel[1], pixel[2]].map(v => v.toString(16).padStart(2, '0')).join('');
     setColor(hex);
     state.drawing = false;
@@ -2608,26 +2613,9 @@ document.getElementById('file-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (ev) => {
-    const img = new Image();
-    img.onload = () => {
-      // Если картинка больше холста - расширяем холст под неё
-      if (img.width > canvas.width || img.height > canvas.height) {
-        const newW = Math.max(canvas.width, img.width + 40);
-        const newH = Math.max(canvas.height, img.height + 40);
-        const old = document.createElement('canvas');
-        old.width = canvas.width;
-        old.height = canvas.height;
-        old.getContext('2d').drawImage(canvas, 0, 0);
-        setCanvasSize(newW, newH);
-        fillWhite();
-        ctx.drawImage(old, 0, 0);
-        updateCanvasInfo();
-      }
-      createFloatingFromImage(img, 20, 20);
-    };
-    img.src = ev.target.result;
-  };
+  // Тот же путь, что и у Electron-диалога: «Открыть» заменяет документ, а не кладёт
+  // картинку поверх нарисованного.
+  reader.onload = (ev) => openImageAsDocument(ev.target.result, file.name);
   reader.readAsDataURL(file);
   // Сбросить, чтобы можно было загрузить тот же файл снова
   e.target.value = '';
@@ -3430,6 +3418,17 @@ document.addEventListener('mousedown', (e) => {
 
 
 // Копирование выделенной области (с прозрачностью)
+// Положить копию и в системный буфер: до этого Ctrl+C наполнял только state.clipboard,
+// и вставить скопированное в другое приложение было нельзя. Молча пропускаем отказ -
+// буфер может быть занят или недоступен, а внутренняя копия к этому моменту уже сделана.
+function pushToSystemClipboard(cnv) {
+  if (!navigator.clipboard || !window.ClipboardItem || !cnv.toBlob) return;
+  cnv.toBlob((blob) => {
+    if (!blob) return;
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => {});
+  });
+}
+
 function copySelection() {
   // Если активен floating - копируем его. Именно в том виде, в каком он на
   // экране: через общий рендер и по фактическому габариту, иначе у повёрнутого
@@ -3445,6 +3444,7 @@ function copySelection() {
     g.translate(-b.x, -b.y);
     drawFloatingOnto(g);
     state.clipboard = c;
+    pushToSystemClipboard(c);
     return true;
   }
   if (!state.selection || state.selection.w < 2 || state.selection.h < 2) return false;
@@ -3455,6 +3455,7 @@ function copySelection() {
   c.height = Math.round(s.h);
   c.getContext('2d').drawImage(canvas, s.x, s.y, s.w, s.h, 0, 0, s.w, s.h);
   state.clipboard = c;
+  pushToSystemClipboard(c);
   return true;
 }
 
@@ -3542,8 +3543,58 @@ function showAbout() {
       + '\nГрафический редактор на HTML5 Canvas.');
 }
 
-function newCanvas() {
-  if (!confirm('Создать новый холст? Несохранённые изменения будут потеряны.')) return;
+// Спросить про несохранённую работу перед заменой документа. Три кнопки, как при
+// закрытии окна: «не сохранять» и «отмена» - разные ответы. False - пользователь передумал.
+async function confirmDiscard() {
+  if (!isDirty()) return true;
+  if (window.electronAPI && window.electronAPI.askUnsaved) {
+    const answer = await window.electronAPI.askUnsaved();
+    if (answer === 2) return false;
+    if (answer === 0) return await saveCanvas(false);
+    return true;
+  }
+  return confirm('Несохранённые изменения будут потеряны. Продолжить?');
+}
+
+// Открытый файл заменяет документ целиком: холст под размер картинки, содержимое - сама
+// картинка. Прежде она ложилась плавающим объектом ПОВЕРХ текущего рисунка, а её путь уже
+// становился целью Ctrl+S: сохранение записывало в файл пользователя его же картинку вместе
+// с чужими штрихами снизу. Заодно объект ставился в (20, 20), и у картинки крупнее холста
+// правые и нижние 20 пикселей уезжали за край. В WPF-версии это починено в 1.8.0
+// (DocumentTransform.OpenImage).
+async function openImageAsDocument(dataUrl, fileName) {
+  if (!await confirmDiscard()) return;
+  const img = new Image();
+  img.onerror = () => alert('Не удалось прочитать изображение.');
+  img.onload = () => {
+    if (state.floating) {
+      state.floating.preCanvas = null;
+      cancelFloating();
+    }
+    if (textEditor.style.display === 'block') {
+      textEditor.style.display = 'none';
+      textEditor.innerHTML = '';
+      textToolbar.classList.remove('active');
+    }
+    hideSelection();
+    const size = clampCanvasSize(img.width, img.height);
+    setCanvasSize(size.w, size.h);
+    fillWhite();
+    ctx.drawImage(img, 0, 0, size.w, size.h);
+    updateCanvasInfo();
+    saveHistory('Открытие');
+    // Только что открытый файл - не несохранённая работа.
+    state.savedHistoryIndex = state.historyIndex;
+    if (fileName) {
+      state.currentFileName = fileName;
+      document.title = 'Paint Pro — ' + fileName;
+    }
+  };
+  img.src = dataUrl;
+}
+
+async function newCanvas() {
+  if (!await confirmDiscard()) return;
   // Плавающий объект живёт на previewCanvas поверх холста - без сброса он
   // остался бы висеть над новым чистым листом. preCanvas обнуляем: возвращать
   // дыру некуда, холст всё равно перезаливается.
@@ -3630,6 +3681,10 @@ function isDirty() {
 
 // Ответ на запрос закрытия от main-процесса.
 async function handleCloseRequest() {
+  // Отзыв о том, что скрипт жив и вопрос сейчас будет: main держит пятисекундную страховку
+  // на случай сломанного renderer и без этого закрывал окно сам, стоило нам задуматься
+  // дольше пяти секунд на большом холсте.
+  if (window.electronAPI.closeAck) window.electronAPI.closeAck();
   if (!isDirty()) { window.electronAPI.confirmClose(); return; }
   // Три кнопки вместо confirm(): «не сохранять» и «отмена» - разные вещи.
   const answer = await window.electronAPI.askUnsaved();
@@ -4099,38 +4154,10 @@ document.getElementById('canvas-area').addEventListener('wheel', (e) => {
 
 // ============ ИНТЕГРАЦИЯ С ELECTRON ============
 if (window.electronAPI) {
-  // Загружаем изображение из dataUrl (при открытии через меню, ассоциацию, drag&drop)
-  function loadImageFromDataUrl(dataUrl, fileName) {
-    const img = new Image();
-    img.onload = () => {
-      // Если картинка больше холста - расширяем. Прежний код сразу заливал
-      // всё белым, и уже нарисованное пропадало молча и безвозвратно: записи
-      // в историю на это не было. Переносим старое содержимое, как это делает
-      // ветка загрузки через <input type=file>.
-      if (img.width > canvas.width || img.height > canvas.height) {
-        const old = document.createElement('canvas');
-        old.width = canvas.width;
-        old.height = canvas.height;
-        old.getContext('2d').drawImage(canvas, 0, 0);
-        setCanvasSize(Math.max(canvas.width, img.width), Math.max(canvas.height, img.height));
-        fillWhite();
-        ctx.drawImage(old, 0, 0);
-        updateCanvasInfo();
-        saveHistory('Расширение холста');
-      }
-      createFloatingFromImage(img, 20, 20);
-      if (fileName) {
-        state.currentFileName = fileName;
-        document.title = 'Paint Pro — ' + fileName;
-      }
-    };
-    img.src = dataUrl;
-  }
-
   // Получаем файл через меню "Файл → Открыть"
   window.electronAPI.onOpenFile((data) => {
     if (data && data.dataUrl) {
-      loadImageFromDataUrl(data.dataUrl, data.fileName);
+      openImageAsDocument(data.dataUrl, data.fileName);
     }
   });
 
@@ -4202,13 +4229,13 @@ if (window.electronAPI) {
         const result = await window.electronAPI.readDroppedFile(filePath);
         if (result && result.error) { alert('Не удалось открыть файл: ' + result.error); break; }
         if (result && result.dataUrl) {
-          loadImageFromDataUrl(result.dataUrl, result.fileName);
+          openImageAsDocument(result.dataUrl, result.fileName);
           break; // Открываем только первый файл
         }
       } else {
         // Fallback через FileReader
         const reader = new FileReader();
-        reader.onload = (ev) => loadImageFromDataUrl(ev.target.result, file.name);
+        reader.onload = (ev) => openImageAsDocument(ev.target.result, file.name);
         reader.readAsDataURL(file);
         break;
       }
@@ -4224,7 +4251,7 @@ if (window.electronAPI) {
       const data = await window.electronAPI.openFileDialog();
       if (!data) return;                       // диалог отменили
       if (data.error) { alert('Не удалось открыть файл: ' + data.error); return; }
-      loadImageFromDataUrl(data.dataUrl, data.fileName);
+      openImageAsDocument(data.dataUrl, data.fileName);
     } catch (err) {
       alert('Не удалось открыть файл: ' + (err && err.message ? err.message : err));
     }

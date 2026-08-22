@@ -1,4 +1,4 @@
-using PaintPro.Models;
+﻿using PaintPro.Models;
 using SkiaSharp;
 
 namespace PaintPro.Commands;
@@ -8,7 +8,7 @@ namespace PaintPro.Commands;
 /// New area on the bottom layer is filled with the background colour; layers above it
 /// stay transparent so they keep letting the layers below show through.
 /// </summary>
-public sealed class ResizeCanvasCommand : IDocumentCommand
+public sealed class ResizeCanvasCommand : IDocumentCommand, IDisposable
 {
     /// <summary>Hard ceiling on either dimension, and on total pixels, to keep a typo from OOM-ing the app.</summary>
     public const int MaxDimension = 20000;
@@ -46,6 +46,13 @@ public sealed class ResizeCanvasCommand : IDocumentCommand
             foreach (var b in _previousLayers) sum += (long)b.RowBytes * b.Height;
             return sum;
         }
+    }
+
+    public void Dispose()
+    {
+        if (_previousLayers is null) return;
+        foreach (var b in _previousLayers) b.Dispose();
+        _previousLayers = null;
     }
 
     public void Execute(Document doc)

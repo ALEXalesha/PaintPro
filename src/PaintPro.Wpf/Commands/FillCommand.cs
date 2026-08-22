@@ -15,7 +15,7 @@ namespace PaintPro.Commands;
 /// pass that rebuilt the undo snapshot. On a photo-sized canvas it froze the UI for
 /// tens of seconds.
 /// </summary>
-public sealed class FillCommand : IDocumentCommand
+public sealed class FillCommand : IDocumentCommand, IDisposable
 {
     private readonly SKPointI _seed;
     private readonly SKColor _newColor;
@@ -78,6 +78,12 @@ public sealed class FillCommand : IDocumentCommand
 
         _affectedBounds = bounds;
         _previousRegion = CropBuffer(original, stride, bounds, bmp.ColorType, bmp.AlphaType);
+    }
+
+    public void Dispose()
+    {
+        _previousRegion?.Dispose();
+        _previousRegion = null;
     }
 
     public void Undo(Document doc)
