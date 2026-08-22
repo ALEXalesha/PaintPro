@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Забыть текущий файл — следующий Ctrl+S спросит путь заново
   clearSavePath: () => ipcRenderer.invoke('clear-save-path'),
 
+  // Версия приложения из package.json. Один источник на статусбар и «О программе».
+  getVersion: () => ipcRenderer.invoke('app-version'),
+
   // Закрытие окна. Признак несохранённой работы знает только renderer, поэтому
   // main сначала спрашивает его, а окно отпускает лишь по confirmClose.
   askUnsaved: () => ipcRenderer.invoke('ask-unsaved'),

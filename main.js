@@ -171,6 +171,9 @@ ipcMain.handle('clear-save-path', async () => {
   return { success: true };
 });
 
+// Версия из package.json. Renderer её сам прочитать не может: contextIsolation.
+ipcMain.handle('app-version', () => app.getVersion());
+
 // Вопрос про несохранённый рисунок. Три кнопки, а не confirm(): «не сохранять»
 // и «отмена» - разные ответы. Возвращает индекс нажатой кнопки.
 ipcMain.handle('ask-unsaved', async () => {
