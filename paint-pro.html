@@ -2129,6 +2129,9 @@ function onUp(e) {
           { x: f.x,       y: f.y + f.h }
         ];
         f.originalQuad = null; // snapshot будет сделан в ensureOriginalQuadErased
+        // Снимок берём заново: quad появился уже после promote, и без этого
+        // «подняли и не тронули» выглядело бы как изменение формы.
+        rememberFloatingOrigin(f);
         renderFloating();
       }
     } else {
@@ -2380,11 +2383,31 @@ function commitSelection() {
 function showCropControls() {
   if (!state.selection) return;
   cropControls.style.display = 'flex';
+  positionCropControls();
+}
+
+// Кнопки «Применить / Отмена» привязаны к нижнему краю выделения и обязаны ехать
+// вместе с ним при зуме, панораме и прокрутке. Раньше позиция считалась один раз,
+// при показе, и кнопки отрывались от рамки на первом же изменении масштаба.
+function positionCropControls() {
+  if (cropControls.style.display !== 'flex' || !state.selection) return;
   const rect = canvas.getBoundingClientRect();
   const scaleX = rect.width / canvas.width;
   const scaleY = rect.height / canvas.height;
   cropControls.style.left = (state.selection.x * scaleX) + 'px';
   cropControls.style.top = ((state.selection.y + state.selection.h) * scaleY + 8) + 'px';
+}
+
+// Всё, что нарисовано поверх холста в экранных координатах: рамка выделения, рамка
+// плавающего объекта, кнопки обрезки, редактор текста с тулбаром. Все они считаются
+// от одного и того же getBoundingClientRect, значит и звать их надо одним вызовом.
+// Пока список был скопирован в четыре места, два из них отставали: обработчик
+// resize не знал про редактор текста, а про кнопки обрезки не знал никто.
+function updateOverlays() {
+  updateSelectionOverlay();
+  updateFloatingFrame();
+  positionCropControls();
+  positionTextOverlay();
 }
 
 // Единственная точка смены размера холста. У <canvas> буферный размер
@@ -2679,6 +2702,7 @@ function promoteSelectionToFloating(opts) {
     preCanvas: backup
   };
   hideSelection();
+  rememberFloatingOrigin(state.floating);
   renderFloating();
   return state.floating;
 }
@@ -2850,9 +2874,47 @@ function ensureOriginalQuadErased() {
   f.originalQuadErased = true;
 }
 
+// Снимок положения пикапа сразу после подъёма. Нужен, чтобы отличить «подняли и
+// положили обратно, не сдвинув» от настоящего перемещения.
+function rememberFloatingOrigin(f) {
+  if (!f) return;
+  f.origin = {
+    x: f.x, y: f.y, w: f.w, h: f.h,
+    rotation: f.rotation || 0,
+    quad: f.quad ? f.quad.map(p => ({ x: p.x, y: p.y })) : null
+  };
+}
+
+// Сдвинулся ли пикап хоть как-нибудь с момента подъёма. Сравниваем геометрию, а не
+// ставим флаг в пяти обработчиках drag'а: флаг забыть легко, а забытый - значит
+// молча потерянная запись в истории.
+function floatingMoved(f) {
+  if (!f.preCanvas) return true;   // вставка или открытая картинка: пиксели новые
+  const o = f.origin;
+  if (!o) return true;
+  if (f.x !== o.x || f.y !== o.y || f.w !== o.w || f.h !== o.h) return true;
+  if ((f.rotation || 0) !== o.rotation) return true;
+  const q = f.quad, oq = o.quad;
+  if (!!q !== !!oq) return true;
+  if (q && oq) {
+    for (let i = 0; i < q.length; i++) {
+      if (q[i].x !== oq[i].x || q[i].y !== oq[i].y) return true;
+    }
+  }
+  return false;
+}
+
 function commitFloating() {
   if (!state.floating) return;
   const f = state.floating;
+  // Подняли и положили обратно, не сдвинув: клик внутрь выделения и клик мимо.
+  // Холст обязан остаться прежним до пикселя, а в истории и в признаке
+  // несохранённой работы такому событию делать нечего. cancelFloating
+  // возвращает preCanvas, то есть ровно дополитное состояние.
+  if (!floatingMoved(f)) {
+    cancelFloating();
+    return;
+  }
   // Для quad: гарантируем что текущая shape стёрта (если был idle commit без translate).
   // Если квад был перенесён/изменён до commit — стирание уже произошло раньше.
   if (f.quad) ensureOriginalQuadErased();
@@ -3502,7 +3564,9 @@ async function saveCanvas(saveAs = false) {
 function isDirty() {
   return state.historyIndex !== state.savedHistoryIndex
       || !!state.floating
-      || textEditor.style.display === 'block';
+      // Именно набранный текст, а не открытая рамка: клик инструментом «Текст»
+      // открывает пустой редактор, и сам по себе он ничего не меняет.
+      || (textEditor.style.display === 'block' && textEditor.innerText.trim() !== '');
 }
 
 // Ответ на запрос закрытия от main-процесса.
@@ -3695,8 +3759,12 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     if (state.floating) {
-      // Escape при плавающем = применить
-      commitFloating();
+      // Escape отменяет подъём и возвращает пиксели на место, применяет Enter.
+      // Раньше Escape тоже применял: способа отказаться от подъёма не было вовсе,
+      // хотя cancelFloating для этого и написан. В WPF-версии Escape отменяет
+      // с самого начала (инвариант 11 в README).
+      e.preventDefault();
+      cancelFloating();
       return;
     }
     commitSelection();
@@ -3718,15 +3786,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Перемасштабирование overlay при скролле
-document.getElementById('canvas-area').addEventListener('scroll', () => {
-  updateSelectionOverlay();
-  updateFloatingFrame();
-  positionTextOverlay();
-});
-window.addEventListener('resize', () => {
-  updateSelectionOverlay();
-  updateFloatingFrame();
-});
+document.getElementById('canvas-area').addEventListener('scroll', updateOverlays);
+window.addEventListener('resize', updateOverlays);
 
 // ============ МАСШТАБИРОВАНИЕ ХОЛСТА (RESIZE) ============
 // Перетаскивание правой/нижней/угловой ручки меняет размер холста визуально.
@@ -3857,9 +3918,7 @@ state.panY = 0;
 
 function applyPan() {
   wrapper.style.transform = `translate(${state.panX}px, ${state.panY}px)`;
-  updateSelectionOverlay();
-  updateFloatingFrame();
-  positionTextOverlay();
+  updateOverlays();
 }
 
 function resetPan() {
@@ -3934,10 +3993,7 @@ function applyZoom() {
   previewCanvas.style.width = (canvas.width * z) + 'px';
   previewCanvas.style.height = (canvas.height * z) + 'px';
   document.getElementById('zoom-display').textContent = Math.round(z * 100) + '%';
-  // Обновляем overlays
-  updateSelectionOverlay();
-  updateFloatingFrame();
-  positionTextOverlay();
+  updateOverlays();
   // Курсор-кружок зависит от зума (пиксели холста × зум = пиксели экрана)
   if (typeof updateBrushCursor === 'function') updateBrushCursor();
 }
