@@ -1,4 +1,4 @@
-using System.Windows.Input;
+﻿using System.Windows.Input;
 using PaintPro.Models;
 using PaintPro.Services;
 using SkiaSharp;
@@ -140,14 +140,7 @@ public sealed class QuadTool : ITool
         if (_isMovingFloating && doc.FloatingPickup is { } fp)
         {
             PickupOps.EnsureLazyErase(doc, fp);
-            var dx = position.X - _lastMove.X;
-            var dy = position.Y - _lastMove.Y;
-            fp.X += dx; fp.Y += dy;
-            if (fp.Quad is { } q)
-            {
-                for (int i = 0; i < 4; i++)
-                    q[i] = new SKPoint(q[i].X + dx, q[i].Y + dy);
-            }
+            PickupOps.Translate(fp, position.X - _lastMove.X, position.Y - _lastMove.Y);
             _lastMove = position;
         }
     }

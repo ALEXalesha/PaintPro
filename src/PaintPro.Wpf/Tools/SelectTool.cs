@@ -1,4 +1,4 @@
-using System.Windows.Input;
+﻿using System.Windows.Input;
 using PaintPro.Models;
 using SkiaSharp;
 
@@ -90,10 +90,12 @@ public sealed class SelectTool : ITool
 
         if (_isMovingFloating && ctx.Document.FloatingPickup is { } fp)
         {
-            var dx = position.X - _lastMovePoint.X;
-            var dy = position.Y - _lastMovePoint.Y;
             Services.PickupOps.EnsureLazyErase(ctx.Document, fp);
-            fp.X += dx; fp.Y += dy;
+            // Через общий сдвиг, а не по полям: под «Выделением» бывает и поднятый
+            // многоугольник - его поднимает хоткей поворота, не трогая активный
+            // инструмент, - и его quad-маску обязано двигать то же самое перемещение.
+            Services.PickupOps.Translate(fp, position.X - _lastMovePoint.X,
+                                             position.Y - _lastMovePoint.Y);
             _lastMovePoint = position;
         }
     }

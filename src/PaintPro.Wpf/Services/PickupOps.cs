@@ -1,4 +1,4 @@
-using PaintPro.Models;
+﻿using PaintPro.Models;
 using SkiaSharp;
 
 namespace PaintPro.Services;
@@ -37,10 +37,25 @@ public static class PickupOps
         var clamped = SKRectI.Intersect(SKRectI.Round(rect), new SKRectI(0, 0, pl.Width, pl.Height));
         if (clamped.IsEmpty) return;
 
-        using var raw = pl.ExtractRegion(clamped);
-        // Lift only the drawn marks: the white canvas background is keyed out so moving
-        // the selection doesn't drag an opaque white box over whatever sits underneath.
-        var pickupBitmap = BitmapKeying.KeyOutBackground(raw, SKColors.White);
+        var raw = pl.ExtractRegion(clamped);
+        // Фон вокруг рисунка выкусывается только там, где он и есть фон: у бумаги, то
+        // есть у нижнего слоя, и только у прямоугольного выделения.
+        //
+        // Многоугольнику форму задаёт он сам, маской, и белое внутри него - такая же
+        // часть выделенного, как сам рисунок. Заливка же шла от рамки габарита, а её
+        // углы лежат ВНЕ многоугольника: белое снаружи и белое внутри соединены, и
+        // выкусывалось всё разом. Пользователь двигал кусок бумаги с рисунком, а получал
+        // рисунок на прозрачном - сквозь него просвечивало то, что лежит ниже, при том
+        // что на прежнем месте оставалась ровно та же белая бумага.
+        //
+        // На верхнем слое фона нет вовсе: там пусто, а белое - нарисовано. Выкусывать
+        // его значит терять пиксели, которые пользователь сам и положил; заметно это
+        // становилось на непрозрачной картинке, где до края выделения доходит белое -
+        // небо на фотографии, залитая белым фигура. В Electron-версии слой один, и
+        // кеинг там всегда про бумагу.
+        var pickupBitmap = quad is null && ReferenceEquals(doc.Layers[0], pl)
+            ? Keyed(raw)
+            : raw;
         var pickup = new FloatingPickup(pickupBitmap,
             new SKRect(clamped.Left, clamped.Top, clamped.Right, clamped.Bottom))
         {
@@ -60,6 +75,32 @@ public static class PickupOps
         // «подняли и положили обратно» от настоящего перемещения можно только так.
         pickup.RememberOrigin();
         doc.FloatingPickup = pickup;
+    }
+
+    /// <summary>Выкусить бумагу вокруг рисунка и отпустить исходный битмап.</summary>
+    private static SKBitmap Keyed(SKBitmap raw)
+    {
+        using (raw) return BitmapKeying.KeyOutBackground(raw, SKColors.White);
+    }
+
+    /// <summary>
+    /// Сдвинуть поднятый объект на (dx, dy) - вместе с его quad-маской.
+    ///
+    /// Одна операция на всех инструментах: маска живёт в тех же координатах документа,
+    /// что и габарит, и её обязано двигать то же самое перемещение. Пока сдвиг был
+    /// написан отдельно в каждом инструменте, «Выделение» двигало один габарит: маска
+    /// оставалась на прежнем месте, и объект, поднятый многоугольником, срезался ею на
+    /// ходу - до полного исчезновения, стоило отвести его на свою ширину. Достаётся это
+    /// «Выделению» через хоткей поворота: он поднимает многоугольник, не трогая активный
+    /// инструмент.
+    /// </summary>
+    public static void Translate(FloatingPickup fp, float dx, float dy)
+    {
+        fp.X += dx;
+        fp.Y += dy;
+        if (fp.Quad is not { } quad) return;
+        for (int i = 0; i < quad.Length; i++)
+            quad[i] = new SKPoint(quad[i].X + dx, quad[i].Y + dy);
     }
 
     /// <summary>

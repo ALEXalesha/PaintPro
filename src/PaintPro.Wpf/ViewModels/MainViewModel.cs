@@ -642,6 +642,22 @@ public partial class MainViewModel : ObservableObject
             return;
         }
         if (outcome.Bitmap is not { } bmp) return;
+        using (bmp) PasteBitmap(bmp);
+    }
+
+    /// <summary>
+    /// Положить картинку на холст поднятым объектом. Отдельно от чтения буфера обмена:
+    /// вставке всё равно, откуда взялись пиксели, а буфер обмена в проверке не нужен.
+    /// </summary>
+    public void PasteBitmap(SKBitmap bmp)
+    {
+        // Скрытый слой отсеиваем до вставки, как кисти, фигуры, заливка, текст и подъём
+        // выделения. Плавающий объект рисуется поверх документа независимо от видимости
+        // своего слоя - иначе спряталось бы то, что пользователь держит в руках, - и
+        // вставленная картинка была видна ровно до прижатия: дальше она уходила в битмап
+        // скрытого слоя и пропадала с экрана, оставив в истории запись. Причину отказа
+        // объяснит сам DrawTarget.
+        if (ToolContext.DrawTarget() is null) return;
         // Инструмент переключаем до вставки, а не после. Смена инструмента зовёт
         // OnDeactivate у прежнего, а QuadTool и SelectTool делают там CommitFloating:
         // вставка с активным «Четырёхугольником» прижималась к холсту в точке (20, 20)
@@ -649,7 +665,6 @@ public partial class MainViewModel : ObservableObject
         ActiveTool = ToolKind.Select;
         var cmd = new PasteCommand(bmp, new SKPoint(20, 20));
         Document.History.ExecuteAndPush(cmd, Document);
-        bmp.Dispose();
         InvalidateCanvas?.Invoke();
     }
 
