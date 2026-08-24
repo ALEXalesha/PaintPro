@@ -110,8 +110,13 @@ public static class PickupOps
     public static void EnsureLazyErase(Document doc, FloatingPickup fp)
     {
         if (fp.OriginalAreaErased) return;
-        var pl = doc.FindPixelLayer(fp.SourceLayerId) ?? doc.ActiveLayer as PixelLayer;
-        if (pl is null) return;
+        // Строго по слою-источнику, без подмены активным. Слой могли удалить, пока объект
+        // в руках, и тогда «выкусить исходную область» значило бы вырезать дыру в чужом
+        // слое - по координатам, которые к нему не относятся вовсе. Уносить с собой
+        // пиксели удалённого слоя не нужно: они уехали вместе с ним, а вернуть их может
+        // только отмена самого удаления.
+        var pl = doc.FindPixelLayer(fp.SourceLayerId);
+        if (pl is null) { fp.OriginalAreaErased = true; return; }
 
         using var canvas = new SKCanvas(pl.Bitmap);
         using var paint = new SKPaint

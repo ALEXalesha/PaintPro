@@ -1,4 +1,4 @@
-using PaintPro.Commands;
+﻿using PaintPro.Commands;
 using PaintPro.Models;
 using PaintPro.Services;
 using PaintPro.Tools;
@@ -169,6 +169,7 @@ public class PasteRecordAndTimelineTests
         fp.SetRotation(0.7f);   // углы габарита объектом уже не заняты
 
         using var copy = ClipboardService.ExtractForClipboard(doc);
+        Assert.NotNull(copy);
 
         // Прежде копия шла через общую сборку, обрезанную по габариту объекта: объект,
         // уведённый на цветное место, попадал в буфер вместе с этим цветом прямоугольной
@@ -186,6 +187,7 @@ public class PasteRecordAndTimelineTests
         doc.Selection = new RectSelection(5, 5, 10, 10);
 
         using var copy = ClipboardService.ExtractForClipboard(doc);
+        Assert.NotNull(copy);
 
         // У выделения правило прежнее и другое: там копируется сборка всех слоёв.
         Assert.Equal(SKColors.Lime, copy.GetPixel(2, 2));
@@ -299,5 +301,49 @@ public class PasteRecordAndTimelineTests
 
         Assert.Equal("", hint);
         Assert.Single(doc.History.Commands);
+    }
+
+    /// <summary>
+    /// Вставленную картинку унесли за край холста и прижали. Прижимать нечего: ни один
+    /// пиксель не меняется, и записи о прижатии в ленте не появляется. Запись «Вставка»
+    /// при этом обязана уйти вместе с картинкой - иначе история утверждает, что вставка
+    /// применена, на холсте её нет, а клик по строке ленты создаёт её заново, из
+    /// ниоткуда. Нашёл это фаззинг ленты, сценарным тестом такое не сочинялось.
+    /// </summary>
+    [Fact]
+    public void A_paste_carried_off_the_canvas_leaves_no_record_behind()
+    {
+        var doc = new Document(40, 40);
+        using var img = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using (var c = new SKCanvas(img)) c.Clear(SKColors.Red);
+
+        doc.History.ExecuteAndPush(new PasteCommand(img, new SKPoint(-200, -200)), doc);
+        Assert.Equal(1, doc.History.Cursor);
+
+        PickupOps.Translate(doc.FloatingPickup!, -50, -50);
+        doc.CommitFloating();
+
+        Assert.Null(doc.FloatingPickup);
+        Assert.Empty(doc.History.Commands);
+        Assert.False(doc.History.IsDirtySinceSave);
+    }
+
+    /// <summary>
+    /// Обратная сторона того же правила: прижатие, которое ПОМЕНЯЛО пиксели, запись
+    /// оставляет, и вставка из ленты никуда не девается.
+    /// </summary>
+    [Fact]
+    public void A_paste_that_lands_on_the_canvas_keeps_both_records()
+    {
+        var doc = new Document(40, 40);
+        using var img = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using (var c = new SKCanvas(img)) c.Clear(SKColors.Red);
+
+        doc.History.ExecuteAndPush(new PasteCommand(img, new SKPoint(5, 5)), doc);
+        PickupOps.Translate(doc.FloatingPickup!, 10, 10);
+        doc.CommitFloating();
+
+        Assert.Equal(2, doc.History.Commands.Count);
+        Assert.Equal(SKColors.Red, ((PixelLayer)doc.Layers[0]).Bitmap.GetPixel(20, 20));
     }
 }

@@ -58,7 +58,7 @@ public partial class MainWindow : Window
         };
         Canvas.PixelColorChanged += c =>
         {
-            StatusHex.Text = $" #{c.Red:X2}{c.Green:X2}{c.Blue:X2}";
+            StatusHex.Text = c is { } v ? $" #{v.Red:X2}{v.Green:X2}{v.Blue:X2}" : "";
         };
 
         // Ctrl+wheel zoom, centred on the cursor.

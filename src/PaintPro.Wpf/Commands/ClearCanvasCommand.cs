@@ -26,6 +26,9 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
     /// <summary>Слой на момент очистки: всё, что нужно, чтобы собрать его обратно.</summary>
     private sealed record LayerShot(Guid Id, string Name, bool Visible, float Opacity, SKBitmap Content);
 
+    /// <summary>Имя слоя-бумаги в новом документе - то же, что даёт ему конструктор <see cref="Document"/>.</summary>
+    public const string DefaultPaperName = "Background";
+
     private readonly SKColor _fill;
     private LayerShot[]? _previousLayers;
     private Selection? _previousSelection;
@@ -67,7 +70,19 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
         // Бумагу чистим, остальное убираем. Коллекцию не опустошаем ни на миг:
         // Document.ActiveLayer читает Layers[0] и на пустой стопке падает, а панель
         // слоёв пересобирается на каждое изменение коллекции.
-        if (doc.Layers[0] is PixelLayer paper) paper.Clear(_fill);
+        if (doc.Layers[0] is PixelLayer paper)
+        {
+            paper.Clear(_fill);
+            // Имя, видимость и прозрачность - такая же часть слоя, как пиксели. Пока
+            // стирались одни пиксели, «Создать» отдавало новый документ, у которого
+            // бумага звалась как в прошлой работе, а то и была спрятана или выкручена в
+            // прозрачность: пользователь рисовал по чистому листу и не видел ни штриха,
+            // а в файл уходил белый прямоугольник. Возвращает всё это назад отмена -
+            // слои она собирает из снимка целиком.
+            paper.Name = DefaultPaperName;
+            paper.Visible = true;
+            paper.Opacity = 1f;
+        }
         Shrink(doc, 1);
         doc.ActiveLayerIndex = 0;
         doc.Selection = null;

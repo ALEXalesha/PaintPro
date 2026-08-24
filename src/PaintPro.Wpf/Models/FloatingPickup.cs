@@ -140,29 +140,24 @@ public sealed class FloatingPickup : IDisposable
     {
         var r = GeometryMath.ResizeRotated(X, Y, Width, Height, Rotation, handle, mouseWorld,
                                            keepAspect: keepAspect);
-        // If we have a quad, scale its corners around the same anchor so the polygon clip
-        // tracks the resize. Quad corner-drag is a different op (changes shape, not size).
+        // Углы маски пересчитываются в тот же габарит, в котором и живут: маска и габарит
+        // хранятся НЕПОВЁРНУТЫМИ, поворот накладывается уже при рисовании
+        // (<see cref="Models.Document.DrawPickup"/>). Значит и пересчёт - это простое
+        // соответствие «старый габарит → новый», без всякого поворота: доля, которую угол
+        // занимал по ширине и высоте, остаётся прежней.
         //
-        // The anchor has to be the WORLD position of the opposite handle, and the scaling
-        // has to happen along the pickup's own axes — which is what ResizeRotated does for
-        // the bbox. Scaling around the un-rotated local point along world axes instead left
-        // the polygon clip somewhere else entirely as soon as the pickup was rotated: the
-        // mask slid off the pixels it was supposed to cut. The Electron build already did
-        // this the right way; only this side was wrong.
+        // Прежде пересчёт шёл вокруг МИРОВОГО положения противоположной ручки, то есть
+        // уже повёрнутого, при том что сами углы неповёрнуты. Две системы координат
+        // смешивались, и у повёрнутого объекта маска на первом же движении ручки уезжала
+        // с пикселей, которые должна была вырезать: пользователь тянул угол, а из-под
+        // маски выползал кусок соседнего рисунка. Без поворота ошибка обнулялась, поэтому
+        // и держалась так долго.
         if (Quad is { } q && Width > 0 && Height > 0)
         {
             float sx = r.Width  / Width;
             float sy = r.Height / Height;
-            var anchorWorld = GeometryMath.CornerWorldPosition(
-                X, Y, Width, Height, Rotation, GeometryMath.Opposite(handle));
-            for (int i = 0; i < 4; i++)
-            {
-                var rel = new SKPoint(q[i].X - anchorWorld.X, q[i].Y - anchorWorld.Y);
-                var local = GeometryMath.Rotate(rel, SKPoint.Empty, -Rotation);
-                var scaled = new SKPoint(local.X * sx, local.Y * sy);
-                var world = GeometryMath.Rotate(scaled, SKPoint.Empty, Rotation);
-                q[i] = new SKPoint(anchorWorld.X + world.X, anchorWorld.Y + world.Y);
-            }
+            for (int i = 0; i < q.Length; i++)
+                q[i] = new SKPoint(r.X + (q[i].X - X) * sx, r.Y + (q[i].Y - Y) * sy);
         }
         X = r.X; Y = r.Y; Width = r.Width; Height = r.Height;
     }

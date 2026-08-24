@@ -15,20 +15,33 @@ namespace PaintPro.Commands;
 /// </summary>
 public sealed class ReplaceAllLayersCommand : IDocumentCommand, IDisposable
 {
+    /// <summary>Имя, видимость и прозрачность одного слоя - всё, что у слоя есть кроме пикселей.</summary>
+    public readonly record struct LayerProps(string Name, bool Visible, float Opacity);
+
     private readonly SKBitmap[] _before;
     private readonly int _beforeW, _beforeH;
+    private readonly LayerProps[]? _beforeProps;
     private readonly SKBitmap[] _after;
     private readonly int _afterW, _afterH;
+    private readonly LayerProps[]? _afterProps;
 
     /// <param name="before">One snapshot per layer, in layer order (command takes ownership).</param>
     /// <param name="after">Transformed content per layer, same order (command takes ownership).</param>
+    /// <param name="beforeProps">
+    /// Свойства слоёв, к которым возвращает отмена, или null - «оставить как есть».
+    /// </param>
+    /// <param name="afterProps">
+    /// Свойства слоёв после операции, или null - «оставить как есть». Нужны открытию
+    /// файла: поворот и отражение свойств не трогают, а открытие обязано их выправить.
+    /// </param>
     public ReplaceAllLayersCommand(string displayName,
         SKBitmap[] before, int beforeW, int beforeH,
-        SKBitmap[] after, int afterW, int afterH)
+        SKBitmap[] after, int afterW, int afterH,
+        LayerProps[]? beforeProps = null, LayerProps[]? afterProps = null)
     {
         DisplayName = displayName;
-        _before = before; _beforeW = beforeW; _beforeH = beforeH;
-        _after = after; _afterW = afterW; _afterH = afterH;
+        _before = before; _beforeW = beforeW; _beforeH = beforeH; _beforeProps = beforeProps;
+        _after = after; _afterW = afterW; _afterH = afterH; _afterProps = afterProps;
     }
 
     public string DisplayName { get; }
@@ -49,22 +62,25 @@ public sealed class ReplaceAllLayersCommand : IDocumentCommand, IDisposable
         foreach (var b in _after) b.Dispose();
     }
 
-    public void Execute(Document doc) => Install(doc, _after, _afterW, _afterH);
-    public void Undo(Document doc) => Install(doc, _before, _beforeW, _beforeH);
+    public void Execute(Document doc) => Install(doc, _after, _afterW, _afterH, _afterProps);
+    public void Undo(Document doc) => Install(doc, _before, _beforeW, _beforeH, _beforeProps);
 
-    private static void Install(Document doc, SKBitmap[] content, int w, int h)
+    private static void Install(Document doc, SKBitmap[] content, int w, int h, LayerProps[]? props)
     {
         if (content.Length != doc.Layers.Count) return;
 
         for (int i = 0; i < doc.Layers.Count; i++)
         {
             if (doc.Layers[i] is not PixelLayer cur) continue;
+            var p = props is not null && i < props.Length
+                ? props[i]
+                : new LayerProps(cur.Name, cur.Visible, cur.Opacity);
             var layer = new PixelLayer(w, h)
             {
                 Id = cur.Id,
-                Name = cur.Name,
-                Visible = cur.Visible,
-                Opacity = cur.Opacity,
+                Name = p.Name,
+                Visible = p.Visible,
+                Opacity = p.Opacity,
             };
             using (var c = new SKCanvas(layer.Bitmap)) c.DrawBitmap(content[i], 0, 0);
             cur.Dispose();

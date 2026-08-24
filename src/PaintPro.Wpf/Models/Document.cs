@@ -171,6 +171,7 @@ public partial class Document : ObservableObject
         if (!pickup.HasMoved) { CancelFloating(); return; }
 
         var target = TargetLayer(pickup);
+        bool recorded = false;
 
         if (target is not null)
         {
@@ -188,7 +189,12 @@ public partial class Document : ObservableObject
             SKBitmap? before = null;
             if (dirty.HasArea())
             {
-                before = pickup.PreEditSnapshot is { } snap
+                // Снимок годится только тому слою, с которого его сняли. Слой-источник
+                // могли удалить, пока объект в руках, и тогда TargetLayer отдаёт активный:
+                // «до» бралось из снимка ЧУЖОГО слоя, и первый же Ctrl+Z вписывал в
+                // активный слой пиксели удалённого - на месте рисунка оказывался кусок
+                // того, чего в документе больше нет.
+                before = ReferenceEquals(SnapshotLayer(pickup), target) && pickup.PreEditSnapshot is { } snap
                     ? Crop(snap, dirty)
                     : target.ExtractRegion(dirty);
             }
@@ -200,8 +206,19 @@ public partial class Document : ObservableObject
                 var after = target.ExtractRegion(dirty);
                 History.Push(new Commands.RegionDiffCommand(
                     pickup.CommitLabel, target.Id, dirty, before, after, dropsFloating: true));
+                recorded = true;
             }
         }
+
+        // Прижатие, не изменившее ни пикселя, не оставляет в ленте ничего - и вставке,
+        // которая этот объект создала, описывать больше нечего. Так бывает, когда
+        // картинку уносят за край холста: класть её некуда, записывать нечего, а запись
+        // «Вставка» оставалась в ленте применённой. История после этого расходилась с
+        // холстом: на экране картинки нет, а клик по строке ленты создавал её заново -
+        // из ниоткуда и там, где её в этом прогоне никогда не было. Вставка не трогает
+        // ни одного пикселя, поэтому вычеркнуть её из ленты безопасно - тем же способом,
+        // каким от неё отказываются Escape и Delete (MainViewModel.UndoOwnedPickup).
+        if (!recorded && pickup.Owner is { } orphan) History.Forget(orphan);
 
         pickup.Dispose();
         _floatingPickup = null;
@@ -220,8 +237,10 @@ public partial class Document : ObservableObject
         if (_floatingPickup is null) return;
         var pickup = _floatingPickup;
 
+        // Только на свой слой: класть снимок в активный, когда слой-источник удалён, -
+        // это стереть чужой рисунок и заменить его тем, чего в документе уже нет.
         if (pickup.OriginalAreaErased && pickup.PreEditSnapshot is { } snap
-            && TargetLayer(pickup) is { } target)
+            && SnapshotLayer(pickup) is { } target)
         {
             var source = SourceRect(pickup, target.Width, target.Height);
             if (source.HasArea()) BlitRegion(target.Bitmap, snap, source);
@@ -249,7 +268,9 @@ public partial class Document : ObservableObject
         // пользователь получал «вырезал, а ничего не вырезалось».
         Services.PickupOps.EnsureLazyErase(this, pickup);
 
-        if (pickup.PreEditSnapshot is { } snap && TargetLayer(pickup) is { } target)
+        // Опять же только по слою-источнику: дыру описывает его снимок, и записывать её
+        // в чужой слой нельзя - см. <see cref="CancelFloating"/>.
+        if (pickup.PreEditSnapshot is { } snap && SnapshotLayer(pickup) is { } target)
         {
             var source = SourceRect(pickup, target.Width, target.Height);
             if (source.HasArea())
@@ -292,6 +313,25 @@ public partial class Document : ObservableObject
     /// <summary>Layer a pickup belongs to: the one it was lifted from, falling back to the active layer.</summary>
     private PixelLayer? TargetLayer(FloatingPickup pickup)
         => FindPixelLayer(pickup.SourceLayerId) ?? ActiveLayer as PixelLayer;
+
+    /// <summary>
+    /// Слой, к которому относится <see cref="FloatingPickup.PreEditSnapshot"/> - строго тот,
+    /// с которого пиксели подняли, или null, если его уже удалили.
+    ///
+    /// Отличается от <see cref="TargetLayer"/> тем, что не подменяет пропавший слой
+    /// активным. Запасной вариант там нужен, чтобы не потерять сами пиксели; но снимок
+    /// описывает ПРЕЖНЕЕ состояние конкретного слоя, и в чужой слой его класть нельзя -
+    /// это стёрло бы чужой рисунок и заменило тем, чего в документе уже нет.
+    ///
+    /// Пустой идентификатор означает «слой не записан» - так пикап собирают только тесты;
+    /// в приложении его проставляют и подъём (<see cref="Services.PickupOps"/>), и вставка.
+    /// Для такого пикапа слоем-источником считается активный, как было до появления
+    /// идентификаторов.
+    /// </summary>
+    private PixelLayer? SnapshotLayer(FloatingPickup pickup)
+        => pickup.SourceLayerId == Guid.Empty
+            ? ActiveLayer as PixelLayer
+            : FindPixelLayer(pickup.SourceLayerId);
 
     /// <summary>
     /// Colour of one pixel as the user sees it: white paper with every visible layer
@@ -484,8 +524,24 @@ public partial class Document : ObservableObject
             clipPath.Close();
             canvas.ClipPath(clipPath, antialias: true);
         }
-        using (var paint = alpha == 255 ? null : new SKPaint { Color = SKColors.White.WithAlpha(alpha) })
-            canvas.DrawBitmap(pickup.SourceBitmap, pickup.CurrentBBox, paint);
+        // Растянутый или повёрнутый объект пересэмплируется, и делать это надо с
+        // фильтрацией. Без неё Skia берёт ближайший пиксель: уменьшенная вдвое
+        // фотография теряла каждую вторую строку и рябила, увеличенная шла лесенкой, а
+        // повёрнутая получала рваные края. На экране и в слое одно и то же, потому что
+        // сборка общая, - значит и портилось это одинаково и в файле. При размере один к
+        // одному и без поворота фильтрация не нужна и вредна: пиксельный рисунок обязан
+        // переезжать без размытия.
+        var box = pickup.CurrentBBox;
+        var bmp = pickup.SourceBitmap;
+        bool resampled = pickup.Rotation != 0f
+            || MathF.Abs(box.Width - bmp.Width) > 0.01f
+            || MathF.Abs(box.Height - bmp.Height) > 0.01f;
+        using (var paint = new SKPaint
+        {
+            Color = SKColors.White.WithAlpha(alpha),
+            FilterQuality = resampled ? SKFilterQuality.Medium : SKFilterQuality.None,
+        })
+            canvas.DrawBitmap(bmp, box, paint);
         canvas.Restore();
     }
 

@@ -20,6 +20,16 @@ public enum ClipboardStatus
 /// <param name="Bitmap">Декодированная картинка; владение переходит вызывающему.</param>
 public readonly record struct ClipboardOutcome(ClipboardStatus Status, SKBitmap? Bitmap = null);
 
+/// <summary>Чем кончилась попытка положить картинку в буфер обмена.</summary>
+public enum CopyStatus
+{
+    Ok,
+    /// <summary>Копировать нечего: выделение или объект целиком за пределами холста.</summary>
+    Nothing,
+    /// <summary>Буфер держит другое приложение и не отдаёт.</summary>
+    Busy,
+}
+
 /// <summary>
 /// System clipboard bridge for raster images. Uses WPF's Clipboard API and converts
 /// to/from SkiaSharp via PNG round-trip (the safest cross-app format).
@@ -68,7 +78,14 @@ public sealed class ClipboardService
     /// в копии было больше, чем содержимого. В Electron-версии Ctrl+C по floating рисует
     /// в чистый холст один только объект (<c>copySelection</c>).
     /// </summary>
-    public static SKBitmap ExtractForClipboard(Document doc)
+    /// <returns>
+    /// null - копировать нечего: рамка или объект целиком уехали за холст. Прежде на это
+    /// возвращался битмап 1x1, он честно уходил в буфер обмена, и Ctrl+C по объекту,
+    /// уведённому за край, заканчивался молча и «успешно»: буфер терял то, что в нём
+    /// лежало, а Ctrl+X к тому же выбрасывал сам объект - в обмен на один прозрачный
+    /// пиксель.
+    /// </returns>
+    public static SKBitmap? ExtractForClipboard(Document doc)
     {
         var canvasRect = new SKRectI(0, 0, doc.CanvasWidth, doc.CanvasHeight);
 
@@ -77,7 +94,7 @@ public sealed class ClipboardService
         if (doc.FloatingPickup is { } fp)
         {
             var bounds = Document.PickupBounds(fp, doc.CanvasWidth, doc.CanvasHeight);
-            if (!bounds.HasArea()) return new SKBitmap(1, 1);
+            if (!bounds.HasArea()) return null;
             var only = new SKBitmap(bounds.Width, bounds.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
             using (var c = new SKCanvas(only))
             {
@@ -96,7 +113,7 @@ public sealed class ClipboardService
             _ => canvasRect,
         };
         rect = SKRectI.Intersect(rect, canvasRect);
-        if (!rect.HasArea()) return new SKBitmap(1, 1);
+        if (!rect.HasArea()) return null;
 
         using var flat = FileService.Flatten(doc);
         var dst = new SKBitmap(rect.Width, rect.Height, flat.ColorType, flat.AlphaType);
@@ -109,17 +126,19 @@ public sealed class ClipboardService
 
     /// <summary>
     /// Copy the current selection (or whole canvas) to the OS clipboard.
-    /// False - буфер обмена так и не отдался.
+    /// <see cref="CopyStatus.Busy"/> - буфер обмена так и не отдался,
+    /// <see cref="CopyStatus.Nothing"/> - копировать было нечего.
     /// </summary>
-    public bool Copy(Document doc)
+    public CopyStatus Copy(Document doc)
     {
         using var bmp = ExtractForClipboard(doc);
+        if (bmp is null) return CopyStatus.Nothing;
         using var img = SKImage.FromBitmap(bmp);
         using var data = img.Encode(SKEncodedImageFormat.Png, 100);
         // Кодировщик возвращает null, а не бросает: без проверки обычный Ctrl+C падал бы
         // с NullReferenceException до глобального обработчика и пугал окном «Что-то
         // пошло не так» - при том, что копирование это просто не удалось.
-        if (data is null) return false;
+        if (data is null) return CopyStatus.Busy;
         using var ms = new MemoryStream(data.ToArray());
         var bi = new BitmapImage();
         bi.BeginInit();
@@ -127,7 +146,7 @@ public sealed class ClipboardService
         bi.StreamSource = ms;
         bi.EndInit();
         bi.Freeze();
-        return Retry(() => Clipboard.SetImage(bi));
+        return Retry(() => Clipboard.SetImage(bi)) ? CopyStatus.Ok : CopyStatus.Busy;
     }
 
     /// <summary>

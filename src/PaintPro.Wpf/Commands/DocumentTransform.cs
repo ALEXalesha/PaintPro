@@ -59,10 +59,22 @@ public static class DocumentTransform
         int count = doc.Layers.Count;
         var before = new SKBitmap[count];
         var after = new SKBitmap[count];
+        var beforeProps = new ReplaceAllLayersCommand.LayerProps[count];
+        var afterProps = new ReplaceAllLayersCommand.LayerProps[count];
         int w = image.Width, h = image.Height;
 
         for (int i = 0; i < count; i++)
         {
+            var src = doc.Layers[i];
+            beforeProps[i] = new ReplaceAllLayersCommand.LayerProps(src.Name, src.Visible, src.Opacity);
+            // Открытый файл обязано быть видно. Пока свойства слоёв переживали открытие,
+            // «Открыть» в документ со спрятанной или полупрозрачной бумагой давало пустой
+            // белый холст: картинка легла в слой, которого не видно, - и в файл при
+            // следующем Ctrl+S уходил тот же белый лист. Имя нижнего слоя тоже возвращаем
+            // к исходному: это уже другой документ, а не тот, где его переименовали.
+            afterProps[i] = new ReplaceAllLayersCommand.LayerProps(
+                i == 0 ? ClearCanvasCommand.DefaultPaperName : src.Name, true, 1f);
+
             before[i] = doc.Layers[i] is PixelLayer pl
                 ? pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height))
                 : new SKBitmap(1, 1);
@@ -85,7 +97,8 @@ public static class DocumentTransform
 
         return new ReplaceAllLayersCommand("Открытие",
             before, doc.CanvasWidth, doc.CanvasHeight,
-            after, w, h);
+            after, w, h,
+            beforeProps, afterProps);
     }
 
     /// <summary>

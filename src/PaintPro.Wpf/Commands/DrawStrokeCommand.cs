@@ -21,13 +21,22 @@ public sealed class DrawStrokeCommand : IDocumentCommand, IDisposable
     private Guid _layerId;
     private SKBitmap? _underlying;
 
+    /// <param name="layerId">
+    /// Слой, в который штрих обязан лечь. <see cref="Guid.Empty"/> - «тот, что активен
+    /// сейчас», и это правильный ответ только в момент нажатия. Инструменты снимают слой
+    /// на нажатии и передают его сюда: жест начинается на одном слое, а исполняется
+    /// командой на отпускании, и между этими двумя мгновениями активный слой уже может
+    /// быть другим - тогда штрих, который пользователь вёл по верхнему слою, оказывался
+    /// на нижнем, а ластик вместо дыры красил белым.
+    /// </param>
     public DrawStrokeCommand(SKBitmap stroke, SKRectI bounds,
-        SKBlendMode blend = SKBlendMode.SrcOver, byte alpha = 255)
+        SKBlendMode blend = SKBlendMode.SrcOver, byte alpha = 255, Guid layerId = default)
     {
         _strokeBitmap = stroke;
         _bounds = bounds;
         _blendMode = blend;
         _alpha = alpha;
+        _layerId = layerId;
     }
 
     public string DisplayName => "Draw stroke";

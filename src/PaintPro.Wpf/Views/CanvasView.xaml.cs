@@ -24,7 +24,8 @@ public partial class CanvasView : UserControl
 
     /// <summary>Document pixel coords under the cursor, or null when outside the canvas.</summary>
     public event Action<SKPoint?>? PixelPositionChanged;
-    public event Action<SKColor>? PixelColorChanged;
+    /// <summary>Цвет под курсором, или null - курсора над холстом нет.</summary>
+    public event Action<SKColor?>? PixelColorChanged;
 
     public CanvasView()
     {
@@ -41,7 +42,13 @@ public partial class CanvasView : UserControl
         // и пропадало, а битмап размером с холст утекал. Ручки это пережили ещё в 1.8.0
         // (Overlay.LostMouseCapture), сам холст - нет.
         Skia.LostMouseCapture += (_, _) => EndCanvasGesture();
-        Skia.MouseLeave += (_, _) => PixelPositionChanged?.Invoke(null);
+        // Вместе с координатами гасим и цвет: курсор ушёл с холста, а статусбар
+        // продолжал показывать последний прочитанный HEX как текущий.
+        Skia.MouseLeave += (_, _) =>
+        {
+            PixelPositionChanged?.Invoke(null);
+            PixelColorChanged?.Invoke(null);
+        };
 
         // Ctrl+wheel zoom with focal point under the cursor.
         // PreviewMouseWheel (tunneling) intercepts before ScrollViewer's bubbling MouseWheel,
@@ -486,7 +493,10 @@ public partial class CanvasView : UserControl
         {
             _lastStatusUpdate = now;
             if (pos.X < 0 || pos.Y < 0 || pos.X >= _vm.Document.CanvasWidth || pos.Y >= _vm.Document.CanvasHeight)
+            {
                 PixelPositionChanged?.Invoke(null);
+                PixelColorChanged?.Invoke(null);
+            }
             else
             {
                 PixelPositionChanged?.Invoke(pos);

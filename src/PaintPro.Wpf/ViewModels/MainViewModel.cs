@@ -474,6 +474,23 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand] private void NewDocument()
     {
         if (!ConfirmDiscard("создать новый")) return;
+        ResetDocument();
+    }
+
+    /// <summary>
+    /// Собственно «Создать», без вопроса про несохранённую работу. Отдельно от <see
+    /// cref="NewDocument"/>, потому что тот открывает модальное окно и в тестах его не
+    /// позвать - тем же приёмом вынесен разбор размера холста
+    /// (<see cref="TryParseCanvasSize"/>).
+    /// </summary>
+    public void ResetDocument()
+    {
+        // Прижимаем поднятый объект ДО очистки - как это делают поворот, отражение,
+        // кадрирование и смена размера. Сама команда его только снимает, и вставленная
+        // картинка, которую пользователь ещё держал в руках, исчезала бесследно: отмена
+        // «Создать» возвращала слои, но не её, а запись «Вставка» оставалась в ленте
+        // применённой. Прижатая, она вернётся вместе со всем остальным.
+        Document.CommitFloating();
         var cmd = new ClearCanvasCommand();
         Document.History.ExecuteAndPush(cmd, Document);
         // Новый документ - это уже не тот файл. Без отвязки Ctrl+S уходил в
@@ -611,12 +628,27 @@ public partial class MainViewModel : ObservableObject
     // ───────── Clipboard ─────────
     [RelayCommand] private void CopySelection() => CopyToClipboard();
 
-    /// <summary>Копирование с сообщением об отказе: молчащий Ctrl+C неотличим от сработавшего.</summary>
+    /// <summary>
+    /// Копирование с сообщением об отказе: молчащий Ctrl+C неотличим от сработавшего.
+    ///
+    /// Причин отказа две, и они разные. «Занят» - дело житейское, повторить через секунду
+    /// обычно получается. «Нечего копировать» - это рамка или объект, уехавшие за край
+    /// холста; раньше в буфер в таком случае уходил прозрачный пиксель 1x1, объявляя
+    /// копирование удавшимся, а Ctrl+X по этому «успеху» ещё и выбрасывал сам объект.
+    /// </summary>
     private bool CopyToClipboard()
     {
-        if (ClipboardService.Copy(Document)) return true;
-        ShowHint("Буфер обмена занят другим приложением — копирование не удалось");
-        return false;
+        switch (ClipboardService.Copy(Document))
+        {
+            case CopyStatus.Ok:
+                return true;
+            case CopyStatus.Nothing:
+                ShowHint("Копировать нечего — выделенное целиком за пределами холста");
+                return false;
+            default:
+                ShowHint("Буфер обмена занят другим приложением — копирование не удалось");
+                return false;
+        }
     }
 
     [RelayCommand] private void CutSelection()

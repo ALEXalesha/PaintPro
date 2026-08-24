@@ -28,6 +28,9 @@ public abstract class StrokeToolBase : ITool
     private byte _strokeAlpha = 255;
     private SKBlendMode _mergeBlend = SKBlendMode.SrcOver;
 
+    /// <summary>Слой, на котором начался штрих. Он же его и получит - см. <see cref="OnPointerUp"/>.</summary>
+    private Guid _targetLayerId;
+
     public SKBitmap? PreviewBitmap => _drawing ? _strokeBitmap : null;
     public byte PreviewAlpha => _strokeAlpha;
 
@@ -53,6 +56,7 @@ public abstract class StrokeToolBase : ITool
         // Прошлый штрих мог не получить PointerUp - например, у него отобрали захват мыши.
         // Без сброса его битмап размером с холст просто терялся вместе со ссылкой.
         if (_drawing) ResetStroke(ctx);
+        _targetLayerId = pl.Id;
         _canvasSize = new SKRectI(0, 0, pl.Width, pl.Height);
         _strokeBitmap = new SKBitmap(pl.Width, pl.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         _strokeCanvas = new SKCanvas(_strokeBitmap);
@@ -137,7 +141,11 @@ public abstract class StrokeToolBase : ITool
                     dest:   new SKRect(0, 0, bbox.Width, bbox.Height));
             }
 
-            var cmd = new DrawStrokeCommand(cropped, bbox, MergeBlendMode(ctx), _strokeAlpha);
+            // Слой и режим слияния - те, что сняты на нажатии, а не пересчитанные сейчас.
+            // Пересчёт на отпускании отвечал про слой, активный СЕЙЧАС: у ластика это
+            // разница между «вычесть пиксели» и «закрасить белым», и превью всю дорогу
+            // показывало одно, а на слой ложилось другое.
+            var cmd = new DrawStrokeCommand(cropped, bbox, _mergeBlend, _strokeAlpha, _targetLayerId);
             ctx.History.ExecuteAndPush(cmd, ctx.Document);
         }
 
@@ -157,6 +165,7 @@ public abstract class StrokeToolBase : ITool
         _paint?.Dispose(); _paint = null;
         _drawing = false;
         _mergeBlend = SKBlendMode.SrcOver;
+        _targetLayerId = Guid.Empty;
         ctx.IsDrawing = false;
     }
 

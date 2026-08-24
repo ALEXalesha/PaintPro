@@ -24,6 +24,10 @@ public abstract class ShapeTool : ITool
     private SKColor _color;
     private byte _alpha = 255;
 
+    /// <summary>Слой, на котором начался жест. Он же получит фигуру - см. <see cref="OnPointerUp"/>.</summary>
+    private Guid _targetLayerId;
+    private SKRectI _targetSize;
+
     public SKBitmap? PreviewBitmap => _drawing ? _previewBitmap : null;
     public byte PreviewAlpha => _alpha;
     public Cursor? GetCursor(SKPoint position) => Cursors.Cross;
@@ -38,6 +42,8 @@ public abstract class ShapeTool : ITool
     {
         if (ctx.DrawTarget() is not { } pl) return;
         if (_drawing) Reset(ctx);
+        _targetLayerId = pl.Id;
+        _targetSize = new SKRectI(0, 0, pl.Width, pl.Height);
         _origin = position;
         _current = position;
         // Render opaque, composite once with this alpha: a filled shape draws its fill and
@@ -72,9 +78,9 @@ public abstract class ShapeTool : ITool
         var bbox = ComputeBBox();
         var margin = _strokeWidth + 2f + Overshoot(_origin, _current, _strokeWidth);
         bbox.Inflate(margin, margin);
-        var rect = SKRectI.Round(bbox);
-        if (ctx.Document.ActiveLayer is PixelLayer pl)
-            rect = SKRectI.Intersect(rect, new SKRectI(0, 0, pl.Width, pl.Height));
+        // Обрезаем по слою, на котором жест начался, а не по активному сейчас: фигура
+        // обязана лечь туда же, куда её вело превью.
+        var rect = SKRectI.Intersect(SKRectI.Round(bbox), _targetSize);
         // Прозрачность в ноль - фигура, которой не было; см. StrokeToolBase.OnPointerUp.
         if (_alpha == 0) rect = SKRectI.Empty;
 
@@ -88,7 +94,8 @@ public abstract class ShapeTool : ITool
                     dest:   new SKRect(0, 0, rect.Width, rect.Height));
             }
             ctx.History.ExecuteAndPush(
-                new DrawStrokeCommand(cropped, rect, SKBlendMode.SrcOver, _alpha), ctx.Document);
+                new DrawStrokeCommand(cropped, rect, SKBlendMode.SrcOver, _alpha, _targetLayerId),
+                ctx.Document);
         }
         Reset(ctx);
     }
@@ -137,6 +144,7 @@ public abstract class ShapeTool : ITool
         _previewBitmap?.Dispose();
         _previewBitmap = null;
         _drawing = false;
+        _targetLayerId = Guid.Empty;
         ctx.IsDrawing = false;
         if (ctx.Document.Mode == DocumentMode.DrawingShape)
             ctx.Document.EnterTransientMode(DocumentMode.Idle);

@@ -1,4 +1,4 @@
-using PaintPro.Models;
+﻿using PaintPro.Models;
 using PaintPro.Services;
 using SkiaSharp;
 using Xunit;
@@ -8,21 +8,30 @@ namespace PaintPro.Tests;
 /// <summary>
 /// Масштабирование полигонального пикапа за ручку рамки.
 ///
-/// Полигон - это клип-маска поверх поднятых пикселей, и он обязан ездить вместе с
-/// ними. Прежний код масштабировал углы вокруг НЕповёрнутой точки якоря и по осям
-/// мира, тогда как сама рамка считается вокруг мировой позиции якоря и по осям
-/// объекта. На неповёрнутом пикапе разницы нет, а у повёрнутого маска съезжала с
-/// пикселей, которые должна была вырезать.
+/// Полигон - это клип-маска поверх поднятых пикселей, и он обязан ездить вместе с ними.
+/// Маска и рамка хранятся НЕПОВЁРНУТЫМИ: поворот накладывает уже рисование
+/// (<see cref="Document.DrawPickup"/> крутит канву, а потом режет по маске), поэтому
+/// какие пиксели останутся под маской, решает её положение относительно рамки - и
+/// только оно. Значит и пересчёт при масштабировании обязан сохранять именно доли.
+///
+/// Прежний код пересчитывал углы вокруг МИРОВОГО, то есть уже повёрнутого, положения
+/// противоположной ручки, при том что сами углы неповёрнуты: две системы координат
+/// смешивались, и у повёрнутого объекта маска на первом же движении ручки уезжала с
+/// пикселей, которые должна была вырезать. Без поворота ошибка обнулялась, поэтому
+/// разницы и не было видно.
 /// </summary>
 public class RotatedQuadResizeTests
 {
-    /// <summary>Углы рамки пикапа в мировых координатах, по часовой от левого верхнего.</summary>
+    /// <summary>
+    /// Углы рамки пикапа в его собственных (неповёрнутых) координатах, по часовой от
+    /// левого верхнего - в той же системе, в которой живёт <see cref="FloatingPickup.Quad"/>.
+    /// </summary>
     private static SKPoint[] FrameCorners(FloatingPickup fp) => new[]
     {
-        GeometryMath.CornerWorldPosition(fp.X, fp.Y, fp.Width, fp.Height, fp.Rotation, ResizeHandle.NW),
-        GeometryMath.CornerWorldPosition(fp.X, fp.Y, fp.Width, fp.Height, fp.Rotation, ResizeHandle.NE),
-        GeometryMath.CornerWorldPosition(fp.X, fp.Y, fp.Width, fp.Height, fp.Rotation, ResizeHandle.SE),
-        GeometryMath.CornerWorldPosition(fp.X, fp.Y, fp.Width, fp.Height, fp.Rotation, ResizeHandle.SW),
+        GeometryMath.LocalHandlePosition(fp.X, fp.Y, fp.Width, fp.Height, ResizeHandle.NW),
+        GeometryMath.LocalHandlePosition(fp.X, fp.Y, fp.Width, fp.Height, ResizeHandle.NE),
+        GeometryMath.LocalHandlePosition(fp.X, fp.Y, fp.Width, fp.Height, ResizeHandle.SE),
+        GeometryMath.LocalHandlePosition(fp.X, fp.Y, fp.Width, fp.Height, ResizeHandle.SW),
     };
 
     private static FloatingPickup MakePickup(float rotation)

@@ -1,4 +1,4 @@
-using PaintPro.Commands;
+﻿using PaintPro.Commands;
 using PaintPro.Models;
 using PaintPro.Services;
 using PaintPro.Tools;
@@ -80,12 +80,14 @@ public class EdgeBoundsAndPaperLayerTests
     }
 
     [Fact]
-    public void Copying_a_selection_squeezed_to_a_line_does_not_throw()
+    public void Copying_a_selection_squeezed_to_a_line_reports_that_there_is_nothing()
     {
         var doc = new Document(60, 60);
         doc.Selection = new RectSelection(new SKRect(-40, 10, 0, 40));
-        using var copy = ClipboardService.ExtractForClipboard(doc);
-        Assert.True(copy.Width > 0 && copy.Height > 0);
+        // Рамка целиком за холстом: копировать нечего, и сказать об этом надо честно.
+        // Прежде на такое возвращался битмап 1x1 - он уходил в буфер обмена наравне с
+        // настоящей копией, затирая то, что там лежало.
+        Assert.Null(ClipboardService.ExtractForClipboard(doc));
     }
 
     [Fact]

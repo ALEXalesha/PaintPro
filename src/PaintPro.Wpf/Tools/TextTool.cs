@@ -23,13 +23,21 @@ public sealed class TextTool : ITool
     private SKPoint _lastClick;
     private ToolContext? _ctx;
 
+    /// <summary>
+    /// Слой, по которому кликнули. Между кликом и ответом в окне ввода проходит сколько
+    /// угодно времени, и активный слой за это время меняют свободно - а текст обязан
+    /// лечь туда, куда пользователь целился.
+    /// </summary>
+    private Guid _targetLayerId;
+
     public void OnActivate(ToolContext ctx) { }
     public void OnDeactivate(ToolContext ctx) { }
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
         // Спрашивать текст, которому некуда лечь, незачем: скрытый слой отсеиваем до диалога.
-        if (ctx.DrawTarget() is null) return;
+        if (ctx.DrawTarget() is not { } pl) return;
+        _targetLayerId = pl.Id;
         _lastClick = position;
         _ctx = ctx;
         TextRequested?.Invoke(position);
@@ -53,7 +61,9 @@ public sealed class TextTool : ITool
         // пустом холсте - это «изменено» на ровном месте и вопрос про сохранение после
         // ничего. Той же проверкой отсеивает пустую работу заливка.
         if (_ctx is null || string.IsNullOrWhiteSpace(text)) return;
-        if (_ctx.DrawTarget() is not { } pl) return;
+        // Слой ищем по идентификатору, снятому на клике. Его могли и удалить, пока окно
+        // ввода было открыто, - тогда класть текст некуда.
+        if (_ctx.Document.FindPixelLayer(_targetLayerId) is not { } pl) return;
         // Text is rendered opaque and composited at the tool opacity, same as strokes.
         // Прозрачность в ноль - те же чернила, что и пустая строка: на холсте не остаётся
         // ничего, а запись в истории осталась бы.
@@ -110,6 +120,6 @@ public sealed class TextTool : ITool
             }
         }
         _ctx.History.ExecuteAndPush(
-            new DrawStrokeCommand(bmp, canvasRect, SKBlendMode.SrcOver, alpha), _ctx.Document);
+            new DrawStrokeCommand(bmp, canvasRect, SKBlendMode.SrcOver, alpha, pl.Id), _ctx.Document);
     }
 }

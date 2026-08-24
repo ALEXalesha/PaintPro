@@ -1,4 +1,4 @@
-using PaintPro.Commands;
+﻿using PaintPro.Commands;
 using PaintPro.Models;
 using PaintPro.Services;
 using PaintPro.Tools;
@@ -49,7 +49,7 @@ public class TimelineFuzzTests
         ctx.Opacity = 0.3f + (float)rnd.NextDouble() * 0.7f;
         ctx.ToolSize = 1 + rnd.Next(8);
 
-        switch (rnd.Next(9))
+        switch (rnd.Next(15))
         {
             case 0:
             {
@@ -131,10 +131,68 @@ public class TimelineFuzzTests
                 doc.CommitFloating();
                 doc.History.ExecuteAndPush(DocumentTransform.Flip(doc, rnd.Next(2) == 0), doc);
                 break;
+
+            // Правки, меняющие размер холста и свойства слоёв: они переписывают стопку
+            // целиком, и именно на них ломались бы недосмотры в записях, которые холста
+            // касаются лишь косвенно.
+            case 9:
+                doc.CommitFloating();
+                doc.History.ExecuteAndPush(
+                    DocumentTransform.Rotate(doc, rnd.Next(2) == 0 ? MathF.PI / 2f : -MathF.PI / 2f), doc);
+                break;
+            case 10:
+                doc.CommitFloating();
+                doc.History.ExecuteAndPush(
+                    new ResizeCanvasCommand(10 + rnd.Next(40), 10 + rnd.Next(40)), doc);
+                break;
+            case 11:
+            {
+                doc.CommitFloating();
+                int left = rnd.Next(doc.CanvasWidth - 6), top2 = rnd.Next(doc.CanvasHeight - 6);
+                var region = new SKRectI(
+                    left, top2,
+                    Math.Min(doc.CanvasWidth, left + 6 + rnd.Next(20)),
+                    Math.Min(doc.CanvasHeight, top2 + 6 + rnd.Next(20)));
+                if (region.HasArea())
+                    doc.History.ExecuteAndPush(DocumentTransform.Crop(doc, region), doc);
+                break;
+            }
+            case 12:
+            {
+                var layer = doc.Layers[rnd.Next(doc.Layers.Count)];
+                var cmd = new LayerPropertyCommand(layer, rnd.Next(4) != 0, (float)rnd.NextDouble());
+                if (cmd.ChangedAnything) doc.History.ExecuteAndPush(cmd, doc);
+                break;
+            }
+            case 13:
+            {
+                doc.CommitFloating();
+                float x = X(), y = X();
+                var b = SKRectI.Intersect(
+                    SKRectI.Round(new SKRect(x, y, x + 14, y + 11)),
+                    new SKRectI(0, 0, doc.CanvasWidth, doc.CanvasHeight));
+                if (b.HasArea())
+                    doc.History.ExecuteAndPush(
+                        new EraseRegionCommand(b, null, PickupOps.EraseColor(doc, doc.ActiveLayer)), doc);
+                break;
+            }
+            case 14:
+            {
+                // Подъём, масштабирование ручкой, прижатие.
+                float x = X(), y = X();
+                PickupOps.PromoteRect(doc, new SKRect(x, y, x + 15, y + 15));
+                if (doc.FloatingPickup is { } fp)
+                {
+                    PickupOps.EnsureLazyErase(doc, fp);
+                    fp.ApplyResize(ResizeHandle.SE, new SKPoint(X(), X()));
+                    doc.CommitFloating();
+                }
+                break;
+            }
         }
     }
 
-    private static Document Play(int seed, int steps = 10)
+    private static Document Play(int seed, int steps = 14)
     {
         var rnd = new Random(seed);
         var doc = new Document(40, 40);
@@ -151,6 +209,8 @@ public class TimelineFuzzTests
     [Theory]
     [InlineData(1)] [InlineData(2)] [InlineData(3)] [InlineData(4)] [InlineData(5)]
     [InlineData(6)] [InlineData(7)] [InlineData(8)] [InlineData(9)] [InlineData(10)]
+    [InlineData(11)] [InlineData(12)] [InlineData(13)] [InlineData(14)] [InlineData(15)]
+    [InlineData(16)] [InlineData(17)] [InlineData(18)] [InlineData(19)] [InlineData(20)]
     public void Undoing_everything_returns_the_document_to_a_blank_sheet(int seed)
     {
         var blank = SnapAll(new Document(40, 40));
@@ -160,25 +220,51 @@ public class TimelineFuzzTests
         doc.DropFloating();
 
         Assert.Single(doc.Layers);
+        Assert.Equal(40, doc.CanvasWidth);
+        Assert.Equal(40, doc.CanvasHeight);
         Assert.Equal(0, DiffAll(blank, SnapAll(doc)));
     }
 
     [Theory]
     [InlineData(1)] [InlineData(2)] [InlineData(3)] [InlineData(4)] [InlineData(5)]
     [InlineData(6)] [InlineData(7)] [InlineData(8)] [InlineData(9)] [InlineData(10)]
+    [InlineData(11)] [InlineData(12)] [InlineData(13)] [InlineData(14)] [InlineData(15)]
+    [InlineData(16)] [InlineData(17)] [InlineData(18)] [InlineData(19)] [InlineData(20)]
     public void Walking_the_timeline_to_zero_and_back_reproduces_the_document(int seed)
     {
         var doc = Play(seed);
         int target = doc.History.Cursor;
         var expected = SnapAll(doc);
         int layers = doc.Layers.Count;
+        int w = doc.CanvasWidth, h = doc.CanvasHeight;
 
         doc.History.JumpTo(0, doc);
         doc.History.JumpTo(target, doc);
 
         Assert.Null(doc.FloatingPickup);
         Assert.Equal(layers, doc.Layers.Count);
+        Assert.Equal(w, doc.CanvasWidth);
+        Assert.Equal(h, doc.CanvasHeight);
         Assert.Equal(0, DiffAll(expected, SnapAll(doc)));
+    }
+
+    /// <summary>
+    /// Третий инвариант: у слоя кроме пикселей есть имя, видимость и прозрачность, и
+    /// прогулка по ленте обязана возвращать их так же точно.
+    /// </summary>
+    [Theory]
+    [InlineData(1)] [InlineData(2)] [InlineData(3)] [InlineData(4)] [InlineData(5)]
+    [InlineData(6)] [InlineData(7)] [InlineData(8)] [InlineData(9)] [InlineData(10)]
+    public void Walking_the_timeline_reproduces_the_layer_settings(int seed)
+    {
+        var doc = Play(seed);
+        int target = doc.History.Cursor;
+        var props = doc.Layers.Select(l => (l.Name, l.Visible, l.Opacity)).ToArray();
+
+        doc.History.JumpTo(0, doc);
+        doc.History.JumpTo(target, doc);
+
+        Assert.Equal(props, doc.Layers.Select(l => (l.Name, l.Visible, l.Opacity)).ToArray());
     }
 
     [Theory]
