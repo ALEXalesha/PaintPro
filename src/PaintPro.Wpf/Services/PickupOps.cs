@@ -172,9 +172,22 @@ public static class PickupOps
             : fp.CurrentBBox.Contains(local);
     }
 
-    /// <summary>Index of the corner within <paramref name="radius"/> document px of the point, or -1.</summary>
+    /// <summary>
+    /// Index of the corner within <paramref name="radius"/> document px of the point, or -1.
+    ///
+    /// Хват не может быть больше четверти меньшей стороны фигуры. Зона хвата задана в
+    /// экранных пикселях и о размере фигуры ничего не знает: у многоугольника со стороной
+    /// меньше двух её диаметров четыре зоны смыкаются в середине и накрывают его целиком.
+    /// Такое выделение нельзя было ни поднять - проверка углов идёт первой, и клик в самую
+    /// его середину читался как хват угла, - ни, уже поднятое, потащить за тело: вместо
+    /// объекта уезжал ближайший угол. Начиналось это на 20 пикселях документа при масштабе
+    /// 1:1, то есть на любом выделении меньше ногтя, а нижняя граница у выделения - 4
+    /// пикселя (см. QuadTool.OnPointerUp). Ограничение оставляет середину телу при любом
+    /// размере, не трогая хват на крупных фигурах.
+    /// </summary>
     public static int HitCorner(IReadOnlyList<SKPoint> corners, SKPoint p, float radius)
     {
+        radius = MathF.Min(radius, ShapeLimit(corners));
         float best = radius * radius;
         int hit = -1;
         for (int i = 0; i < corners.Count; i++)
@@ -185,6 +198,18 @@ public static class PickupOps
             if (d2 <= best) { best = d2; hit = i; }
         }
         return hit;
+    }
+
+    /// <summary>
+    /// Наибольший хват, при котором зоны углов ещё не смыкаются: половина меньшей стороны
+    /// габарита. На такой зоне каждый угол забирает не больше половины каждой своей
+    /// стороны, а середина фигуры (она дальше - на диагональ) остаётся телу.
+    /// </summary>
+    private static float ShapeLimit(IReadOnlyList<SKPoint> corners)
+    {
+        if (corners.Count == 0) return 0f;
+        var b = Bounds(corners);
+        return MathF.Min(b.Width, b.Height) / 2f;
     }
 
     private static SKRect Bounds(IReadOnlyList<SKPoint> pts)

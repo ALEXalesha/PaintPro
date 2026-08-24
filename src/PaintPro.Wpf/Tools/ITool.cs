@@ -31,9 +31,14 @@ public interface ITool
     void OnActivate(ToolContext ctx);
 
     /// <summary>
-    /// Called when the tool is being deactivated (user switched). The tool MUST
-    /// commit any pending state (e.g. floating pickup) here — leaving partial state
-    /// behind caused multiple antipatterns in the Electron version.
+    /// Called when the tool is being deactivated (user switched). The tool MUST drop its
+    /// own half-finished gesture here — a stroke that never got its PointerUp, a drag flag
+    /// left set — otherwise it leaks into the next activation.
+    ///
+    /// Поднятый объект инструмент не трогает: он принадлежит документу, а не тому, кто им
+    /// сейчас двигает, и переход «Выделение» ↔ «Четырёхугольник» его не заканчивает.
+    /// Прижимает его <see cref="ViewModels.MainViewModel.OnActiveToolChanged"/> - только
+    /// там известно, на какой инструмент меняют.
     /// </summary>
     void OnDeactivate(ToolContext ctx);
 

@@ -116,6 +116,13 @@ public abstract class StrokeToolBase : ITool
         // Crop the stroke bitmap to its bbox to keep the undo diff small.
         var bbox = SKRectI.Round(_strokeBounds);
         bbox = SKRectI.Intersect(bbox, _canvasSize);
+        // Прозрачность в ноль - штрих, которого не было: source-over с нулевой альфой не
+        // меняет ни одного пикселя. Запись в истории при этом появлялась, документ
+        // объявлялся изменённым, и приложение спрашивало про сохранение после жеста, от
+        // которого на холсте не осталось ничего. Ползунок прозрачности начинается с нуля,
+        // так что дотянуть до этого можно одним движением. Тем же правилом отсеивает
+        // пустую работу заливка (FillCommand.ChangedAnything).
+        if (_strokeAlpha == 0) bbox = SKRectI.Empty;
         if (!bbox.IsEmpty)
         {
             var cropped = new SKBitmap(bbox.Width, bbox.Height, _strokeBitmap.ColorType, _strokeBitmap.AlphaType);

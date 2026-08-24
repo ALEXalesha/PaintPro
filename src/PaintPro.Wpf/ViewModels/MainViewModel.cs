@@ -196,9 +196,26 @@ public partial class MainViewModel : ObservableObject
     private void AddLayer()
     {
         Document.CommitFloating();
-        Document.History.ExecuteAndPush(
-            LayerStackCommand.Add(Document, $"Layer {Document.Layers.Count}"), Document);
+        Document.History.ExecuteAndPush(LayerStackCommand.Add(Document, NextLayerName()), Document);
         InvalidateCanvas?.Invoke();
+    }
+
+    /// <summary>
+    /// Имя, которого в стопке ещё нет.
+    ///
+    /// Номер брался из числа слоёв, а оно уменьшается при удалении: «добавили два, удалили
+    /// первый, добавили ещё» давало второй «Layer 2». В панели две одинаковые строки,
+    /// отличить их можно только положением, и пользователь выключал видимость не тому
+    /// слою, которому собирался.
+    /// </summary>
+    private string NextLayerName()
+    {
+        var taken = Document.Layers.Select(l => l.Name).ToHashSet();
+        for (int n = Document.Layers.Count; ; n++)
+        {
+            var name = $"Layer {n}";
+            if (taken.Add(name)) return name;
+        }
     }
 
     [RelayCommand]
@@ -223,10 +240,26 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private ToolKind _activeTool = ToolKind.Pencil;
     public ITool ActiveToolInstance { get; private set; } = null!;
 
+    /// <summary>
+    /// Инструменты, которые умеют работать с уже поднятым объектом: «Выделение» двигает и
+    /// масштабирует, «Четырёхугольник» вдобавок тянет углы маски.
+    /// </summary>
+    private static bool KeepsPickup(ToolKind k) => k is ToolKind.Select or ToolKind.Quad;
+
     partial void OnActiveToolChanged(ToolKind value)
     {
-        // Deactivate the old tool (commits any pending floating/state).
+        // Инструмент сбрасывает своё состояние жеста, но поднятый объект не трогает.
         ActiveToolInstance?.OnDeactivate(ToolContext);
+
+        // Прижимать - здесь: только тут известно, на что меняют. «Выделение» и
+        // «Четырёхугольник» - две руки для одного и того же объекта, и переход между ними
+        // ничего не заканчивает. Пока каждый из них прижимал объект у себя в OnDeactivate,
+        // нажатие Q по перетащенному выделению прибивало его к холсту раньше, чем
+        // пользователь успевал взяться за угол: путь «выдели прямоугольником - искриви
+        // углы» был закрыт целиком. В Electron-версии это исключение записано прямо в
+        // обработчике кнопок инструментов.
+        if (!KeepsPickup(value)) Document.CommitFloating();
+
         ActiveToolInstance = _tools[value];
         ActiveToolInstance.OnActivate(ToolContext);
         InvalidateCanvas?.Invoke();
@@ -658,10 +691,10 @@ public partial class MainViewModel : ObservableObject
         // скрытого слоя и пропадала с экрана, оставив в истории запись. Причину отказа
         // объяснит сам DrawTarget.
         if (ToolContext.DrawTarget() is null) return;
-        // Инструмент переключаем до вставки, а не после. Смена инструмента зовёт
-        // OnDeactivate у прежнего, а QuadTool и SelectTool делают там CommitFloating:
-        // вставка с активным «Четырёхугольником» прижималась к холсту в точке (20, 20)
-        // раньше, чем пользователь успевал её увидеть, и подвинуть было уже нечего.
+        // Инструмент переключаем до вставки, а не после: смена инструмента на нерисующий
+        // прижимает поднятое (см. OnActiveToolChanged), и вставка с активной кистью
+        // прибивалась бы к холсту в точке (20, 20) раньше, чем пользователь успевал её
+        // увидеть. Прежний объект, если он был, прижмёт сама PasteCommand.
         ActiveTool = ToolKind.Select;
         var cmd = new PasteCommand(bmp, new SKPoint(20, 20));
         Document.History.ExecuteAndPush(cmd, Document);
@@ -674,7 +707,21 @@ public partial class MainViewModel : ObservableObject
         Document.Selection = new RectSelection(0, 0, Document.CanvasWidth, Document.CanvasHeight);
         ActiveTool = ToolKind.Select;
     }
-    [RelayCommand] private void Deselect() { Document.Selection = null; }
+    /// <summary>
+    /// Снять выделение. Поднятый объект при этом ложится на холст: выделения у него нет -
+    /// подъём его забирает, - и проверка на одну только рамку отправляла Ctrl+D в никуда.
+    /// Пользователь просил закончить с выделенным, а объект оставался висеть над холстом с
+    /// рамкой и ручками, и убрать его можно было только другим действием.
+    ///
+    /// Именно прижать, а не отменить: Escape уже есть и возвращает пиксели на место, а
+    /// «снять выделение» - это «я закончил», как и клик мимо рамки.
+    /// </summary>
+    [RelayCommand] private void Deselect()
+    {
+        Document.CommitFloating();
+        Document.Selection = null;
+        InvalidateCanvas?.Invoke();
+    }
     [RelayCommand] private void DeleteSelection()
     {
         if (Document.FloatingPickup is not null)
@@ -794,9 +841,18 @@ public partial class MainViewModel : ObservableObject
             "Изменить размер холста",
             $"{w}x{h}");
         if (string.IsNullOrWhiteSpace(input)) return;
-        var parts = input.Split('x', 'X', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 2) return;
-        if (!int.TryParse(parts[0], out var nw) || !int.TryParse(parts[1], out var nh)) return;
+        if (!TryParseCanvasSize(input, out var nw, out var nh))
+        {
+            MessageBox.Show(
+                "Размер пишется двумя числами через «x»: например, 1200x800.",
+                "Не понял размер", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        // Тот же самый размер - не правка: команда пересобирает все слои, пишет в историю
+        // «Изменение размера», объявляет документ изменённым и заодно снимает выделение и
+        // поднятый объект. Диалог открывается с текущим размером в поле, так что нажать
+        // OK, ничего не поменяв, - самый обычный способ передумать.
+        if (nw == Document.CanvasWidth && nh == Document.CanvasHeight) return;
         if (!Commands.ResizeCanvasCommand.IsAllowed(nw, nh))
         {
             MessageBox.Show(
@@ -809,6 +865,27 @@ public partial class MainViewModel : ObservableObject
         var cmd = new ResizeCanvasCommand(nw, nh, SKColors.White);
         Document.History.ExecuteAndPush(cmd, Document);
         InvalidateCanvas?.Invoke();
+    }
+
+    /// <summary>
+    /// Разобрать «ШxВ» из диалога смены размера.
+    ///
+    /// Русская «х» принимается наравне с латинской «x»: подсказка в диалоге написана
+    /// по-русски, и раскладка у пользователя в этот момент тоже русская. «1200х800»,
+    /// набранное не переключаясь, разбиралось на одну часть, диалог молча закрывался, и
+    /// холст оставался прежним - без единого слова о том, что не так. Заодно «×» и «*»:
+    /// размер пишут и так. Отказ теперь виден: раньше любая опечатка была неотличима от
+    /// «Отмена».
+    /// </summary>
+    public static bool TryParseCanvasSize(string input, out int width, out int height)
+    {
+        width = height = 0;
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        var parts = input.Split(
+            new[] { 'x', 'X', 'х', 'Х', '×', '*' }, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 2
+            && int.TryParse(parts[0].Trim(), out width)
+            && int.TryParse(parts[1].Trim(), out height);
     }
 
     /// <summary>Called by host when the user finished typing for the TextTool prompt.</summary>

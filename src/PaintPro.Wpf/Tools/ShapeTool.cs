@@ -73,6 +73,8 @@ public abstract class ShapeTool : ITool
         var rect = SKRectI.Round(bbox);
         if (ctx.Document.ActiveLayer is PixelLayer pl)
             rect = SKRectI.Intersect(rect, new SKRectI(0, 0, pl.Width, pl.Height));
+        // Прозрачность в ноль - фигура, которой не было; см. StrokeToolBase.OnPointerUp.
+        if (_alpha == 0) rect = SKRectI.Empty;
 
         if (!rect.IsEmpty)
         {
@@ -240,9 +242,8 @@ public sealed class ArrowShapeTool : ShapeTool
         path.LineTo(left);
         path.LineTo(right);
         path.Close();
-        var solid = new SKPaint { IsAntialias = true, Color = stroke.Color, Style = SKPaintStyle.Fill };
+        using var solid = new SKPaint { IsAntialias = true, Color = stroke.Color, Style = SKPaintStyle.Fill };
         c.DrawPath(path, solid);
-        solid.Dispose();
     }
 }
 

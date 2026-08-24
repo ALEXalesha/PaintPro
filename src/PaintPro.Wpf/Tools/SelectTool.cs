@@ -23,8 +23,9 @@ public sealed class SelectTool : ITool
     public void OnActivate(ToolContext ctx) { }
     public void OnDeactivate(ToolContext ctx)
     {
-        // Commit any floating pickup so we don't leave half-state behind.
-        ctx.Document.CommitFloating();
+        // Прижимать поднятое здесь нельзя: инструмент не знает, на какой его меняют, а
+        // «Выделение» и «Четырёхугольник» - две руки для одного и того же объекта.
+        // Решает это ViewModel, которой известны обе стороны замены.
         // Инструмент меняют горячей клавишей, в том числе посреди жеста: кнопка мыши
         // ещё нажата, а MouseUp придёт уже другому инструменту, и сюда мы больше не
         // вернёмся. Брошенный включённым IsDrawing прячет ручки плавающего объекта

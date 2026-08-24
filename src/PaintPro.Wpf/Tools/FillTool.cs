@@ -1,4 +1,4 @@
-using System.Windows.Input;
+﻿using System.Windows.Input;
 using PaintPro.Commands;
 using PaintPro.Models;
 using SkiaSharp;
@@ -18,7 +18,10 @@ public sealed class FillTool : ITool
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
         if (ctx.DrawTarget() is null) return;
-        var seed = new SKPointI((int)position.X, (int)position.Y);
+        // Floor, а не приведение к int: оно отбрасывает дробную часть В СТОРОНУ НУЛЯ, и
+        // всё от -0.99 до 0 схлопывается в ноль. Точка чуть левее или выше холста
+        // становилась левым верхним пикселем, и клик мимо читался как клик по углу.
+        var seed = new SKPointI((int)MathF.Floor(position.X), (int)MathF.Floor(position.Y));
         var color = ctx.PrimaryColor.WithAlpha((byte)(255 * ctx.Opacity));
         var cmd = new FillCommand(seed, color);
         // Не ExecuteAndPush: заливка бывает пустой (кликнули по уже залитому этим цветом

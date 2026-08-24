@@ -38,10 +38,19 @@ public partial class MainWindow : Window
 
     private MainViewModel Vm => (MainViewModel)DataContext;
 
+    /// <summary>
+    /// Подписки ставятся один раз. Loaded приходит при каждом возвращении окна в дерево
+    /// визуалов, а обработчики здесь складываются: второй подписчик на TextRequested -
+    /// это два окна ввода текста подряд на один клик.
+    /// </summary>
+    private bool _wired;
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // Wire the canvas to the VM.
         Canvas.DataContext = Vm;
+        if (_wired) return;
+        _wired = true;
 
         Canvas.PixelPositionChanged += p =>
         {

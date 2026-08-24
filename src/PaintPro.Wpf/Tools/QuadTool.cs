@@ -38,7 +38,7 @@ public sealed class QuadTool : ITool
 
     public void OnDeactivate(ToolContext ctx)
     {
-        ctx.Document.CommitFloating();
+        // Прижимает поднятое ViewModel, а не инструмент - см. SelectTool.OnDeactivate.
         // Смена инструмента посреди жеста - см. SelectTool.OnDeactivate.
         _isCreating = false;
         _isMovingFloating = false;

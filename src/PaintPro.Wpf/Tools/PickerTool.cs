@@ -1,4 +1,4 @@
-using System.Windows.Input;
+﻿using System.Windows.Input;
 using PaintPro.Models;
 using SkiaSharp;
 
@@ -20,7 +20,9 @@ public sealed class PickerTool : ITool
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
         var doc = ctx.Document;
-        int x = (int)position.X, y = (int)position.Y;
+        // Floor, а не приведение к int - см. FillTool: иначе точка чуть левее или выше
+        // холста читается как его левый верхний пиксель.
+        int x = (int)MathF.Floor(position.X), y = (int)MathF.Floor(position.Y);
         if (x < 0 || y < 0 || x >= doc.CanvasWidth || y >= doc.CanvasHeight) return;
         // Sample the composite, not the active layer: picking a colour you can see should
         // work regardless of which layer happens to be selected.
