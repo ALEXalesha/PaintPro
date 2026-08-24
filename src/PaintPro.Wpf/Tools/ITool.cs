@@ -50,6 +50,13 @@ public interface ITool
     /// </summary>
     byte PreviewAlpha => 255;
 
+    /// <summary>
+    /// Режим, которым превью сольётся со слоем. По умолчанию обычный source-over: чем
+    /// инструмент рисует, тем он и покажет. Ластик на верхнем слое пиксели вычитает, и
+    /// показывать белую полосу вместо дыры значит показывать не то, что получится.
+    /// </summary>
+    SKBlendMode PreviewBlendMode => SKBlendMode.SrcOver;
+
     /// <summary>Cursor to show at the given position. Return null to use default.</summary>
     Cursor? GetCursor(SKPoint position);
 }
@@ -72,6 +79,20 @@ public sealed class ToolContext
 
     /// <summary>True while a pointer button is held — the canvas uses this to hide handles.</summary>
     public bool IsDrawing { get; set; }
+
+    /// <summary>
+    /// Текущий масштаб (экранных пикселей на пиксель документа). Инструментам он нужен там,
+    /// где размер задан на экране, а сравнение идёт в координатах документа: зона хвата
+    /// ручки нарисована в экранных пикселях и обязана оставаться такой на любом масштабе.
+    /// Пока хват мерился в пикселях документа, на уменьшенной картинке в него нельзя было
+    /// попасть вовсе, а на увеличенной он накрывал пол-экрана и перехватывал перетаскивание
+    /// самого объекта.
+    /// </summary>
+    public double Zoom { get; set; } = 1.0;
+
+    /// <summary>Перевести экранное расстояние в координаты документа.</summary>
+    public float ToDocument(float screenPixels)
+        => (float)(screenPixels / Math.Max(Zoom, 0.01));
 
     /// <summary>
     /// Куда инструмент отдаёт короткое объяснение, почему жест ничего не сделал.

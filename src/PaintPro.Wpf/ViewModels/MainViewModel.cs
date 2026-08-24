@@ -265,6 +265,14 @@ public partial class MainViewModel : ObservableObject
 
     // ───────── Zoom / pan ─────────
     [ObservableProperty] private double _zoom = 1.0;
+
+    /// <summary>
+    /// Инструменты меряют зоны хвата в экранных пикселях, а мышь получают в координатах
+    /// документа: масштаб - единственное, что связывает одно с другим, и он обязан
+    /// доходить до них. Без этого зона хвата угловой точки жила в пикселях документа и
+    /// «десять пикселей» означало десять экранных только при масштабе 1:1.
+    /// </summary>
+    partial void OnZoomChanged(double value) => ToolContext.Zoom = value;
     [RelayCommand] private void ZoomIn()  => Zoom = GeometryMath.NextZoomStep((float)Zoom, true);
     [RelayCommand] private void ZoomOut() => Zoom = GeometryMath.NextZoomStep((float)Zoom, false);
     [RelayCommand] private void ZoomReset() => Zoom = 1.0;

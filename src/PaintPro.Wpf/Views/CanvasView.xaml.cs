@@ -167,7 +167,8 @@ public partial class CanvasView : UserControl
             canvas,
             _vm.ActiveToolInstance.PreviewBitmap,
             _vm.ActiveToolInstance.PreviewAlpha,
-            sx > 1f ? SKFilterQuality.None : SKFilterQuality.Low);
+            sx > 1f ? SKFilterQuality.None : SKFilterQuality.Low,
+            _vm.ActiveToolInstance.PreviewBlendMode);
     }
 
     // ───────── Overlay (selection / handles) ─────────
@@ -324,7 +325,12 @@ public partial class CanvasView : UserControl
     private void AddRotateHandle(FloatingPickup fp, double zoom)
     {
         const double size = 14;
-        const double offset = 28; // pixels above the top edge (in unrotated local coords)
+        // Отступ от верхнего края - ЭКРАННЫЙ, как и сама ручка: она рисуется 14 пикселями
+        // независимо от масштаба. Пока отступ задавался в пикселях документа, он ехал
+        // вместе с масштабом - на восьмикратном увеличении ручка поворота улетала на
+        // четверть экрана вверх, а на уменьшенной картинке ложилась прямо на объект и
+        // перекрывала его верхний край.
+        double offset = 28 / Math.Max(zoom, 0.01);
         var localPos = new SKPoint(fp.X + fp.Width / 2f, fp.Y - (float)offset);
         var worldPos = fp.Rotation == 0
             ? localPos

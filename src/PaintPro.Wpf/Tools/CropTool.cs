@@ -74,6 +74,12 @@ public sealed class CropTool : ITool
             return;
         }
 
+        // Прижимаем поднятый объект ДО кадрирования, как это делают поворот, отражение и
+        // смена размера. После него прижимать некуда: команда заменяет содержимое всех
+        // слоёв и меняет размер холста, и объект просто снимается вместе с рамкой -
+        // пользователь терял то, что держал в руках, без записи в истории.
+        ctx.Document.CommitFloating();
+
         var cmd = DocumentTransform.Crop(ctx.Document, region);
         ctx.History.ExecuteAndPush(cmd, ctx.Document);
         ctx.Document.Selection = null;

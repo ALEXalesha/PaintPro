@@ -259,6 +259,28 @@ public partial class Document : ObservableObject
         RecomputeMode();
     }
 
+    /// <summary>
+    /// Снять плавающий объект, ничего не возвращая на холст и ничего не записывая.
+    ///
+    /// Для операций, которые заменяют содержимое всех слоёв разом и меняют размер холста -
+    /// поворот, отражение, кадрирование, открытие файла, смена размера. Возвращать
+    /// поднятые пиксели там некуда: слои после такой операции другие, а координаты объекта
+    /// указывают на холст, которого больше нет. Рамка при этом снимается по той же причине
+    /// и в том же месте.
+    ///
+    /// Отличается от <see cref="CancelFloating"/> тем, что не трогает пиксели, и от
+    /// <see cref="CommitFloating"/> - тем, что не пишет в историю: прижимать объект должен
+    /// тот, кто затевает операцию, и ДО неё, пока холст ещё прежний.
+    /// </summary>
+    public void DropFloating()
+    {
+        if (_floatingPickup is null) return;
+        _floatingPickup.Dispose();
+        _floatingPickup = null;
+        OnPropertyChanged(nameof(FloatingPickup));
+        RecomputeMode();
+    }
+
     /// <summary>Layer a pickup belongs to: the one it was lifted from, falling back to the active layer.</summary>
     private PixelLayer? TargetLayer(FloatingPickup pickup)
         => FindPixelLayer(pickup.SourceLayerId) ?? ActiveLayer as PixelLayer;
@@ -267,24 +289,74 @@ public partial class Document : ObservableObject
     /// Colour of one pixel as the user sees it: white paper with every visible layer
     /// composited over it. The eyedropper and the status bar both need this — reading the
     /// active layer alone reports transparent wherever that layer happens to be empty.
+    ///
+    /// Плавающий объект входит в выборку наравне со слоями и на своём месте в стопке -
+    /// том же, куда его кладёт <see cref="Render"/>. Пока он в счёт не шёл, пипетка и
+    /// статусбар отвечали цветом того, что лежит ПОД вставленной картинкой: на экране
+    /// синее, в подсказке белое, а по клику пипеткой в палитру уходило белое. В
+    /// Electron-версии пипетка сэмплит композит с floating с самого начала.
     /// </summary>
     public SKColor SampleComposite(int x, int y)
     {
         if (x < 0 || y < 0 || x >= CanvasWidth || y >= CanvasHeight) return SKColors.Transparent;
 
+        var pickup = _floatingPickup;
+        bool pickupSampled = false;
+
         float r = 255f, g = 255f, b = 255f; // start from the white the canvas is cleared to
-        foreach (var layer in Layers)
+        void Over(SKColor px, float layerOpacity)
         {
-            if (layer is not PixelLayer pl || !pl.Visible) continue;
-            if (x >= pl.Width || y >= pl.Height) continue;
-            var px = pl.Bitmap.GetPixel(x, y);
-            float a = px.Alpha / 255f * Math.Clamp(pl.Opacity, 0f, 1f);
-            if (a <= 0f) continue;
+            float a = px.Alpha / 255f * Math.Clamp(layerOpacity, 0f, 1f);
+            if (a <= 0f) return;
             r = px.Red * a + r * (1 - a);
             g = px.Green * a + g * (1 - a);
             b = px.Blue * a + b * (1 - a);
         }
+
+        foreach (var layer in Layers)
+        {
+            if (layer is PixelLayer pl && pl.Visible && x < pl.Width && y < pl.Height)
+                Over(pl.Bitmap.GetPixel(x, y), pl.Opacity);
+
+            // Объект ложится поверх своего слоя, но под теми, что выше, - как на экране.
+            if (pickup is not null && layer.Id == pickup.SourceLayerId)
+            {
+                if (SamplePickup(pickup, x, y) is { } fp) Over(fp, layer.Opacity);
+                pickupSampled = true;
+            }
+        }
+
+        // Слоя-источника уже нет - объект рисуется поверх всего, значит и берётся оттуда.
+        if (pickup is not null && !pickupSampled && SamplePickup(pickup, x, y) is { } top)
+            Over(top, 1f);
+
         return new SKColor((byte)MathF.Round(r), (byte)MathF.Round(g), (byte)MathF.Round(b));
+    }
+
+    /// <summary>
+    /// Цвет плавающего объекта в точке документа, или null, если объект её не закрывает.
+    ///
+    /// Повторяет геометрию <see cref="DrawPickup"/> задом наперёд: поворот снимается с
+    /// точки (объект хранит габарит и quad неповёрнутыми), quad работает маской, а внутри
+    /// габарита точка пересчитывается в координаты исходного битмапа - объект бывает
+    /// растянут.
+    /// </summary>
+    private static SKColor? SamplePickup(FloatingPickup pickup, int x, int y)
+    {
+        var point = new SKPoint(x + 0.5f, y + 0.5f);
+        var local = Services.PickupOps.ToLocal(pickup, point);
+
+        if (pickup.Quad is { } quad && !Services.GeometryMath.PointInPolygon(quad, local)) return null;
+
+        var box = pickup.CurrentBBox;
+        if (box.Width <= 0 || box.Height <= 0) return null;
+        if (!box.Contains(local)) return null;
+
+        var bmp = pickup.SourceBitmap;
+        int sx = (int)((local.X - box.Left) / box.Width * bmp.Width);
+        int sy = (int)((local.Y - box.Top) / box.Height * bmp.Height);
+        if (sx < 0 || sy < 0 || sx >= bmp.Width || sy >= bmp.Height) return null;
+        return bmp.GetPixel(sx, sy);
     }
 
     /// <summary>
@@ -299,23 +371,47 @@ public partial class Document : ObservableObject
     /// </summary>
     /// <param name="preview">Превью активного инструмента или null.</param>
     /// <param name="previewAlpha">Прозрачность, с которой превью ляжет на слой.</param>
+    /// <param name="previewBlend">
+    /// Режим, которым превью сольётся со слоем. Ластик на верхнем слое вычитает пиксели
+    /// (<see cref="SKBlendMode.DstOut"/>), а не красит белым, и показывать это надо тем же
+    /// режимом, каким оно потом ляжет: пока превью рисовалось поверх слоя обычным
+    /// source-over, ластик вёл по верхнему слою белую полосу, а на отпускании она
+    /// превращалась в дыру с нижним слоем внутри - картинка менялась в момент, когда
+    /// пользователь уже отвёл руку.
+    /// </param>
     public void Render(SKCanvas canvas, SKBitmap? preview = null, byte previewAlpha = 255,
-                       SKFilterQuality quality = SKFilterQuality.Low)
+                       SKFilterQuality quality = SKFilterQuality.Low,
+                       SKBlendMode previewBlend = SKBlendMode.SrcOver)
     {
         using var paint = new SKPaint { FilterQuality = quality };
         var pickup = _floatingPickup;
         bool pickupDrawn = false;
+        int activeIndex = Math.Clamp(ActiveLayerIndex, 0, Layers.Count - 1);
 
         for (int i = 0; i < Layers.Count; i++)
         {
             var layer = Layers[i];
             float opacity = Math.Clamp(layer.Opacity, 0f, 1f);
+            bool previewHere = preview is not null && i == activeIndex;
+
+            // Вычитающее превью обязано видеть только свой слой. Нарисованное прямо на
+            // канве, оно снимало бы и всё, что уже сложено ниже, - ластик на верхнем слое
+            // пробивал бы дыру до самой бумаги. Отдельный слой Skia замыкает вычитание на
+            // тех пикселях, которых оно и касается на самом деле.
+            bool isolate = previewHere && previewBlend != SKBlendMode.SrcOver;
+            if (isolate)
+            {
+                using var groupPaint = new SKPaint { Color = SKColors.White.WithAlpha((byte)(255 * opacity)) };
+                canvas.SaveLayer(groupPaint);
+            }
 
             if (layer is PixelLayer pl)
             {
                 if (pl.Visible)
                 {
-                    paint.Color = SKColors.White.WithAlpha((byte)(255 * opacity));
+                    // Внутри отдельного слоя прозрачность уже учтена в его собственной
+                    // краске: применить её второй раз значило бы возвести в квадрат.
+                    paint.Color = SKColors.White.WithAlpha((byte)(255 * (isolate ? 1f : opacity)));
                     canvas.DrawBitmap(pl.Bitmap, 0, 0, paint);
                 }
             }
@@ -324,11 +420,15 @@ public partial class Document : ObservableObject
             // Превью ложится на активный слой, поэтому и показывать его надо там же и с
             // прозрачностью этого слоя: иначе на полупрозрачном слое штрих во время
             // рисования темнее, чем окажется после.
-            if (preview is not null && i == Math.Clamp(ActiveLayerIndex, 0, Layers.Count - 1))
+            if (previewHere)
             {
-                paint.Color = SKColors.White.WithAlpha((byte)(previewAlpha * opacity));
+                paint.Color = SKColors.White.WithAlpha((byte)(previewAlpha * (isolate ? 1f : opacity)));
+                paint.BlendMode = previewBlend;
                 canvas.DrawBitmap(preview, 0, 0, paint);
+                paint.BlendMode = SKBlendMode.SrcOver;
             }
+
+            if (isolate) canvas.Restore();
 
             // Плавающий объект - будущее содержимое того слоя, с которого его подняли.
             // Видимость слоя ему не указ: он ещё не его часть, а спрятать то, что

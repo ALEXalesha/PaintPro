@@ -73,7 +73,14 @@ public sealed class LayerStackCommand : IDocumentCommand, IDisposable
     private void Insert(Document doc)
     {
         if (_index < 0 || _index > doc.Layers.Count) return;
-        var layer = new PixelLayer(_width, _height, SKColors.Transparent)
+        // Слой строится под ТЕКУЩИЙ холст, а не под тот, что был при записи команды.
+        // Размер холста меняют поворот, кадрирование, открытие файла и смена размера, и
+        // слой, восстановленный по старым числам, оказывался меньше остальных: рисовать по
+        // нему за его краем было нельзя, а сохранённая картинка обрезалась по нему молча.
+        // Свои размеры остаются запасным вариантом на случай пустого документа.
+        int w = doc.CanvasWidth > 0 ? doc.CanvasWidth : _width;
+        int h = doc.CanvasHeight > 0 ? doc.CanvasHeight : _height;
+        var layer = new PixelLayer(w, h, SKColors.Transparent)
         {
             Id = _layerId,
             Name = _name,

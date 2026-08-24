@@ -80,8 +80,17 @@ public sealed class ResizeCanvasCommand : IDocumentCommand, IDisposable
     /// где холста уже нет, а клик внутрь поднимает не те пиксели. Снимает здесь, а не в
     /// вызывающем коде, чтобы это работало и при откате по истории. В Electron-версии то
     /// же самое сделано в 1.4.0.
+    ///
+    /// Поднятый объект - то же самое, только хуже: <see cref="Rebuild"/> заменяет объекты
+    /// слоёв, и объект оставался ссылаться на выброшенный битмап. Прижимать его здесь
+    /// нельзя - откат по истории записал бы правку посреди отката; это дело вызывающего
+    /// (<see cref="ViewModels.MainViewModel"/> зовёт CommitFloating перед сменой размера).
     /// </summary>
-    private static void DropSelection(Document doc) => doc.Selection = null;
+    private static void DropSelection(Document doc)
+    {
+        doc.DropFloating();
+        doc.Selection = null;
+    }
 
     private static SKBitmap[] Snapshot(Document doc)
     {

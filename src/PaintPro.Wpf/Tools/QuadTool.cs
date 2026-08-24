@@ -21,8 +21,12 @@ public sealed class QuadTool : ITool
     public SKBitmap? PreviewBitmap => null;
     public Cursor? GetCursor(SKPoint position) => Cursors.Cross;
 
-    /// <summary>Grab radius for corner handles, in document pixels.</summary>
-    private const float CornerRadius = 10f;
+    /// <summary>
+    /// Зона хвата угловой точки, в ЭКРАННЫХ пикселях: сама точка рисуется 9 экранных
+    /// пикселей шириной (CanvasView.AddQuadCornerDot), и хват обязан примерно совпадать с
+    /// тем, что видно. В координаты документа переводится по текущему масштабу.
+    /// </summary>
+    private const float CornerRadiusScreen = 10f;
 
     private SKPoint _origin;
     private bool _isCreating;
@@ -53,7 +57,7 @@ public sealed class QuadTool : ITool
             // Углы хранятся неповёрнутыми, а нарисованы повёрнутыми: мышь приводим к
             // системе координат пикапа, иначе хват попадает мимо видимой точки.
             int pickupCorner = fp.Quad is { } quad
-                ? PickupOps.HitCorner(quad, PickupOps.ToLocal(fp, position), CornerRadius)
+                ? PickupOps.HitCorner(quad, PickupOps.ToLocal(fp, position), ctx.ToDocument(CornerRadiusScreen))
                 : -1;
             if (pickupCorner >= 0)
             {
@@ -73,7 +77,7 @@ public sealed class QuadTool : ITool
 
         if (doc.Selection is PolygonSelection ps)
         {
-            var corner = PickupOps.HitCorner(ps.Corners, position, CornerRadius);
+            var corner = PickupOps.HitCorner(ps.Corners, position, ctx.ToDocument(CornerRadiusScreen));
             if (corner >= 0)
             {
                 _draggingCorner = corner;

@@ -25,9 +25,17 @@ public abstract class StrokeToolBase : ITool
     private SKRectI _canvasSize;
     private bool _drawing;
     private byte _strokeAlpha = 255;
+    private SKBlendMode _mergeBlend = SKBlendMode.SrcOver;
 
     public SKBitmap? PreviewBitmap => _drawing ? _strokeBitmap : null;
     public byte PreviewAlpha => _strokeAlpha;
+
+    /// <summary>
+    /// Тот же режим, каким штрих ляжет на слой. Снимается один раз, на нажатии: слой во
+    /// время штриха не меняется, а <see cref="MergeBlendMode"/> зависит от того, нижний он
+    /// или нет.
+    /// </summary>
+    public SKBlendMode PreviewBlendMode => _mergeBlend;
 
     public virtual Cursor? GetCursor(SKPoint position) => Cursors.Cross;
 
@@ -63,6 +71,7 @@ public abstract class StrokeToolBase : ITool
         // into a chain of dark blobs.
         _strokeAlpha = _paint.Color.Alpha;
         _paint.Color = _paint.Color.WithAlpha(255);
+        _mergeBlend = MergeBlendMode(ctx);
 
         _path = new SKPath();
         _path.MoveTo(position);
@@ -136,6 +145,7 @@ public abstract class StrokeToolBase : ITool
         _path?.Dispose(); _path = null;
         _paint?.Dispose(); _paint = null;
         _drawing = false;
+        _mergeBlend = SKBlendMode.SrcOver;
         ctx.IsDrawing = false;
     }
 
