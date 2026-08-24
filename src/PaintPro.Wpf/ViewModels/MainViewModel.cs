@@ -223,6 +223,21 @@ public partial class MainViewModel : ObservableObject
     {
         if (item is null || Document.Layers.Count <= 1) return;
         if (item.Layer is not PixelLayer pl || Document.Layers.IndexOf(pl) < 0) return;
+        // Нижний слой - это бумага документа, и весь остальной код исходит именно из
+        // этого: ластик красит по нему белым, а не вычитает пиксели; подъём выделения
+        // выкусывает из него фон; смена размера холста заливает новую площадь белым;
+        // «Очистить» возвращает его к белому, а слои над ним - к прозрачному.
+        //
+        // Пока бумагу можно было удалить, ею молча становился следующий слой - со всеми
+        // этими правилами разом. Прозрачный слой с рисунком после первой же смены
+        // размера холста оказывался залит белым по всей площади, а ластик переставал
+        // стирать и начинал красить. Пользователь при этом ничего такого не заказывал:
+        // он удалил слой, который ему не нужен.
+        if (ReferenceEquals(Document.Layers[0], pl))
+        {
+            ShowHint($"Слой «{pl.Name}» - бумага документа, удалить его нельзя. Очистите его или спрячьте.");
+            return;
+        }
         Document.CommitFloating();
         Document.History.ExecuteAndPush(LayerStackCommand.Remove(Document, pl), Document);
         InvalidateCanvas?.Invoke();
@@ -426,6 +441,10 @@ public partial class MainViewModel : ObservableObject
         "Crop"            => "Кадрирование",
         "Erase selection" => "Удаление выделения",
         "Layer properties" => "Свойства слоя",
+        // Добавление и удаление слоя стояли в панели истории по-английски: перевода для
+        // них тут просто не было, а запасной вариант отдаёт имя команды как есть.
+        "Add layer"       => "Добавление слоя",
+        "Remove layer"    => "Удаление слоя",
         "Открытие"        => "Открытие",
         "Rotate CW"       => "Поворот по часовой",
         "Rotate CCW"      => "Поворот против часовой",
@@ -655,12 +674,12 @@ public partial class MainViewModel : ObservableObject
             case RectSelection rs:
             {
                 var b = SKRectI.Intersect(SKRectI.Round(rs.Rect), canvasRect);
-                return b.IsEmpty ? null : new EraseRegionCommand(b, null, fill);
+                return b.HasArea() ? new EraseRegionCommand(b, null, fill) : null;
             }
             case PolygonSelection ps:
             {
                 var b = SKRectI.Intersect(SKRectI.Round(ps.BoundingBox), canvasRect);
-                return b.IsEmpty ? null : new EraseRegionCommand(b, ps.Corners.ToArray(), fill);
+                return b.HasArea() ? new EraseRegionCommand(b, ps.Corners.ToArray(), fill) : null;
             }
             default:
                 return null;
@@ -737,7 +756,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Убрать пикап, который создала команда истории (вставка), - её же отменой.
+    /// Убрать пикап, который создала команда истории (вставка), вместе с самой записью.
     /// False - пикап поднял пользователь, убирать его должен вызывающий.
     ///
     /// Delete, Ctrl+X и Escape по только что вставленной картинке снимали пикап напрямую:
@@ -745,14 +764,28 @@ public partial class MainViewModel : ObservableObject
     /// что вставка применена, документ считался изменённым, и Ctrl+Y картинку не возвращал -
     /// курсор-то не двигался. То же правило, по которому это решает первый Ctrl+Z
     /// (<see cref="HistoryManager.Undo"/>).
+    ///
+    /// Вставка - последняя запись далеко не всегда: между ней и отказом от неё успевает
+    /// лечь другая правка, тот же ползунок прозрачности слоя. Отменять «текущую» тогда
+    /// нельзя - она чужая, - и прежняя версия просто отступалась, возвращая false. Дальше
+    /// вызывающий снимал пикап сам, и получалась ровно та же расходящаяся история, от
+    /// которой этот метод и написан: картинки нет, запись есть. Запись вычёркивается
+    /// теперь из ленты целиком (<see cref="HistoryManager.Forget"/>) - вставка не тронула
+    /// ни одного пикселя, и записям после неё её исчезновение ничем не грозит.
     /// </summary>
     private bool UndoOwnedPickup()
     {
         if (Document.FloatingPickup is not { Owner: { } owner }) return false;
-        // Отменяем только если вставка и есть последняя запись: между ней и удалением
-        // могла лечь другая правка, и отмена задела бы её.
-        if (!ReferenceEquals(Document.History.Current, owner)) return false;
-        Document.History.Undo(Document);
+        if (ReferenceEquals(Document.History.Current, owner))
+        {
+            Document.History.Undo(Document);
+        }
+        else
+        {
+            // Пиксели возвращать некуда и незачем: вставка ничего с холста не снимала.
+            Document.DropFloating();
+            Document.History.Forget(owner);
+        }
         AfterHistoryWalk();
         return true;
     }

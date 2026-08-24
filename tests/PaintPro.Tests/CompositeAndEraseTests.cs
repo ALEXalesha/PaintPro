@@ -301,16 +301,21 @@ public class CompositeAndEraseTests
     }
 
     [Fact]
-    public void A_paste_that_is_no_longer_the_last_edit_is_dropped_the_old_way()
+    public void A_paste_that_is_no_longer_the_last_edit_is_struck_from_the_timeline()
     {
         var vm = VmWithPaste();
         // Между вставкой и удалением легла другая правка: отменять её вместо вставки нельзя.
-        vm.Document.History.ExecuteAndPush(
-            new LayerPropertyCommand(vm.Document.Layers[0], visible: true, opacity: 0.5f), vm.Document);
+        var other = new LayerPropertyCommand(vm.Document.Layers[0], visible: true, opacity: 0.5f);
+        vm.Document.History.ExecuteAndPush(other, vm.Document);
 
         vm.DeleteSelectionCommand.Execute(null);
 
         Assert.Null(vm.Document.FloatingPickup);
-        Assert.Equal(2, vm.Document.History.Cursor);   // чужая правка на месте
+        // Чужая правка на месте, а записи о вставке больше нет: пока она оставалась,
+        // история утверждала, что вставка применена, картинки на холсте не было, и
+        // Ctrl+Y её не возвращал - курсору некуда двигаться.
+        Assert.Equal(new[] { other }, vm.Document.History.Commands);
+        Assert.Equal(1, vm.Document.History.Cursor);
+        Assert.False(vm.Document.History.CanRedo);
     }
 }

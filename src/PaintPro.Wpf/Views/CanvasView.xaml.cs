@@ -397,14 +397,22 @@ public partial class CanvasView : UserControl
 
         PickupOps.EnsureLazyErase(_vm.Document, fp);
 
+        // Shift держит пропорции у угловой ручки и ставит поворот на ровные 15°. И то и
+        // другое есть в Electron-версии с самого начала, а здесь не было: масштабировать
+        // картинку, не расплющив её, было нельзя вовсе, а встать ручкой ровно на 90° или
+        // 45° - только случайно. Хоткеи «[» и «]» ровный угол давали, но они крутят от
+        // текущего положения, а не приводят к нему.
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
         switch (_draggingHandle)
         {
             case ResizeHandle rh:
-                fp.ApplyResize(rh, docPos);
+                fp.ApplyResize(rh, docPos, keepAspect: shift);
                 break;
             case string s when s == "rotate":
                 var delta = GeometryMath.AngleBetween(fp.Center, _dragStartMouseDoc, docPos);
-                fp.SetRotation(_rotationAtDragStart + delta);
+                var angle = _rotationAtDragStart + delta;
+                fp.SetRotation(shift ? GeometryMath.SnapAngle(angle, GeometryMath.RotationSnapStep) : angle);
                 break;
         }
         Refresh();

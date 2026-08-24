@@ -12,15 +12,24 @@ namespace PaintPro.Commands;
 ///
 /// Every layer, not the active one. This is what «Файл → Создать» runs, and clearing only
 /// the active layer left a document with two layers showing the old drawing through a
-/// supposedly blank canvas — and writing it to disk on the next Ctrl+S. The bottom layer
-/// goes back to the background colour because it is the paper; the ones above go to
-/// transparent, same rule as <see cref="ResizeCanvasCommand"/>.
+/// supposedly blank canvas — and writing it to disk on the next Ctrl+S.
+///
+/// От стопки остаётся один слой - бумага. Чистить слои по месту было мало: «Создать»
+/// оставляло документ с прежним числом слоёв, панель показывала «Layer 1», «Layer 2» и
+/// прочее, чего в новом документе взяться неоткуда, а следующий «Добавить слой» получал
+/// имя «Layer 3». Новый документ - это чистый лист, а не старый со стёртым рисунком.
+/// Отмена возвращает стопку целиком: слои строятся заново с прежними идентификаторами,
+/// так что записи истории, сделанные по ним, снова начинают находить свою цель.
 /// </summary>
 public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
 {
+    /// <summary>Слой на момент очистки: всё, что нужно, чтобы собрать его обратно.</summary>
+    private sealed record LayerShot(Guid Id, string Name, bool Visible, float Opacity, SKBitmap Content);
+
     private readonly SKColor _fill;
-    private SKBitmap[]? _previousLayers;
+    private LayerShot[]? _previousLayers;
     private Selection? _previousSelection;
+    private int _previousActiveIndex;
 
     public ClearCanvasCommand(SKColor? fill = null) => _fill = fill ?? SKColors.White;
 
@@ -32,7 +41,7 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
         {
             if (_previousLayers is null) return 0;
             long sum = 0;
-            foreach (var b in _previousLayers) sum += (long)b.RowBytes * b.Height;
+            foreach (var s in _previousLayers) sum += (long)s.Content.RowBytes * s.Content.Height;
             return sum;
         }
     }
@@ -40,7 +49,7 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
     public void Dispose()
     {
         if (_previousLayers is null) return;
-        foreach (var b in _previousLayers) b.Dispose();
+        foreach (var s in _previousLayers) s.Content.Dispose();
         _previousLayers = null;
     }
 
@@ -52,12 +61,15 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
         // вовсе, если её вытесняло переполнение.
         doc.CancelFloating();
         _previousSelection = doc.Selection;
+        _previousActiveIndex = doc.ActiveLayerIndex;
         _previousLayers ??= Snapshot(doc);
-        for (int i = 0; i < doc.Layers.Count; i++)
-        {
-            if (doc.Layers[i] is PixelLayer pl)
-                pl.Clear(i == 0 ? _fill : SKColors.Transparent);
-        }
+
+        // Бумагу чистим, остальное убираем. Коллекцию не опустошаем ни на миг:
+        // Document.ActiveLayer читает Layers[0] и на пустой стопке падает, а панель
+        // слоёв пересобирается на каждое изменение коллекции.
+        if (doc.Layers[0] is PixelLayer paper) paper.Clear(_fill);
+        Shrink(doc, 1);
+        doc.ActiveLayerIndex = 0;
         doc.Selection = null;
     }
 
@@ -65,25 +77,63 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
     {
         if (_previousLayers is { } shots)
         {
-            for (int i = 0; i < doc.Layers.Count && i < shots.Length; i++)
+            for (int i = 0; i < shots.Length; i++)
             {
-                if (doc.Layers[i] is not PixelLayer pl) continue;
-                using var canvas = new SKCanvas(pl.Bitmap);
-                canvas.Clear(SKColors.Transparent);
-                canvas.DrawBitmap(shots[i], 0, 0);
+                var layer = Rebuild(shots[i], doc.CanvasWidth, doc.CanvasHeight);
+                if (i < doc.Layers.Count)
+                {
+                    var old = doc.Layers[i];
+                    doc.Layers[i] = layer;
+                    old.Dispose();
+                }
+                else doc.Layers.Add(layer);
             }
+            Shrink(doc, shots.Length);
+            doc.ActiveLayerIndex = Math.Clamp(_previousActiveIndex, 0, doc.Layers.Count - 1);
         }
         doc.Selection = _previousSelection;
     }
 
-    private static SKBitmap[] Snapshot(Document doc)
+    /// <summary>Оставить в стопке первые <paramref name="count"/> слоёв, освободив остальные.</summary>
+    private static void Shrink(Document doc, int count)
     {
-        var shots = new SKBitmap[doc.Layers.Count];
+        while (doc.Layers.Count > count)
+        {
+            var last = doc.Layers[^1];
+            doc.Layers.RemoveAt(doc.Layers.Count - 1);
+            last.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Слой из снимка. Размер берётся у ТЕКУЩЕГО холста, а не у снимка: между очисткой и
+    /// отменой холст мог сменить размер, и слой по старым числам оказался бы меньше
+    /// остальных - ровно та же поправка, что в <see cref="LayerStackCommand"/>.
+    /// </summary>
+    private static PixelLayer Rebuild(LayerShot shot, int width, int height)
+    {
+        var layer = new PixelLayer(Math.Max(1, width), Math.Max(1, height), SKColors.Transparent)
+        {
+            Id = shot.Id,
+            Name = shot.Name,
+            Visible = shot.Visible,
+            Opacity = shot.Opacity,
+        };
+        using var c = new SKCanvas(layer.Bitmap);
+        c.DrawBitmap(shot.Content, 0, 0);
+        return layer;
+    }
+
+    private static LayerShot[] Snapshot(Document doc)
+    {
+        var shots = new LayerShot[doc.Layers.Count];
         for (int i = 0; i < doc.Layers.Count; i++)
         {
-            shots[i] = doc.Layers[i] is PixelLayer pl
+            var l = doc.Layers[i];
+            var content = l is PixelLayer pl
                 ? pl.ExtractRegion(new SKRectI(0, 0, pl.Width, pl.Height))
                 : new SKBitmap(1, 1);
+            shots[i] = new LayerShot(l.Id, l.Name, l.Visible, l.Opacity, content);
         }
         return shots;
     }

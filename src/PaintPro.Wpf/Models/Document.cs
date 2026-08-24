@@ -153,6 +153,14 @@ public partial class Document : ObservableObject
     public void CommitFloating()
     {
         if (_floatingPickup is null) return;
+
+        // Прогулка по ленте истории: пиксели описывают сами записи, и дорисовывать к ним
+        // что-то ещё нельзя. History.Push в этот момент молчит (см. HistoryManager.Push),
+        // так что нарисованное осталось бы на холсте вовсе без записи о себе - отменить
+        // его было бы нечем. Объект, доживший до этого места, создала вставка, а её
+        // прижатие, если оно было, лежит в ленте отдельной записью и снимет его само.
+        if (History.IsApplying) { DropFloating(); return; }
+
         var pickup = _floatingPickup;
 
         // Подняли и положили обратно, ничего не изменив: клик внутрь рамки, нажатие на
@@ -178,7 +186,7 @@ public partial class Document : ObservableObject
             // layer is still untouched, so the current pixels are the correct "before".
             var dirty = ComputeDirtyRect(pickup, target.Width, target.Height);
             SKBitmap? before = null;
-            if (!dirty.IsEmpty)
+            if (dirty.HasArea())
             {
                 before = pickup.PreEditSnapshot is { } snap
                     ? Crop(snap, dirty)
@@ -191,7 +199,7 @@ public partial class Document : ObservableObject
             {
                 var after = target.ExtractRegion(dirty);
                 History.Push(new Commands.RegionDiffCommand(
-                    pickup.CommitLabel, target.Id, dirty, before, after));
+                    pickup.CommitLabel, target.Id, dirty, before, after, dropsFloating: true));
             }
         }
 
@@ -216,7 +224,7 @@ public partial class Document : ObservableObject
             && TargetLayer(pickup) is { } target)
         {
             var source = SourceRect(pickup, target.Width, target.Height);
-            if (!source.IsEmpty) BlitRegion(target.Bitmap, snap, source);
+            if (source.HasArea()) BlitRegion(target.Bitmap, snap, source);
         }
 
         pickup.Dispose();
@@ -244,7 +252,7 @@ public partial class Document : ObservableObject
         if (pickup.PreEditSnapshot is { } snap && TargetLayer(pickup) is { } target)
         {
             var source = SourceRect(pickup, target.Width, target.Height);
-            if (!source.IsEmpty)
+            if (source.HasArea())
             {
                 var before = Crop(snap, source);
                 var after = target.ExtractRegion(source);

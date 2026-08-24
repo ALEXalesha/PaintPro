@@ -21,6 +21,29 @@ public static class GeometryMath
 {
     private const float Epsilon = 1e-6f;
 
+    /// <summary>
+    /// Есть ли у прямоугольника площадь, то есть найдётся ли в нём хоть один пиксель.
+    ///
+    /// Не то же самое, что <see cref="SKRectI.IsEmpty"/>: он отвечает true только на
+    /// прямоугольник из четырёх нулей, а полоса нулевой ширины (10,5,10,25) для него
+    /// вполне себе непустая. Такие полосы получаются на каждом пересечении с холстом,
+    /// когда фигура приткнулась к самому его краю, и дальше из них строился битмап
+    /// нулевого размера, на котором Skia падала с ArgumentNullException. Все проверки
+    /// «есть ли что обрабатывать» идут теперь через это.
+    /// </summary>
+    public static bool HasArea(this SKRectI r) => r.Width > 0 && r.Height > 0;
+
+    /// <summary>
+    /// Округлить угол до ближайшего кратного <paramref name="step"/>. Shift при повороте:
+    /// без него встать ручкой ровно на 90° или 45° нельзя, а поворот на ровный угол -
+    /// самое частое, чего от него хотят. В Electron-версии шаг такой же, π/12.
+    /// </summary>
+    public static float SnapAngle(float radians, float step)
+        => step <= 0f ? radians : MathF.Round(radians / step) * step;
+
+    /// <summary>Шаг привязки поворота с зажатым Shift - 15°.</summary>
+    public const float RotationSnapStep = MathF.PI / 12f;
+
     /// <summary>Rotate a point around an arbitrary centre by angle (radians).</summary>
     public static SKPoint Rotate(SKPoint p, SKPoint centre, float angleRad)
     {
@@ -63,6 +86,10 @@ public static class GeometryMath
             _ => throw new ArgumentOutOfRangeException(nameof(handle)),
         };
 
+    /// <summary>Угловая ручка (тянет обе стороны) в отличие от боковой.</summary>
+    public static bool IsCorner(ResizeHandle h)
+        => h is ResizeHandle.NW or ResizeHandle.NE or ResizeHandle.SE or ResizeHandle.SW;
+
     /// <summary>Returns the diagonally opposite handle for corner handles, or the opposite side for edge handles.</summary>
     public static ResizeHandle Opposite(ResizeHandle h) => h switch
     {
@@ -96,10 +123,16 @@ public static class GeometryMath
     ///
     /// The rotation itself is unchanged by this function.
     /// </summary>
+    /// <param name="keepAspect">
+    /// Shift: угловая ручка сохраняет пропорции. Соотношение берётся у текущего габарита -
+    /// а он после первого же шага уже пропорционален, так что за время жеста оно не плывёт.
+    /// Боковые ручки меняют одну сторону по определению, их это не касается: так же
+    /// устроено и в Electron-версии (там условие `h.length === 2`).
+    /// </param>
     public static ResizeResult ResizeRotated(
         float x, float y, float w, float h, float rotationRad,
         ResizeHandle dragged, SKPoint mouseWorld,
-        float minSize = 4f)
+        float minSize = 4f, bool keepAspect = false)
     {
         var anchorHandle = Opposite(dragged);
         var anchorWorld = CornerWorldPosition(x, y, w, h, rotationRad, anchorHandle);
@@ -128,6 +161,17 @@ public static class GeometryMath
         // Enforce a minimum so the bbox can't collapse to zero (which would lose the rotation pivot).
         if (newW < minSize) newW = minSize;
         if (newH < minSize) newH = minSize;
+
+        // Пропорции - только у угловых ручек и только после нижней границы: иначе
+        // подтянутая до минимума сторона вытягивала бы вторую по старому соотношению.
+        if (keepAspect && IsCorner(dragged) && w > 0f && h > 0f)
+        {
+            float ratio = w / h;
+            if (newW / newH > ratio) newW = newH * ratio;
+            else                     newH = newW / ratio;
+            if (newW < minSize) newW = minSize;
+            if (newH < minSize) newH = minSize;
+        }
 
         // The dragged handle's new LOCAL position with respect to the anchor:
         // by construction, the anchor sits at (0,0) and the dragged at (±newW, ±newH).

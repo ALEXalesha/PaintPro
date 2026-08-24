@@ -35,7 +35,7 @@ public static class PickupOps
     {
         if (doc.ActiveLayer is not PixelLayer pl) return;
         var clamped = SKRectI.Intersect(SKRectI.Round(rect), new SKRectI(0, 0, pl.Width, pl.Height));
-        if (clamped.IsEmpty) return;
+        if (!clamped.HasArea()) return;
 
         var raw = pl.ExtractRegion(clamped);
         // Фон вокруг рисунка выкусывается только там, где он и есть фон: у бумаги, то

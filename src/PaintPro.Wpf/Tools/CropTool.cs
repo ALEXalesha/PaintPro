@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using PaintPro.Commands;
 using PaintPro.Models;
+using PaintPro.Services;
 using SkiaSharp;
 
 namespace PaintPro.Tools;
@@ -67,7 +68,7 @@ public sealed class CropTool : ITool
         var region = SKRectI.Intersect(
             new SKRectI((int)r.Left, (int)r.Top, (int)r.Right, (int)r.Bottom),
             new SKRectI(0, 0, ctx.Document.CanvasWidth, ctx.Document.CanvasHeight));
-        if (region.IsEmpty)
+        if (!region.HasArea())
         {
             ctx.Document.Selection = null;
             ctx.Document.EnterTransientMode(DocumentMode.Idle);

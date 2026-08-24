@@ -1,3 +1,4 @@
+using PaintPro.Services;
 using SkiaSharp;
 
 namespace PaintPro.Models;
@@ -85,7 +86,7 @@ public sealed class PixelLayer : Layer
     public SKBitmap ExtractRegion(SKRectI region)
     {
         var clipped = SKRectI.Intersect(region, new SKRectI(0, 0, Width, Height));
-        if (clipped.IsEmpty)
+        if (!clipped.HasArea())
             return new SKBitmap(1, 1);
         var dst = new SKBitmap(clipped.Width, clipped.Height, _bitmap.ColorType, _bitmap.AlphaType);
         using var canvas = new SKCanvas(dst);

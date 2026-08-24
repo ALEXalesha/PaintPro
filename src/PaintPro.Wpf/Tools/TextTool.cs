@@ -1,6 +1,7 @@
-using System.Windows.Input;
+﻿using System.Windows.Input;
 using PaintPro.Commands;
 using PaintPro.Models;
+using PaintPro.Services;
 using SkiaSharp;
 
 namespace PaintPro.Tools;
@@ -57,7 +58,7 @@ public sealed class TextTool : ITool
         // Прозрачность в ноль - те же чернила, что и пустая строка: на холсте не остаётся
         // ничего, а запись в истории осталась бы.
         var alpha = (byte)(255 * Math.Clamp(_ctx.Opacity, 0f, 1f));
-        if (alpha == 0) return;
+        if (alpha == 0) { _ctx.ReportTransparentInk(); return; }
 
         var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
@@ -93,7 +94,7 @@ public sealed class TextTool : ITool
             (int)MathF.Ceiling(_lastClick.X + maxX + pad),
             (int)MathF.Ceiling(_lastClick.Y + maxY + pad));
         canvasRect = SKRectI.Intersect(canvasRect, new SKRectI(0, 0, pl.Width, pl.Height));
-        if (canvasRect.IsEmpty) return;
+        if (!canvasRect.HasArea()) return;
 
         var bmp = new SKBitmap(canvasRect.Width, canvasRect.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         using (var c = new SKCanvas(bmp))

@@ -16,16 +16,32 @@ public sealed class RegionDiffCommand : IDocumentCommand, IDisposable
     private readonly SKBitmap _before;
     private readonly SKBitmap _after;
 
+    /// <summary>
+    /// Прижатие поднятого объекта - это не только новые пиксели, но и то, что объекта
+    /// больше нет. Запись обязана делать и то и другое: иначе повтор ленты приводит
+    /// документ не в то состояние, в котором он был.
+    ///
+    /// Ленту повторяют не только Ctrl+Y, но и клик по строке в панели истории. Вставка
+    /// при своём повторе кладёт картинку в руки заново, а следующая за ней запись -
+    /// прижатие этой же картинки - раньше только рисовала пиксели. Объект оставался
+    /// висеть над ними: на экране картинка вроде на месте, но стоило её потянуть, как
+    /// из-под неё выезжала вторая, уже прижатая.
+    /// </summary>
+    private readonly bool _dropsFloating;
+
     /// <param name="layerId">Layer the diff belongs to. Undo/redo is a no-op if it is gone.</param>
     /// <param name="before">Region pixels before the edit (command takes ownership).</param>
     /// <param name="after">Region pixels after the edit (command takes ownership).</param>
-    public RegionDiffCommand(string displayName, Guid layerId, SKRectI bounds, SKBitmap before, SKBitmap after)
+    /// <param name="dropsFloating">Запись описывает прижатие: объекта после неё быть не должно.</param>
+    public RegionDiffCommand(string displayName, Guid layerId, SKRectI bounds,
+        SKBitmap before, SKBitmap after, bool dropsFloating = false)
     {
         DisplayName = displayName;
         _layerId = layerId;
         _bounds = bounds;
         _before = before;
         _after = after;
+        _dropsFloating = dropsFloating;
     }
 
     public string DisplayName { get; }
@@ -40,7 +56,14 @@ public sealed class RegionDiffCommand : IDocumentCommand, IDisposable
         _after.Dispose();
     }
 
-    public void Execute(Document doc) => Blit(doc, _after);
+    public void Execute(Document doc)
+    {
+        Blit(doc, _after);
+        // Именно DropFloating: пиксели уже нарисованы этой же записью, и возвращать их
+        // на место (CancelFloating) или рисовать второй раз (CommitFloating) нечем.
+        if (_dropsFloating) doc.DropFloating();
+    }
+
     public void Undo(Document doc) => Blit(doc, _before);
 
     private void Blit(Document doc, SKBitmap src)

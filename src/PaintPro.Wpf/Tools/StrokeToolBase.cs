@@ -1,6 +1,7 @@
 ﻿using System.Windows.Input;
 using PaintPro.Commands;
 using PaintPro.Models;
+using PaintPro.Services;
 using SkiaSharp;
 
 namespace PaintPro.Tools;
@@ -70,6 +71,9 @@ public abstract class StrokeToolBase : ITool
         // every overlapping segment and round cap composites again and the stroke turns
         // into a chain of dark blobs.
         _strokeAlpha = _paint.Color.Alpha;
+        // Ластика это не касается: он прозрачность не учитывает вовсе, как и в
+        // Electron-версии, и его альфа всегда 255.
+        if (_strokeAlpha == 0) ctx.ReportTransparentInk();
         _paint.Color = _paint.Color.WithAlpha(255);
         _mergeBlend = MergeBlendMode(ctx);
 
@@ -123,7 +127,7 @@ public abstract class StrokeToolBase : ITool
         // так что дотянуть до этого можно одним движением. Тем же правилом отсеивает
         // пустую работу заливка (FillCommand.ChangedAnything).
         if (_strokeAlpha == 0) bbox = SKRectI.Empty;
-        if (!bbox.IsEmpty)
+        if (bbox.HasArea())
         {
             var cropped = new SKBitmap(bbox.Width, bbox.Height, _strokeBitmap.ColorType, _strokeBitmap.AlphaType);
             using (var cc = new SKCanvas(cropped))

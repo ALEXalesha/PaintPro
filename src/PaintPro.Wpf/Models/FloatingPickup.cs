@@ -135,9 +135,11 @@ public sealed class FloatingPickup : IDisposable
     /// and the current mouse position in world (document) coords.
     /// Re-uses <see cref="GeometryMath.ResizeRotated"/> which handles arbitrary rotation.
     /// </summary>
-    public void ApplyResize(ResizeHandle handle, SKPoint mouseWorld)
+    /// <param name="keepAspect">Shift: угловая ручка сохраняет пропорции объекта.</param>
+    public void ApplyResize(ResizeHandle handle, SKPoint mouseWorld, bool keepAspect = false)
     {
-        var r = GeometryMath.ResizeRotated(X, Y, Width, Height, Rotation, handle, mouseWorld);
+        var r = GeometryMath.ResizeRotated(X, Y, Width, Height, Rotation, handle, mouseWorld,
+                                           keepAspect: keepAspect);
         // If we have a quad, scale its corners around the same anchor so the polygon clip
         // tracks the resize. Quad corner-drag is a different op (changes shape, not size).
         //

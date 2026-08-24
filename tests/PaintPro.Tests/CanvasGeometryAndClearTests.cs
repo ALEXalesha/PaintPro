@@ -34,15 +34,18 @@ public class CanvasGeometryAndClearTests
         => ((PixelLayer)doc.Layers[index]).Bitmap.GetPixel(x, y);
 
     [Fact]
-    public void New_document_clears_every_layer_not_just_the_active_one()
+    public void New_document_leaves_a_single_blank_paper_layer()
     {
         var doc = MakeDocWithTwoLayers();
         doc.ActiveLayerIndex = 0; // активен нижний
 
         doc.History.ExecuteAndPush(new ClearCanvasCommand(), doc);
 
+        // От стопки остаётся бумага, и она чистая. Прежде верхние слои только чистились:
+        // новый документ выходил с прежним числом слоёв и прежними их именами в панели.
+        Assert.Single(doc.Layers);
         Assert.Equal(SKColors.White, At(doc, 0, 10, 10));
-        Assert.Equal(SKColors.Empty, At(doc, 1, 10, 10)); // верхний слой - в прозрачность
+        Assert.Equal(0, doc.ActiveLayerIndex);
     }
 
     [Fact]
@@ -59,15 +62,15 @@ public class CanvasGeometryAndClearTests
     }
 
     [Fact]
-    public void Redo_of_new_document_clears_every_layer_again()
+    public void Redo_of_new_document_blanks_the_document_again()
     {
         var doc = MakeDocWithTwoLayers();
         doc.History.ExecuteAndPush(new ClearCanvasCommand(), doc);
         doc.History.Undo(doc);
         doc.History.Redo(doc);
 
+        Assert.Single(doc.Layers);
         Assert.Equal(SKColors.White, At(doc, 0, 10, 10));
-        Assert.Equal(SKColors.Empty, At(doc, 1, 10, 10));
     }
 
     [Fact]

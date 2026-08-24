@@ -1,6 +1,7 @@
 ﻿using System.Windows.Input;
 using PaintPro.Commands;
 using PaintPro.Models;
+using PaintPro.Services;
 using SkiaSharp;
 
 namespace PaintPro.Tools;
@@ -42,6 +43,7 @@ public abstract class ShapeTool : ITool
         // Render opaque, composite once with this alpha: a filled shape draws its fill and
         // its outline over the same pixels, and at partial opacity the overlap shows.
         _alpha = (byte)(255 * Math.Clamp(ctx.Opacity, 0f, 1f));
+        if (_alpha == 0) ctx.ReportTransparentInk();
         _color = ctx.PrimaryColor.WithAlpha(255);
         _strokeWidth = MathF.Max(1f, ctx.ToolSize);
 
@@ -76,7 +78,7 @@ public abstract class ShapeTool : ITool
         // Прозрачность в ноль - фигура, которой не было; см. StrokeToolBase.OnPointerUp.
         if (_alpha == 0) rect = SKRectI.Empty;
 
-        if (!rect.IsEmpty)
+        if (rect.HasArea())
         {
             var cropped = new SKBitmap(rect.Width, rect.Height, _previewBitmap.ColorType, _previewBitmap.AlphaType);
             using (var cc = new SKCanvas(cropped))

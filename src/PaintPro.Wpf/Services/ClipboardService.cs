@@ -54,28 +54,49 @@ public sealed class ClipboardService
     }
 
     /// <summary>
-    /// The selection rect inside <paramref name="doc"/>, or the full canvas if there is no
-    /// selection — flattened. Copy takes what the user can see; reading the active layer
-    /// alone put an unexpectedly empty or partial image on the clipboard as soon as the
-    /// document had more than one layer.
+    /// Что уходит в буфер обмена: поднятый объект, область выделения или весь холст.
+    ///
+    /// Выделение копируется сборкой всех слоёв: копия берёт то, что пользователь видит, а
+    /// чтение одного активного слоя клало в буфер неожиданно пустую или наполовину пустую
+    /// картинку, стоило документу обзавестись вторым слоем.
+    ///
+    /// А вот поднятый объект копируется САМ - на прозрачном фоне и без того, что лежит под
+    /// ним. Прежде и он шёл через общую сборку, обрезанную по своему габариту: объект,
+    /// уведённый на цветное место, попадал в буфер вместе с этим цветом прямоугольной
+    /// заплаткой, и вставка возвращала на холст не фигуру, а плитку фона с фигурой внутри.
+    /// Габарит при этом ещё и шире самого объекта - у повёрнутого сильно, - так что фона
+    /// в копии было больше, чем содержимого. В Electron-версии Ctrl+C по floating рисует
+    /// в чистый холст один только объект (<c>copySelection</c>).
     /// </summary>
-    private static SKBitmap ExtractSelectedRegion(Document doc)
+    public static SKBitmap ExtractForClipboard(Document doc)
     {
         var canvasRect = new SKRectI(0, 0, doc.CanvasWidth, doc.CanvasHeight);
-        // Плавающий объект по инварианту обнуляет Selection, поэтому ветка "нет
-        // выделения - копируем весь холст" срабатывала сразу после того, как
-        // выделение подняли для перемещения: Ctrl+C по перетащенной картинке
-        // клал в буфер обмена весь документ.
+
+        // Плавающий объект по инварианту обнуляет Selection, поэтому без этой ветки
+        // срабатывала бы следующая - «нет выделения, копируем весь холст».
+        if (doc.FloatingPickup is { } fp)
+        {
+            var bounds = Document.PickupBounds(fp, doc.CanvasWidth, doc.CanvasHeight);
+            if (!bounds.HasArea()) return new SKBitmap(1, 1);
+            var only = new SKBitmap(bounds.Width, bounds.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using (var c = new SKCanvas(only))
+            {
+                c.Clear(SKColors.Transparent);
+                // DrawPickup рисует в координатах документа и уважает трансформацию канвы.
+                c.Translate(-bounds.Left, -bounds.Top);
+                Document.DrawPickup(c, fp);
+            }
+            return only;
+        }
+
         SKRectI rect = doc.Selection switch
         {
             RectSelection rs => SKRectI.Round(rs.Rect),
             PolygonSelection poly => SKRectI.Round(poly.BoundingBox),
-            _ when doc.FloatingPickup is { } fp
-                => Document.PickupBounds(fp, doc.CanvasWidth, doc.CanvasHeight),
             _ => canvasRect,
         };
         rect = SKRectI.Intersect(rect, canvasRect);
-        if (rect.IsEmpty) return new SKBitmap(1, 1);
+        if (!rect.HasArea()) return new SKBitmap(1, 1);
 
         using var flat = FileService.Flatten(doc);
         var dst = new SKBitmap(rect.Width, rect.Height, flat.ColorType, flat.AlphaType);
@@ -92,7 +113,7 @@ public sealed class ClipboardService
     /// </summary>
     public bool Copy(Document doc)
     {
-        using var bmp = ExtractSelectedRegion(doc);
+        using var bmp = ExtractForClipboard(doc);
         using var img = SKImage.FromBitmap(bmp);
         using var data = img.Encode(SKEncodedImageFormat.Png, 100);
         // Кодировщик возвращает null, а не бросает: без проверки обычный Ctrl+C падал бы

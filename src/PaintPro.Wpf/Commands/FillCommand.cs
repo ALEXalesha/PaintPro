@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 using PaintPro.Models;
+using PaintPro.Services;
 using SkiaSharp;
 
 namespace PaintPro.Commands;
@@ -79,7 +80,7 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
         if (Same(target, fill)) return;
 
         var bounds = ScanlineFill(buffer, w, h, stride, _seed, target, fill);
-        if (bounds.IsEmpty) return;
+        if (!bounds.HasArea()) return;
 
         Marshal.Copy(buffer, 0, pixels, byteCount);
         bmp.NotifyPixelsChanged();

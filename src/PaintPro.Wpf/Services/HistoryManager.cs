@@ -130,6 +130,36 @@ public partial class HistoryManager : ObservableObject
         _commands.RemoveRange(_cursor, _commands.Count - _cursor);
     }
 
+    /// <summary>
+    /// Вычеркнуть запись из ленты целиком. Для правки, от которой отказались, а отменить
+    /// её обычным Ctrl+Z уже нельзя: между ней и отказом легли другие.
+    ///
+    /// Так уходит вставка, которую пользователь снял Escape, Delete или Ctrl+X после того,
+    /// как успел сделать что-то ещё. <see cref="Commands.PasteCommand"/> не трогает ни
+    /// одного пикселя - она только кладёт картинку в руки, - поэтому записи, стоящие после
+    /// неё, от её исчезновения не портятся, а сама она без своего объекта не значит уже
+    /// ничего. Пока такая запись оставалась в ленте, история утверждала, что вставка
+    /// применена, картинки на холсте не было, документ считался изменённым, а Ctrl+Y
+    /// картинку не возвращал: курсору некуда двигаться.
+    ///
+    /// Только для записей, которые холста не меняли: вычеркнуть любую другую значило бы
+    /// оставить её пиксели без возможности отмены.
+    /// </summary>
+    public bool Forget(IDocumentCommand cmd)
+    {
+        if (_applying) return false;
+        int index = _commands.IndexOf(cmd);
+        if (index < 0) return false;
+        _commands.RemoveAt(index);
+        if (index < _cursor) _cursor--;
+        // Метка сохранения считает записи слева от курсора: та, что стояла за
+        // вычеркнутой, уезжает вместе с ней.
+        if (_savedCursor > index) _savedCursor--;
+        Release(cmd);
+        Notify();
+        return true;
+    }
+
     /// <summary>Run cmd.Execute(doc) then push. The conventional way to record an edit.</summary>
     public void ExecuteAndPush(IDocumentCommand cmd, Document doc)
     {
