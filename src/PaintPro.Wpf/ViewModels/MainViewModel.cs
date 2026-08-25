@@ -414,8 +414,12 @@ public partial class MainViewModel : ObservableObject
     {
         var history = Document.History;
         HistoryItems.Clear();
-        // Row 0 is the document's starting point (nothing applied).
-        HistoryItems.Add(new HistoryEntryViewModel(0, "Исходное состояние")
+        // Row 0 is the document's starting point (nothing applied) — пока лента не
+        // переполнялась. Стоит ей выбросить самые старые записи, и нулевая позиция
+        // означает уже не чистый лист, а состояние после забытых правок: строка обещала
+        // вернуть документ к началу работы, а возвращала к середине.
+        HistoryItems.Add(new HistoryEntryViewModel(
+            0, history.Trimmed ? "Дальше отмена не идёт" : "Исходное состояние")
         {
             IsCurrent = history.Cursor == 0,
         });
@@ -498,7 +502,13 @@ public partial class MainViewModel : ObservableObject
         // перезаписывал ранее открытую картинку чистым холстом.
         FileService.Detach();
         Document.History.MarkSaved();
-        InvalidateCanvas?.Invoke();
+        // Строки панели слоёв держат свои копии видимости и прозрачности, а «Создать»
+        // возвращает бумагу к видимой и непрозрачной. Пока строки не пересобирались,
+        // документ с ОДНИМ слоем (коллекция не менялась, и событие о ней не приходило)
+        // оставлял в панели прежний флажок: галочка снята, а холст рисуется - и следующий
+        // клик по ней прятал слой, который пользователь считал уже спрятанным. Ровно то же
+        // делает после прогулки по ленте AfterHistoryWalk.
+        AfterHistoryWalk();
     }
 
     [RelayCommand]
@@ -681,9 +691,21 @@ public partial class MainViewModel : ObservableObject
         if (BuildEraseCommand() is { } cmd) Apply(cmd);
     }
 
+    /// <summary>
+    /// Выполнить стирание и записать его, если оно хоть что-то изменило.
+    ///
+    /// Не <see cref="HistoryManager.ExecuteAndPush"/>: Delete по области, где стирать
+    /// нечего - по нетронутой бумаге, по пустому месту верхнего слоя, - не менял ни
+    /// одного пикселя, но оставлял запись в ленте и объявлял документ изменённым.
+    /// Дальше приложение спрашивало про сохранение после жеста, от которого на холсте
+    /// не осталось ничего. Тем же правилом отсеивают пустую работу заливка
+    /// (<see cref="FillCommand.ChangedAnything"/>), штрих, фигура, текст и прижатие.
+    /// </summary>
     private void Apply(EraseRegionCommand cmd)
     {
-        Document.History.ExecuteAndPush(cmd, Document);
+        cmd.Execute(Document);
+        if (cmd.ChangedAnything) Document.History.Push(cmd);
+        else cmd.Dispose();
         Document.Selection = null;
         InvalidateCanvas?.Invoke();
     }
@@ -717,16 +739,30 @@ public partial class MainViewModel : ObservableObject
                 return null;
         }
     }
-    [RelayCommand] private void Paste()
+    [RelayCommand] private void Paste() => ApplyClipboard(ClipboardService.TryGetImage());
+
+    /// <summary>
+    /// Разобрать ответ буфера обмена. Отдельно от чтения самого буфера: читать его в
+    /// тестах нельзя, а решать, что показать пользователю, - нужно.
+    ///
+    /// Пустой буфер объясняется наравне с занятым. Пока про него молчали, Ctrl+V по
+    /// буферу без картинки не делал ровно ничего и ничего не говорил: отличить это от
+    /// сломанной вставки было нельзя, и пользователь жал ещё и ещё. Причина при этом
+    /// обычная - в буфере лежит текст или файл, а не картинка.
+    /// </summary>
+    public void ApplyClipboard(ClipboardOutcome outcome)
     {
-        var outcome = ClipboardService.TryGetImage();
         if (outcome.Status == ClipboardStatus.Busy)
         {
             ShowHint("Буфер обмена занят другим приложением — вставка не удалась");
             return;
         }
-        if (outcome.Bitmap is not { } bmp) return;
-        using (bmp) PasteBitmap(bmp);
+        if (outcome.Status == ClipboardStatus.Empty || outcome.Bitmap is null)
+        {
+            ShowHint("В буфере обмена нет картинки — вставлять нечего");
+            return;
+        }
+        using (outcome.Bitmap) PasteBitmap(outcome.Bitmap);
     }
 
     /// <summary>
@@ -747,10 +783,28 @@ public partial class MainViewModel : ObservableObject
         // прибивалась бы к холсту в точке (20, 20) раньше, чем пользователь успевал её
         // увидеть. Прежний объект, если он был, прижмёт сама PasteCommand.
         ActiveTool = ToolKind.Select;
-        var cmd = new PasteCommand(bmp, new SKPoint(20, 20));
+        var cmd = new PasteCommand(bmp, PasteOrigin(
+            Document.CanvasWidth, Document.CanvasHeight, bmp.Width, bmp.Height));
         Document.History.ExecuteAndPush(cmd, Document);
         InvalidateCanvas?.Invoke();
     }
+
+    /// <summary>Отступ, с которым вставленная картинка ложится на холст.</summary>
+    private const int PasteInset = 20;
+
+    /// <summary>
+    /// Левый верхний угол вставки. Обычно это отступ в двадцать пикселей от края - так
+    /// видно, что картинка лежит поверх, а не приклеена к углу.
+    ///
+    /// Но отступ не должен уносить картинку с холста. На холсте меньше двадцати пикселей
+    /// (а такой получается после кадрирования до мелочи или смены размера) вставка
+    /// оказывалась ЦЕЛИКОМ за краем: Ctrl+V не показывал ничего, в ленте появлялась
+    /// строка «Вставка», а первое же прижатие вычёркивало её обратно - картинку прижимать
+    /// было некуда. Со стороны это выглядело как «вставка не работает».
+    /// </summary>
+    public static SKPoint PasteOrigin(int canvasW, int canvasH, int imageW, int imageH)
+        => new(Math.Max(0, Math.Min(PasteInset, canvasW - imageW)),
+               Math.Max(0, Math.Min(PasteInset, canvasH - imageH)));
 
     // ───────── Selection / floating ─────────
     [RelayCommand] private void SelectAll()

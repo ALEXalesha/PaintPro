@@ -15,6 +15,14 @@ public sealed class SelectTool : ITool
     public SKBitmap? PreviewBitmap => null;
     public Cursor? GetCursor(SKPoint position) => Cursors.Cross;
 
+    /// <summary>
+    /// Что сказать про рамку, которую не за что взять. Общая с «Четырёхугольником»: нижняя
+    /// граница у обоих одна и та же и по одной причине - зоны хвата углов иначе смыкаются
+    /// в середине фигуры (см. <see cref="Services.PickupOps.HitCorner"/>).
+    /// </summary>
+    internal const string MinSelectionHint =
+        "Выделение меньше 4 пикселей — растяните рамку побольше";
+
     private SKPoint _origin;
     private bool _isCreatingRect;
     private bool _isMovingFloating;
@@ -109,7 +117,14 @@ public sealed class SelectTool : ITool
             if (ctx.Document.Selection is RectSelection rs)
             {
                 if (rs.Rect.Width < 4 || rs.Rect.Height < 4)
+                {
                     ctx.Document.Selection = null;
+                    // Рамка пропадала молча, и жест был неотличим от промаха: пользователь
+                    // тянул мышью, отпускал, и на холсте не оставалось ничего. Про чистый
+                    // клик (нулевая рамка) молчим - им как раз снимают выделение.
+                    if (rs.Rect.Width >= 1 || rs.Rect.Height >= 1)
+                        ctx.ReportHint?.Invoke(MinSelectionHint);
+                }
             }
             _isCreatingRect = false;
         }

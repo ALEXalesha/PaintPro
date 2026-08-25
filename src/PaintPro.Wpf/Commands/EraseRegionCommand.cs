@@ -43,8 +43,18 @@ public sealed class EraseRegionCommand : IDocumentCommand, IDisposable
 
     private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
 
+    /// <summary>
+    /// Изменило ли стирание хоть один пиксель. Delete по нетронутой бумаге или по пустому
+    /// месту верхнего слоя не меняет ничего, и записи в ленте ему взяться неоткуда: пустая
+    /// запись включает признак несохранённой работы, и приложение спрашивает про
+    /// сохранение после ничего. Так же отсеивает свою пустую работу заливка
+    /// (<see cref="FillCommand.ChangedAnything"/>).
+    /// </summary>
+    public bool ChangedAnything { get; private set; }
+
     public void Execute(Document doc)
     {
+        ChangedAnything = false;
         if (LayerTarget.Resolve(doc, ref _layerId) is not { } pl) return;
         if (_underlying is null)
         {
@@ -73,6 +83,9 @@ public sealed class EraseRegionCommand : IDocumentCommand, IDisposable
         {
             canvas.DrawRect(new SKRect(_bounds.Left, _bounds.Top, _bounds.Right, _bounds.Bottom), paint);
         }
+
+        using var after = pl.ExtractRegion(_snapshotBounds);
+        ChangedAnything = !Models.Document.SamePixels(_underlying, after);
     }
 
     public void Dispose()

@@ -305,9 +305,14 @@ public partial class CanvasView : UserControl
         shape.BeginAnimation(Shape.StrokeDashOffsetProperty, anim);
     }
 
+    /// <summary>Обычная сторона ручки масштабирования в экранных пикселях.</summary>
+    private const double HandleSize = 12;
+
     private void AddResizeHandle(FloatingPickup fp, ResizeHandle handle, double zoom, Cursor cursor)
     {
-        const double size = 12;
+        // У маленького объекта ручки ужимаются, иначе они накрывают его целиком и тело
+        // не ухватить - см. PickupOps.HandleSize.
+        double size = PickupOps.HandleSize(fp, zoom, HandleSize);
         var localPos = GeometryMath.LocalHandlePosition(fp.X, fp.Y, fp.Width, fp.Height, handle);
         var worldPos = fp.Rotation == 0
             ? localPos

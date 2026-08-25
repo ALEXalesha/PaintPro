@@ -49,7 +49,7 @@ public class TimelineFuzzTests
         ctx.Opacity = 0.3f + (float)rnd.NextDouble() * 0.7f;
         ctx.ToolSize = 1 + rnd.Next(8);
 
-        switch (rnd.Next(19))
+        switch (rnd.Next(25))
         {
             case 0:
             {
@@ -238,6 +238,92 @@ public class TimelineFuzzTests
                     doc.DropFloating();
                     doc.History.Forget(owner);
                 }
+                break;
+            }
+
+            // Правки, добавленные в 1.19.0. «Создать» переписывает документ целиком,
+            // отказ от подъёма и выбрасывание поднятого - две противоположные развязки
+            // одного и того же жеста, стирание многоугольником идёт мимо габарита, а
+            // случаи 23 и 24 водят по холсту сами инструменты выделения: их жест - это
+            // рамка, подъём, перетаскивание и прижатие подряд, а не вызовы PickupOps.
+            case 19:
+                doc.CommitFloating();
+                doc.History.ExecuteAndPush(new ClearCanvasCommand(), doc);
+                break;
+            case 20:
+            {
+                // Подняли, сдвинули и отказались: пиксели на месте, в ленте пусто.
+                float x = X(), y = X();
+                PickupOps.PromoteRect(doc, new SKRect(x, y, x + 10, y + 10));
+                if (doc.FloatingPickup is { } fp)
+                {
+                    PickupOps.EnsureLazyErase(doc, fp);
+                    PickupOps.Translate(fp, 5, 5);
+                    doc.CancelFloating();
+                }
+                break;
+            }
+            case 21:
+            {
+                // Подняли и выбросили: дыра остаётся и записывается.
+                float x = X(), y = X();
+                PickupOps.PromoteRect(doc, new SKRect(x, y, x + 10, y + 10));
+                if (doc.FloatingPickup is not null) doc.DiscardFloating();
+                break;
+            }
+            case 22:
+            {
+                // Стирание многоугольником: сглаженный контур задевает пиксели за габаритом.
+                doc.CommitFloating();
+                float x = X(), y = X();
+                var poly = new[]
+                {
+                    new SKPoint(x, y), new SKPoint(x + 12, y + 1),
+                    new SKPoint(x + 10, y + 13), new SKPoint(x - 1, y + 11),
+                };
+                var pb = SKRectI.Intersect(
+                    SKRectI.Round(new SKRect(x - 1, y, x + 12, y + 13)),
+                    new SKRectI(0, 0, doc.CanvasWidth, doc.CanvasHeight));
+                if (pb.HasArea())
+                    doc.History.ExecuteAndPush(
+                        new EraseRegionCommand(pb, poly, PickupOps.EraseColor(doc, doc.ActiveLayer)), doc);
+                break;
+            }
+            case 23:
+            {
+                // Полный жест «Выделения»: рамка, подъём кликом внутрь, перетаскивание.
+                var t = new SelectTool();
+                float x = X(), y = X();
+                t.OnPointerDown(new SKPoint(x, y), ctx);
+                t.OnPointerMove(new SKPoint(x + 14, y + 12), ctx);
+                t.OnPointerUp(new SKPoint(x + 14, y + 12), ctx);
+                if (doc.Selection is RectSelection rs)
+                {
+                    var mid = new SKPoint(rs.Rect.MidX, rs.Rect.MidY);
+                    t.OnPointerDown(mid, ctx);
+                    t.OnPointerMove(new SKPoint(mid.X + 6, mid.Y - 4), ctx);
+                    t.OnPointerUp(new SKPoint(mid.X + 6, mid.Y - 4), ctx);
+                }
+                doc.CommitFloating();
+                break;
+            }
+            case 24:
+            {
+                // То же «Четырёхугольником».
+                var t = new QuadTool();
+                float x = X(), y = X();
+                t.OnPointerDown(new SKPoint(x, y), ctx);
+                t.OnPointerMove(new SKPoint(x + 15, y + 13), ctx);
+                t.OnPointerUp(new SKPoint(x + 15, y + 13), ctx);
+                if (doc.Selection is PolygonSelection ps2)
+                {
+                    var bb = ps2.BoundingBox;
+                    var mid = new SKPoint(bb.MidX, bb.MidY);
+                    t.OnPointerDown(mid, ctx);
+                    t.OnPointerMove(new SKPoint(mid.X + 5, mid.Y + 3), ctx);
+                    t.OnPointerUp(new SKPoint(mid.X + 5, mid.Y + 3), ctx);
+                }
+                doc.CommitFloating();
                 break;
             }
         }

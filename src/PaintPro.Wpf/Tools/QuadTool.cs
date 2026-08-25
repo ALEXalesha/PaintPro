@@ -152,7 +152,13 @@ public sealed class QuadTool : ITool
             if (ctx.Document.Selection is PolygonSelection p)
             {
                 var bb = p.BoundingBox;
-                if (bb.Width < 4 || bb.Height < 4) ctx.Document.Selection = null;
+                if (bb.Width < 4 || bb.Height < 4)
+                {
+                    ctx.Document.Selection = null;
+                    // Молчащий отказ - см. SelectTool.OnPointerUp. Чистый клик не считается.
+                    if (bb.Width >= 1 || bb.Height >= 1)
+                        ctx.ReportHint?.Invoke(SelectTool.MinSelectionHint);
+                }
             }
             _isCreating = false;
         }

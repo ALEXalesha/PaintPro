@@ -69,6 +69,19 @@ public sealed class FileService
         SKBitmap? bmp;
         try
         {
+            // Габарит читаем ИЗ ЗАГОЛОВКА, до раскодирования. Диалог «Изменить размер
+            // холста» держит потолок в 20000 по стороне и 120 млн пикселей всего, а
+            // «Открыть» не проверяло ничего: снимок 25000x25000 - это 2,5 ГБ на слой,
+            // и раскодирование падало нехваткой памяти мимо всех catch'ей, унося
+            // несохранённый рисунок вместе с приложением. Отказ теперь виден и приходит
+            // раньше, чем под картинку выделят хоть байт.
+            if (!IsOpenable(path, out int w, out int h))
+            {
+                return new OpenOutcome(OpenStatus.Failed, null, path,
+                    $"Картинка {w}×{h} слишком велика: сторона не больше " +
+                    $"{Commands.ResizeCanvasCommand.MaxDimension} пикселей и не больше " +
+                    $"{Commands.ResizeCanvasCommand.MaxPixels / 1_000_000} млн пикселей всего.");
+            }
             bmp = SKBitmap.Decode(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
@@ -83,6 +96,23 @@ public sealed class FileService
         // открытия, - и молча записывал в неё содержимое нового документа.
         LastSavedPath = null;
         return new OpenOutcome(OpenStatus.Ok, bmp, path);
+    }
+
+    /// <summary>
+    /// Влезет ли картинка по этому пути в документ. Габарит берётся из заголовка файла
+    /// (<see cref="SKCodec"/>), то есть без раскодирования: в этом весь смысл проверки.
+    ///
+    /// Заголовок не прочитался - пусть решает <see cref="SKBitmap.Decode(string)"/>: он
+    /// отличает битый файл от нечитаемого и говорит об этом своими словами.
+    /// </summary>
+    public static bool IsOpenable(string path, out int width, out int height)
+    {
+        width = height = 0;
+        using var codec = SKCodec.Create(path);
+        if (codec is null) return true;
+        width = codec.Info.Width;
+        height = codec.Info.Height;
+        return Commands.ResizeCanvasCommand.IsAllowed(width, height);
     }
 
     /// <summary>Отвязать документ от файла: следующий Ctrl+S спросит путь заново.</summary>

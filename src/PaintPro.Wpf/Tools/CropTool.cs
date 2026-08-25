@@ -17,6 +17,10 @@ public sealed class CropTool : ITool
     public SKBitmap? PreviewBitmap => null;
     public Cursor? GetCursor(SKPoint position) => Cursors.Cross;
 
+    /// <summary>Почему кадрирование не сработало. Граница та же, что у выделения.</summary>
+    private const string TooSmallHint =
+        "Рамка кадрирования меньше 4 пикселей — обведите область побольше";
+
     private SKPoint _origin;
     private bool _dragging;
 
@@ -62,6 +66,11 @@ public sealed class CropTool : ITool
         {
             ctx.Document.Selection = null;
             ctx.Document.EnterTransientMode(DocumentMode.Idle);
+            // Кадрирование не срабатывало молча: пользователь обводил рамку, отпускал, и
+            // холст оставался прежним без единого слова о том, почему. Причина всегда одна
+            // и та же - рамка меньше четырёх пикселей по стороне. Про чистый клик молчим:
+            // им из режима кадрирования как раз выходят.
+            if (r.Width >= 1 || r.Height >= 1) ctx.ReportHint?.Invoke(TooSmallHint);
             return;
         }
 
@@ -72,6 +81,7 @@ public sealed class CropTool : ITool
         {
             ctx.Document.Selection = null;
             ctx.Document.EnterTransientMode(DocumentMode.Idle);
+            ctx.ReportHint?.Invoke("Рамка кадрирования целиком за пределами холста");
             return;
         }
 

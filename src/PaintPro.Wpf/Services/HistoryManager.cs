@@ -60,6 +60,14 @@ public partial class HistoryManager : ObservableObject
     /// <summary>Позиция, которой курсор не достигает никогда: сохранённого состояния больше нет в списке.</summary>
     private const int Unreachable = -1;
 
+    /// <summary>
+    /// Выбрасывались ли из начала ленты записи. Тогда нулевая позиция - это уже НЕ чистый
+    /// лист, а состояние после забытых правок, и панель истории обязана называть её иначе:
+    /// строка «Исходное состояние» обещала вернуть документ к началу работы, а возвращала
+    /// к середине - к тому месту, дальше которого отмена не идёт.
+    /// </summary>
+    public bool Trimmed { get; private set; }
+
     /// <summary>Запомнить текущую позицию как сохранённую.</summary>
     public void MarkSaved() => _savedCursor = _cursor;
 
@@ -254,6 +262,7 @@ public partial class HistoryManager : ObservableObject
         _commands.Clear();
         _cursor = 0;
         _savedCursor = 0;
+        Trimmed = false;
         Notify();
     }
 
@@ -283,6 +292,7 @@ public partial class HistoryManager : ObservableObject
         // был лимитом только на бумаге.
         for (int i = 0; i < count; i++) Release(_commands[i]);
         _commands.RemoveRange(0, count);
+        Trimmed = true;
         _cursor = Math.Max(0, _cursor - count);
         if (_savedCursor >= 0) _savedCursor -= count;
     }

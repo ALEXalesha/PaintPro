@@ -207,22 +207,9 @@ public partial class Document : ObservableObject
             Services.PickupOps.EnsureLazyErase(this, pickup);
 
             // Record a before/after diff over the affected region so the commit is undoable.
-            // "Before" comes from the pre-lift snapshot when there is one (the layer has
-            // already been lazily erased by then); for a paste there is no snapshot and the
-            // layer is still untouched, so the current pixels are the correct "before".
             var dirty = ComputeDirtyRect(pickup, target.Width, target.Height);
             SKBitmap? before = null;
-            if (dirty.HasArea())
-            {
-                // Снимок годится только тому слою, с которого его сняли. Слой-источник
-                // могли удалить, пока объект в руках, и тогда TargetLayer отдаёт активный:
-                // «до» бралось из снимка ЧУЖОГО слоя, и первый же Ctrl+Z вписывал в
-                // активный слой пиксели удалённого - на месте рисунка оказывался кусок
-                // того, чего в документе больше нет.
-                before = ReferenceEquals(SnapshotLayer(pickup), target) && pickup.PreEditSnapshot is { } snap
-                    ? Crop(snap, dirty)
-                    : target.ExtractRegion(dirty);
-            }
+            if (dirty.HasArea()) before = BeforeCommit(pickup, target, dirty);
 
             DrawPickup(target.Bitmap, pickup);
 
@@ -649,6 +636,46 @@ public partial class Document : ObservableObject
         return SKRectI.Intersect(r, new SKRectI(0, 0, layerW, layerH));
     }
 
+    /// <summary>
+    /// Пиксели «до» прижатия: слой, каким он был бы, если бы подъёма не случилось вовсе.
+    ///
+    /// Берётся НЕ снимок на момент подъёма, а слой прямо сейчас, в котором восстановлена
+    /// одна только исходная область - та, что выкусил ленивый стиратель
+    /// (<see cref="Services.PickupOps.EnsureLazyErase"/>). Разница видна, когда между
+    /// подъёмом и прижатием слой успели изменить чем-то ещё: снимок про эти правки не
+    /// знает, и записанное по нему «до» откатывало их заодно с прижатием - первый же
+    /// Ctrl+Z стирал работу, сделанную пока объект был в руках.
+    ///
+    /// Пока ничего постороннего не происходило, ответ тот же самый до пикселя: вне
+    /// исходной области слой и снимок совпадают.
+    ///
+    /// Снимок годится только тому слою, с которого его сняли. Слой-источник могли удалить,
+    /// пока объект в руках, и тогда <see cref="TargetLayer"/> отдаёт активный: «до» из
+    /// снимка ЧУЖОГО слоя вписывало бы в активный слой пиксели удалённого - на месте
+    /// рисунка оказывался кусок того, чего в документе больше нет. Вставке же
+    /// восстанавливать нечего: она ничего с холста не поднимала.
+    /// </summary>
+    private SKBitmap BeforeCommit(FloatingPickup pickup, PixelLayer target, SKRectI dirty)
+    {
+        var before = target.ExtractRegion(dirty);
+        if (!pickup.OriginalAreaErased) return before;
+        if (!ReferenceEquals(SnapshotLayer(pickup), target)) return before;
+        if (pickup.PreEditSnapshot is not { } snap) return before;
+
+        var source = SKRectI.Intersect(SourceRect(pickup, target.Width, target.Height), dirty);
+        if (!source.HasArea()) return before;
+
+        using var canvas = new SKCanvas(before);
+        canvas.Save();
+        canvas.Translate(-dirty.Left, -dirty.Top);
+        var box = new SKRect(source.Left, source.Top, source.Right, source.Bottom);
+        canvas.ClipRect(box);
+        canvas.Clear(SKColors.Transparent);
+        canvas.DrawBitmap(snap, source: box, dest: box);
+        canvas.Restore();
+        return before;
+    }
+
     /// <summary>Copy <paramref name="region"/> out of a full-layer snapshot back onto the layer.</summary>
     private static void BlitRegion(SKBitmap destination, SKBitmap fullSnapshot, SKRectI region)
     {
@@ -705,8 +732,11 @@ public partial class Document : ObservableObject
     /// Побайтно ли одинаковы два снимка одной и той же области. Оба сняты с одного слоя
     /// и одного габарита, значит совпадают и размером, и форматом, и длиной строки -
     /// сравнивать можно как есть.
+    ///
+    /// Одна на всех, кто отсеивает пустую правку: тем же вопросом решает, писать ли себя
+    /// в ленту, стирание выделения (<see cref="Commands.EraseRegionCommand"/>).
     /// </summary>
-    private static bool SamePixels(SKBitmap a, SKBitmap b)
+    internal static bool SamePixels(SKBitmap a, SKBitmap b)
     {
         if (a.Width != b.Width || a.Height != b.Height) return false;
         if (a.ColorType != b.ColorType || a.AlphaType != b.AlphaType) return false;
