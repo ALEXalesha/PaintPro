@@ -33,6 +33,8 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
     private LayerShot[]? _previousLayers;
     private Selection? _previousSelection;
     private int _previousActiveIndex;
+    private int _previousWidth;
+    private int _previousHeight;
 
     public ClearCanvasCommand(SKColor? fill = null) => _fill = fill ?? SKColors.White;
 
@@ -65,14 +67,28 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
         doc.CancelFloating();
         _previousSelection = doc.Selection;
         _previousActiveIndex = doc.ActiveLayerIndex;
+        _previousWidth = doc.CanvasWidth;
+        _previousHeight = doc.CanvasHeight;
         _previousLayers ??= Snapshot(doc);
 
-        // Бумагу чистим, остальное убираем. Коллекцию не опустошаем ни на миг:
-        // Document.ActiveLayer читает Layers[0] и на пустой стопке падает, а панель
-        // слоёв пересобирается на каждое изменение коллекции.
+        // Размер холста - такая же часть прежней работы, как рисунок на нём. Пока он
+        // переживал «Создать», новый документ наследовал габарит предыдущего: открыл
+        // фотографию 4000x3000, нажал Ctrl+N - и получил чистый лист 4000x3000, вернуть
+        // который к обычному можно было только через диалог смены размера. Кадрирование
+        // до марки оставляло, наоборот, лоскут в полсотни пикселей. Новый документ - это
+        // чистый лист, а не старый со стёртым рисунком; ровно поэтому же «Создать»
+        // сбрасывает стопку слоёв, имя бумаги, её видимость и прозрачность.
+        //
+        // Сам объект бумаги переживает очистку - меняется только его битмап
+        // (<see cref="PixelLayer.Reset"/>). Заменять слой целиком нельзя: на него держат
+        // ссылку и снаружи, и такая ссылка после замены смотрела бы на освобождённую
+        // нативную память.
+        //
+        // Коллекцию не опустошаем ни на миг: Document.ActiveLayer читает Layers[0] и на
+        // пустой стопке падает, а панель слоёв пересобирается на каждое изменение коллекции.
         if (doc.Layers[0] is PixelLayer paper)
         {
-            paper.Clear(_fill);
+            paper.Reset(Document.DefaultWidth, Document.DefaultHeight, _fill);
             // Имя, видимость и прозрачность - такая же часть слоя, как пиксели. Пока
             // стирались одни пиксели, «Создать» отдавало новый документ, у которого
             // бумага звалась как в прошлой работе, а то и была спрятана или выкручена в
@@ -84,6 +100,8 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
             paper.Opacity = 1f;
         }
         Shrink(doc, 1);
+        doc.CanvasWidth = Document.DefaultWidth;
+        doc.CanvasHeight = Document.DefaultHeight;
         doc.ActiveLayerIndex = 0;
         doc.Selection = null;
     }
@@ -92,6 +110,10 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
     {
         if (_previousLayers is { } shots)
         {
+            // Размер возвращаем ДО слоёв: они строятся под текущий холст, и по новым
+            // числам вышли бы размером с чистый лист, а не с прежнюю работу.
+            doc.CanvasWidth = _previousWidth;
+            doc.CanvasHeight = _previousHeight;
             for (int i = 0; i < shots.Length; i++)
             {
                 var layer = Rebuild(shots[i], doc.CanvasWidth, doc.CanvasHeight);

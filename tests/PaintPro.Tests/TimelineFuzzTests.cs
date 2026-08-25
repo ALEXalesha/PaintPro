@@ -49,7 +49,7 @@ public class TimelineFuzzTests
         ctx.Opacity = 0.3f + (float)rnd.NextDouble() * 0.7f;
         ctx.ToolSize = 1 + rnd.Next(8);
 
-        switch (rnd.Next(15))
+        switch (rnd.Next(19))
         {
             case 0:
             {
@@ -189,6 +189,57 @@ public class TimelineFuzzTests
                 }
                 break;
             }
+
+            // Правки, добавленные в 1.18.0. Ластик и текст ходят мимо кисти, «Создать»
+            // переписывает документ целиком вместе с размером холста, перетаскивание угла
+            // маски меняет форму уже поднятого, а брошенная вставка вычёркивает свою
+            // запись из середины ленты - каждое из этого лента обязана пережить.
+            case 15:
+            {
+                var t = new EraserTool();
+                t.OnPointerDown(new SKPoint(X(), X()), ctx);
+                t.OnPointerMove(new SKPoint(X(), X()), ctx);
+                t.OnPointerUp(new SKPoint(X(), X()), ctx);
+                break;
+            }
+            case 16:
+            {
+                var t = new TextTool();
+                t.OnPointerDown(new SKPoint(X(), X()), ctx);
+                t.CommitText(rnd.Next(2) == 0 ? "Ab" : "Ab" + (char)10 + "cd");
+                break;
+            }
+            case 17:
+            {
+                // Подъём с перетаскиванием угла маски и прижатием.
+                float x = X(), y = X();
+                PickupOps.PromoteQuad(doc, new[]
+                {
+                    new SKPoint(x, y), new SKPoint(x + 16, y),
+                    new SKPoint(x + 16, y + 16), new SKPoint(x, y + 16),
+                });
+                if (doc.FloatingPickup is { Quad: { } q } fp)
+                {
+                    q[rnd.Next(4)] = new SKPoint(X(), X());
+                    PickupOps.EnsureLazyErase(doc, fp);
+                    PickupOps.Translate(fp, 3, -2);
+                    doc.CommitFloating();
+                }
+                break;
+            }
+            case 18:
+            {
+                // Вставка, от которой отказались: запись вычёркивается из ленты.
+                using var img = new SKBitmap(6, 6);
+                using (var c = new SKCanvas(img)) c.Clear(ctx.PrimaryColor);
+                doc.History.ExecuteAndPush(new PasteCommand(img, new SKPoint(X(), X())), doc);
+                if (doc.FloatingPickup is { Owner: { } owner })
+                {
+                    doc.DropFloating();
+                    doc.History.Forget(owner);
+                }
+                break;
+            }
         }
     }
 
@@ -265,6 +316,68 @@ public class TimelineFuzzTests
         doc.History.JumpTo(target, doc);
 
         Assert.Equal(props, doc.Layers.Select(l => (l.Name, l.Visible, l.Opacity)).ToArray());
+    }
+
+    /// <summary>
+    /// Четвёртый инвариант, и самый сильный: позиция курсора однозначно задаёт документ.
+    /// Каким бы путём до строки ленты ни дошли - сверху отменами, снизу повторами, - на
+    /// ней обязан быть один и тот же документ, вплоть до того, держит ли пользователь
+    /// что-то в руках.
+    ///
+    /// Именно он поймал главную находку 1.18.0: второй плавающий объект затирал первый
+    /// молча, и после этого одна и та же строка ленты давала то картинку в руках, то
+    /// пустоту. Ни сценарным тестом, ни двумя прежними инвариантами это не ловилось -
+    /// холст-то в обоих случаях был одинаковый.
+    /// </summary>
+    [Theory]
+    [InlineData(1)] [InlineData(2)] [InlineData(3)] [InlineData(4)] [InlineData(5)]
+    [InlineData(6)] [InlineData(7)] [InlineData(8)] [InlineData(9)] [InlineData(10)]
+    [InlineData(11)] [InlineData(12)] [InlineData(13)] [InlineData(14)] [InlineData(15)]
+    [InlineData(16)] [InlineData(17)] [InlineData(18)] [InlineData(19)] [InlineData(20)]
+    public void A_timeline_position_defines_the_document(int seed)
+    {
+        var rnd = new Random(seed * 7919);
+        var doc = Play(seed);
+        int n = doc.History.Commands.Count;
+
+        var seenAt = new Dictionary<int, string> { [doc.History.Cursor] = Fingerprint(doc) };
+        for (int step = 0; step < 20; step++)
+        {
+            int target = rnd.Next(n + 1);
+            doc.History.JumpTo(target, doc);
+            var now = Fingerprint(doc);
+            if (seenAt.TryGetValue(target, out var was))
+                Assert.Equal(was, now);
+            else
+                seenAt[target] = now;
+        }
+    }
+
+    /// <summary>Отпечаток документа целиком: холст, слои, пиксели и то, что в руках.</summary>
+    private static string Fingerprint(Document doc)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(doc.CanvasWidth).Append('x').Append(doc.CanvasHeight)
+          .Append('/').Append(doc.Layers.Count).Append('/');
+        foreach (var l in doc.Layers)
+        {
+            sb.Append(l.Name).Append(':').Append(l.Visible ? 1 : 0).Append(':')
+              .Append(l.Opacity.ToString("F3")).Append(':');
+            if (l is PixelLayer pl)
+            {
+                // FNV-1a по всему битмапу: сравнивать отпечатки дешевле, чем хранить снимки.
+                ulong hash = 1469598103934665603UL;
+                var span = pl.Bitmap.GetPixelSpan();
+                for (int i = 0; i < span.Length; i++) { hash ^= span[i]; hash *= 1099511628211UL; }
+                sb.Append(hash);
+            }
+            sb.Append('|');
+        }
+        var fp = doc.FloatingPickup;
+        sb.Append(fp is null
+            ? "none"
+            : $"fp:{fp.X:F2},{fp.Y:F2},{fp.Width:F2},{fp.Height:F2},{fp.Rotation:F3},q{fp.Quad?.Length ?? 0}");
+        return sb.ToString();
     }
 
     [Theory]

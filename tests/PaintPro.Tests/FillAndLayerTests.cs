@@ -168,9 +168,11 @@ public class FillAndLayerTests
     [Fact]
     public void History_drops_the_oldest_entries_once_the_memory_budget_is_hit()
     {
-        var doc = WhiteDoc(64, 64);
+        // Холст сразу того размера, к которому «Создать» и возвращает: иначе первая же
+        // очистка меняет габарит, и снимки соседних записей выходят разного веса.
+        var doc = WhiteDoc(Document.DefaultWidth, Document.DefaultHeight);
         var h = doc.History;
-        h.MaxBytes = 40 * 1024; // a few 64×64 snapshots' worth
+        h.MaxBytes = 5L * 1024 * 1024; // a couple of full-canvas snapshots' worth
 
         for (int i = 0; i < 12; i++)
             h.ExecuteAndPush(new ClearCanvasCommand(

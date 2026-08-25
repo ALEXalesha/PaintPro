@@ -1,10 +1,10 @@
-; Inno Setup script for Paint Pro (WPF).
+﻿; Inno Setup script for Paint Pro (WPF).
 ; Packages the self-contained single-file dist\PaintPro.exe into an installer .exe
 ; with Start Menu + optional desktop shortcuts and an uninstaller.
 ; Build:  ISCC.exe installer\PaintPro.iss
 
 #define MyAppName "Paint Pro"
-#define MyAppVersion "1.17.0"
+#define MyAppVersion "1.18.0"
 #define MyAppPublisher "Paint Pro"
 #define MyAppExeName "PaintPro.exe"
 

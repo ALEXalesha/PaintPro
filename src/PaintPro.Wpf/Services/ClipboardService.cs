@@ -118,6 +118,24 @@ public sealed class ClipboardService
         using var flat = FileService.Flatten(doc);
         var dst = new SKBitmap(rect.Width, rect.Height, flat.ColorType, flat.AlphaType);
         using var canvas = new SKCanvas(dst);
+        // Форму многоугольника копия обязана повторять, а не подменять описанным вокруг
+        // прямоугольником. Углы габарита лежат ВНЕ выделенного: пока копирование шло по
+        // нему, Ctrl+C по треугольнику клал в буфер прямоугольную заплатку с чужими
+        // пикселями по углам, и вставка возвращала на холст не фигуру, а плитку фона с
+        // фигурой внутри. Delete по тому же выделению при этом стирал именно
+        // многоугольник - копия и вырезание расходились. Поднятый многоугольник маску
+        // уважал с самого начала (<see cref="Document.DrawPickup"/>), рамка - нет.
+        if (doc.Selection is PolygonSelection ps)
+        {
+            canvas.Clear(SKColors.Transparent);
+            using var clip = new SKPath();
+            var corners = ps.Corners;
+            clip.MoveTo(corners[0].X - rect.Left, corners[0].Y - rect.Top);
+            for (int i = 1; i < corners.Count; i++)
+                clip.LineTo(corners[i].X - rect.Left, corners[i].Y - rect.Top);
+            clip.Close();
+            canvas.ClipPath(clip, antialias: true);
+        }
         canvas.DrawBitmap(flat,
             source: new SKRect(rect.Left, rect.Top, rect.Right, rect.Bottom),
             dest: new SKRect(0, 0, rect.Width, rect.Height));

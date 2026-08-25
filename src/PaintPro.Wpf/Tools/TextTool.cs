@@ -55,7 +55,7 @@ public sealed class TextTool : ITool
     /// строкой дальше вправо. Многострочное в поле попадает вставкой из буфера обмена, и
     /// пользователь получал вместо двух строк одну с квадратиком посередине.
     /// </summary>
-    public void CommitText(string text, float fontSize = 24f, string family = "Segoe UI")
+    public void CommitText(string text, float? fontSize = null, string family = "Segoe UI")
     {
         // Из одних пробелов и переводов строки чернил не выходит: запись в истории при
         // пустом холсте - это «изменено» на ровном месте и вопрос про сохранение после
@@ -64,6 +64,22 @@ public sealed class TextTool : ITool
         // Слой ищем по идентификатору, снятому на клике. Его могли и удалить, пока окно
         // ввода было открыто, - тогда класть текст некуда.
         if (_ctx.Document.FindPixelLayer(_targetLayerId) is not { } pl) return;
+        // Спрятать или обнулить прозрачность слоя тоже успевают, пока окно открыто.
+        // Проверка на клике от этого не спасает: между ней и ответом проходит сколько
+        // угодно времени, а панель слоёв всё это время под рукой. Текст уходил в битмап
+        // невидимого слоя - на экране не появлялось ничего, зато в ленте появлялась
+        // запись, документ считался изменённым, а надпись всплывала, стоило слой включить.
+        // Тем же правилом отсеивают работу все рисующие инструменты (ToolContext.DrawTarget).
+        if (!pl.Visible)
+        {
+            _ctx.ReportHint?.Invoke($"Слой «{pl.Name}» скрыт — включите видимость, чтобы писать");
+            return;
+        }
+        if (pl.Opacity <= 0f)
+        {
+            _ctx.ReportHint?.Invoke($"Слой «{pl.Name}» полностью прозрачен — поднимите его прозрачность");
+            return;
+        }
         // Text is rendered opaque and composited at the tool opacity, same as strokes.
         // Прозрачность в ноль - те же чернила, что и пустая строка: на холсте не остаётся
         // ничего, а запись в истории осталась бы.
@@ -72,12 +88,19 @@ public sealed class TextTool : ITool
 
         var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
+        // Размер шрифта берётся у ползунка «Размер», как и толщина кисти. Отдельного поля
+        // для него в панели нет, а зашитые намертво 24 пикселя означали, что размер текста
+        // в программе не меняется вовсе: ползунок двигался, надпись выходила одна и та же.
+        // Множитель подобран так, чтобы значение по умолчанию (4) давало прежние 24
+        // пикселя - привычный вид не меняется, а ползунок наконец на что-то влияет.
+        float size = fontSize ?? Math.Clamp(_ctx.ToolSize * 6f, 8f, 600f);
+
         using var typeface = SKTypeface.FromFamilyName(family);
         using var paint = new SKPaint
         {
             IsAntialias = true,
             Color = _ctx.PrimaryColor.WithAlpha(255),
-            TextSize = fontSize,
+            TextSize = size,
             Typeface = typeface,
         };
         // Межстрочный интервал берём у самого шрифта, а не выдумываем: у разных гарнитур
@@ -97,7 +120,7 @@ public sealed class TextTool : ITool
         }
         if (minX > maxX || minY > maxY) return;   // одни пробелы: рисовать нечего
 
-        var pad = fontSize * 0.5f;
+        var pad = size * 0.5f;
         var canvasRect = new SKRectI(
             (int)MathF.Floor(_lastClick.X + minX - pad),
             (int)MathF.Floor(_lastClick.Y + minY - pad),

@@ -33,6 +33,12 @@ public static class PickupOps
 
     private static void Promote(Document doc, SKRect rect, SKPoint[]? quad)
     {
+        // Прежний объект прижимаем ДО снимка слоя, а не после: снимок нужен «до» для
+        // будущего дифа, и снятый раньше прижатия он описывал бы слой без только что
+        // положенных на него пикселей - отмена нового перемещения стирала бы их заодно.
+        // Само правило «новый объект прижимает прежний» живёт в Document.FloatingPickup;
+        // здесь важен только порядок.
+        doc.CommitFloating();
         if (doc.ActiveLayer is not PixelLayer pl) return;
         var clamped = SKRectI.Intersect(SKRectI.Round(rect), new SKRectI(0, 0, pl.Width, pl.Height));
         if (!clamped.HasArea()) return;

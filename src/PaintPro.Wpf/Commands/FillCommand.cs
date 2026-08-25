@@ -68,6 +68,11 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
 
         int seedOffset = _seed.Y * stride + _seed.X * 4;
         var target = ReadPixel(buffer, seedOffset);
+        // Заливка не должна спотыкаться о разницу в один-два уровня яркости. Точное
+        // совпадение означало, что по фотографии или по сглаженному краю заливается
+        // ровно один пиксель: небо на снимке состоит из почти одинаковых, но не равных
+        // цветов, и клик по нему не делал ничего заметного. Допуск тот же, что в
+        // Electron-версии (colorsMatch, tol = 2).
         // Заливка полупрозрачным цветом смешивается с тем, что под ней, а не заменяет его:
         // раньше пиксель просто переписывался полупрозрачным цветом, и красная область,
         // залитая чёрным на 50%, выходила серой - подложку выбрасывали вместо того, чтобы
@@ -114,28 +119,42 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
     /// looks at the rows above and below. That queues one entry per run instead of one
     /// per pixel, which is where most of the old version's time went.
     /// Returns the bounding box of everything it changed.
+    ///
+    /// Пройденные пиксели помечаются в отдельной карте. Пока совпадение требовалось
+    /// точное, залитый пиксель гарантированно переставал совпадать с исходным цветом, и
+    /// этого хватало, чтобы заливка не ходила по кругу. С допуском такой гарантии нет:
+    /// залитый пиксель может остаться в пределах допуска от исходного - соседи кладут его
+    /// в стек снова и снова, и программа зависает. В Electron-версии карта посещённых
+    /// стоит ровно по этой причине.
     /// </summary>
     private static SKRectI ScanlineFill(
         byte[] buf, int w, int h, int stride, SKPointI seed,
         (byte B, byte G, byte R, byte A) target, (byte B, byte G, byte R, byte A) fill)
     {
         int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+        var seen = new bool[w * h];
         var stack = new Stack<(int X, int Y)>();
         stack.Push((seed.X, seed.Y));
 
         while (stack.Count > 0)
         {
             var (sx, sy) = stack.Pop();
-            int row = sy * stride;
-            if (!Same(ReadPixel(buf, row + sx * 4), target)) continue;
+            int row = sy * stride, mark = sy * w;
+            if (seen[mark + sx] || !Near(ReadPixel(buf, row + sx * 4), target)) continue;
 
             // Walk left and right to the ends of this run.
             int left = sx;
-            while (left > 0 && Same(ReadPixel(buf, row + (left - 1) * 4), target)) left--;
+            while (left > 0 && !seen[mark + left - 1]
+                   && Near(ReadPixel(buf, row + (left - 1) * 4), target)) left--;
             int right = sx;
-            while (right < w - 1 && Same(ReadPixel(buf, row + (right + 1) * 4), target)) right++;
+            while (right < w - 1 && !seen[mark + right + 1]
+                   && Near(ReadPixel(buf, row + (right + 1) * 4), target)) right++;
 
-            for (int x = left; x <= right; x++) WritePixel(buf, row + x * 4, fill);
+            for (int x = left; x <= right; x++)
+            {
+                WritePixel(buf, row + x * 4, fill);
+                seen[mark + x] = true;
+            }
 
             if (left < minX) minX = left;
             if (right > maxX) maxX = right;
@@ -143,22 +162,22 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
             if (sy > maxY) maxY = sy;
 
             // Seed the neighbouring rows once per contiguous stretch, not once per pixel.
-            if (sy > 0) SeedRow(buf, stride, left, right, sy - 1, target, stack);
-            if (sy < h - 1) SeedRow(buf, stride, left, right, sy + 1, target, stack);
+            if (sy > 0) SeedRow(buf, stride, w, left, right, sy - 1, target, seen, stack);
+            if (sy < h - 1) SeedRow(buf, stride, w, left, right, sy + 1, target, seen, stack);
         }
 
         if (maxX < minX || maxY < minY) return SKRectI.Empty;
         return new SKRectI(minX, minY, maxX + 1, maxY + 1);
     }
 
-    private static void SeedRow(byte[] buf, int stride, int left, int right, int y,
-        (byte B, byte G, byte R, byte A) target, Stack<(int X, int Y)> stack)
+    private static void SeedRow(byte[] buf, int stride, int w, int left, int right, int y,
+        (byte B, byte G, byte R, byte A) target, bool[] seen, Stack<(int X, int Y)> stack)
     {
-        int row = y * stride;
+        int row = y * stride, mark = y * w;
         bool inRun = false;
         for (int x = left; x <= right; x++)
         {
-            bool match = Same(ReadPixel(buf, row + x * 4), target);
+            bool match = !seen[mark + x] && Near(ReadPixel(buf, row + x * 4), target);
             if (match && !inRun) { stack.Push((x, y)); inRun = true; }
             else if (!match) inRun = false;
         }
@@ -174,6 +193,18 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
 
     private static bool Same((byte B, byte G, byte R, byte A) a, (byte B, byte G, byte R, byte A) b)
         => a.B == b.B && a.G == b.G && a.R == b.R && a.A == b.A;
+
+    /// <summary>
+    /// Считается ли пиксель тем же цветом, что и точка клика. Допуск в два уровня на
+    /// канал - тот же, что в Electron-версии: он ничего не меняет на чистом рисунке, но
+    /// не даёт заливке остановиться на первом же пикселе фотографии, где соседние цвета
+    /// отличаются на единицу.
+    /// </summary>
+    private const int Tolerance = 2;
+
+    private static bool Near((byte B, byte G, byte R, byte A) a, (byte B, byte G, byte R, byte A) b)
+        => Math.Abs(a.B - b.B) <= Tolerance && Math.Abs(a.G - b.G) <= Tolerance
+        && Math.Abs(a.R - b.R) <= Tolerance && Math.Abs(a.A - b.A) <= Tolerance;
 
     /// <summary>Layers are Bgra8888/Premul, so the fill colour has to be premultiplied to match.</summary>
     private static (byte B, byte G, byte R, byte A) Premultiply(SKColor c)

@@ -56,6 +56,24 @@ public sealed class PixelLayer : Layer
         canvas.Clear(color);
     }
 
+    /// <summary>
+    /// Завести слою новый битмап заданного размера, залитый одним цветом. Содержимое
+    /// прежнего не переносится: это «начать заново», а не «изменить размер».
+    ///
+    /// Именно заменой битмапа, а не заменой самого слоя: объект слоя переживает операцию,
+    /// и всё, что держит на него ссылку, продолжает смотреть на живой битмап. Заменять
+    /// объект целиком тут нельзя - тот, кто взял слой в руки до операции, получил бы
+    /// освобождённую нативную память и падение процесса на первом же обращении.
+    /// </summary>
+    public void Reset(int width, int height, SKColor fill)
+    {
+        var old = _bitmap;
+        _bitmap = new SKBitmap(Math.Max(1, width), Math.Max(1, height),
+                               SKColorType.Bgra8888, SKAlphaType.Premul);
+        Clear(fill);
+        old.Dispose();
+    }
+
     /// <summary>True if every pixel equals the given colour. Used in tests.</summary>
     public bool IsAllColor(SKColor color)
     {

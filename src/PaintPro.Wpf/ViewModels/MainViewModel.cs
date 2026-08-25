@@ -37,7 +37,7 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
-        Document = new Document(900, 600);
+        Document = new Document(Document.DefaultWidth, Document.DefaultHeight);
         ToolContext = new ToolContext(Document)
         {
             PrimaryColor = SKColors.Black,

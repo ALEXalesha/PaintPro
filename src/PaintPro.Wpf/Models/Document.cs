@@ -15,6 +15,14 @@ namespace PaintPro.Models;
 /// </summary>
 public partial class Document : ObservableObject
 {
+    /// <summary>
+    /// Размер холста нового документа. Живёт здесь, а не числом в конструкторе вьюмодели:
+    /// к нему возвращает «Файл → Создать» (<see cref="Commands.ClearCanvasCommand"/>), и
+    /// два места, задающие «чистый лист», обязаны отвечать одинаково.
+    /// </summary>
+    public const int DefaultWidth = 900;
+    public const int DefaultHeight = 600;
+
     public Document(int width, int height)
     {
         CanvasWidth = width;
@@ -89,6 +97,24 @@ public partial class Document : ObservableObject
         get => _floatingPickup;
         set
         {
+            // Второй объект поверх первого - то же самое, что рамка поверх объекта
+            // (см. <see cref="Selection"/>): прежний сначала ложится на холст.
+            //
+            // Пока присваивание просто затирало ссылку, поднятое пропадало без следа:
+            // пиксели не ложились ни на один слой, битмапы объекта не освобождались вовсе
+            // (нативная память мимо сборщика мусора), а если это была вставка - запись
+            // «Вставка» оставалась в ленте применённой, при том что картинки на холсте
+            // больше нет. Позиция курсора после этого переставала однозначно задавать
+            // документ: пройдя ленту снизу, на той же строке получали картинку в руках,
+            // пройдя сверху - пустоту. Нашёл это тяжёлый прогон фаззера.
+            //
+            // Все вызывающие прижимали прежний объект сами, каждый у себя; правило живёт
+            // теперь там же, где и остальные инварианты документа.
+            if (value is not null && _floatingPickup is not null
+                && !ReferenceEquals(value, _floatingPickup))
+            {
+                CommitFloating();
+            }
             if (value is not null && _selection is not null)
             {
                 // Lifting pixels into a pickup → the selection that drove it is consumed.
@@ -171,7 +197,6 @@ public partial class Document : ObservableObject
         if (!pickup.HasMoved) { CancelFloating(); return; }
 
         var target = TargetLayer(pickup);
-        bool recorded = false;
 
         if (target is not null)
         {
@@ -204,21 +229,37 @@ public partial class Document : ObservableObject
             if (before is not null)
             {
                 var after = target.ExtractRegion(dirty);
-                History.Push(new Commands.RegionDiffCommand(
-                    pickup.CommitLabel, target.Id, dirty, before, after, dropsFloating: true));
-                recorded = true;
+                // Прижатие, не изменившее ни одного пикселя, записывать нечем. Пустой
+                // габарит отсеивался и раньше, но пустая ПРАВКА в непустом габарите -
+                // нет: картинку, вставленную на холст и унесённую за его край,
+                // прижимать некуда, а исходной области у вставки нет, и «до» с «после»
+                // выходили побайтно одинаковыми. В ленте от этого появлялась вторая
+                // «Вставка», не делающая ровно ничего, а клик по первой создавал картинку
+                // заново. Та же проверка отсеивает пустую работу у заливки
+                // (<see cref="Commands.FillCommand.ChangedAnything"/>) и у штриха.
+                if (SamePixels(before, after))
+                {
+                    before.Dispose();
+                    after.Dispose();
+                }
+                else
+                {
+                    History.Push(new Commands.RegionDiffCommand(
+                        pickup.CommitLabel, target.Id, dirty, before, after, dropsFloating: true));
+                }
             }
         }
 
-        // Прижатие, не изменившее ни пикселя, не оставляет в ленте ничего - и вставке,
-        // которая этот объект создала, описывать больше нечего. Так бывает, когда
-        // картинку уносят за край холста: класть её некуда, записывать нечего, а запись
-        // «Вставка» оставалась в ленте применённой. История после этого расходилась с
-        // холстом: на экране картинки нет, а клик по строке ленты создавал её заново -
-        // из ниоткуда и там, где её в этом прогоне никогда не было. Вставка не трогает
-        // ни одного пикселя, поэтому вычеркнуть её из ленты безопасно - тем же способом,
-        // каким от неё отказываются Escape и Delete (MainViewModel.UndoOwnedPickup).
-        if (!recorded && pickup.Owner is { } orphan) History.Forget(orphan);
+        // Вставка - ОДНА запись в ленте, а не две. Запись «Вставка» только кладёт картинку
+        // в руки; всё, что она означает для холста, описывает диф прижатия, и он же несёт
+        // её подпись. Пока обе оставались в ленте, отмена прижатия убирала картинку с
+        // холста, а «Вставка» оставалась применённой: лента утверждала, что вставка есть,
+        // на экране её не было, а второй Ctrl+Z уже ничего не менял - возвращал картинку
+        // только двойной Ctrl+Y. Вставка не трогает ни одного пикселя, поэтому вычеркнуть
+        // её безопасно - тем же способом, каким от неё отказываются Escape и Delete
+        // (MainViewModel.UndoOwnedPickup). Если же прижимать было нечего (картинку унесли
+        // за край холста), уходит она одна и в ленте не остаётся ничего.
+        if (pickup.Owner is { } orphan) History.Forget(orphan);
 
         pickup.Dispose();
         _floatingPickup = null;
@@ -658,6 +699,18 @@ public partial class Document : ObservableObject
         int bottom = Math.Min(canvasH, (int)MathF.Ceiling(maxY));
         if (right <= left || bottom <= top) return SKRectI.Empty;
         return new SKRectI(left, top, right, bottom);
+    }
+
+    /// <summary>
+    /// Побайтно ли одинаковы два снимка одной и той же области. Оба сняты с одного слоя
+    /// и одного габарита, значит совпадают и размером, и форматом, и длиной строки -
+    /// сравнивать можно как есть.
+    /// </summary>
+    private static bool SamePixels(SKBitmap a, SKBitmap b)
+    {
+        if (a.Width != b.Width || a.Height != b.Height) return false;
+        if (a.ColorType != b.ColorType || a.AlphaType != b.AlphaType) return false;
+        return a.GetPixelSpan().SequenceEqual(b.GetPixelSpan());
     }
 
     private static SKBitmap Crop(SKBitmap src, SKRectI r)

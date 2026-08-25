@@ -62,15 +62,23 @@ public sealed class LayerStackCommand : IDocumentCommand, IDisposable
 
     public void Execute(Document doc)
     {
-        if (_isAdd) Insert(doc); else Delete(doc);
+        // Добавление выбирает новый слой: пользователь только что попросил его завести и
+        // сейчас будет по нему рисовать. Повтор удаления - наоборот, возвращает активность
+        // туда, куда её увело само удаление.
+        if (_isAdd) Insert(doc, selectRestored: true); else Delete(doc);
     }
 
     public void Undo(Document doc)
     {
-        if (_isAdd) Delete(doc); else Insert(doc);
+        // Отмена удаления возвращает документ таким, каким он был ДО удаления, - вместе с
+        // тем, какой слой был активен. Пока активным становился восстановленный, Ctrl+Z по
+        // удалению уводил кисть на другой слой: пользователь удалил верхний слой, вернул
+        // его отменой и продолжал рисовать - но уже не там, где рисовал минуту назад, а по
+        // только что воскресшему. Номер активного слоя удаление и записывает.
+        if (_isAdd) Delete(doc); else Insert(doc, selectRestored: false);
     }
 
-    private void Insert(Document doc)
+    private void Insert(Document doc, bool selectRestored)
     {
         if (_index < 0 || _index > doc.Layers.Count) return;
         // Слой строится под ТЕКУЩИЙ холст, а не под тот, что был при записи команды.
@@ -93,7 +101,9 @@ public sealed class LayerStackCommand : IDocumentCommand, IDisposable
             c.DrawBitmap(_content, 0, 0);
         }
         doc.Layers.Insert(_index, layer);
-        doc.ActiveLayerIndex = _index;
+        doc.ActiveLayerIndex = selectRestored
+            ? _index
+            : Math.Clamp(_previousActiveIndex, 0, doc.Layers.Count - 1);
     }
 
     private void Delete(Document doc)

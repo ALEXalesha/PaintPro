@@ -329,11 +329,21 @@ public class PasteRecordAndTimelineTests
     }
 
     /// <summary>
-    /// Обратная сторона того же правила: прижатие, которое ПОМЕНЯЛО пиксели, запись
-    /// оставляет, и вставка из ленты никуда не девается.
+    /// Прижатая вставка - ОДНА запись в ленте, а не две.
+    ///
+    /// Раньше их оставалось две: «Вставка», кладущая картинку в руки, и диф прижатия под
+    /// той же подписью. Позиция курсора при этом перестала однозначно задавать документ:
+    /// на курсоре 1, куда пришли отменой прижатия, на холсте не было ничего, а на том же
+    /// курсоре 1, куда пришли кликом по строке ленты, картинка появлялась в руках - и не
+    /// там, куда её перетащили, а в точке вставки. Первый Ctrl+Z убирал картинку с
+    /// холста, второй не менял ничего, и вернуть её мог только двойной Ctrl+Y.
+    ///
+    /// Всё, что вставка означает для холста, описывает диф прижатия, и подпись «Вставка»
+    /// несёт он же. Сама запись вставки не трогает ни одного пикселя, поэтому вычёркивается
+    /// целиком - тем же способом, каким от неё отказываются Escape и Delete.
     /// </summary>
     [Fact]
-    public void A_paste_that_lands_on_the_canvas_keeps_both_records()
+    public void A_committed_paste_is_a_single_timeline_entry()
     {
         var doc = new Document(40, 40);
         using var img = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
@@ -343,7 +353,37 @@ public class PasteRecordAndTimelineTests
         PickupOps.Translate(doc.FloatingPickup!, 10, 10);
         doc.CommitFloating();
 
-        Assert.Equal(2, doc.History.Commands.Count);
+        Assert.Single(doc.History.Commands);
+        Assert.Equal("Вставка", doc.History.Commands[0].DisplayName);
         Assert.Equal(SKColors.Red, ((PixelLayer)doc.Layers[0]).Bitmap.GetPixel(20, 20));
+
+        // И один Ctrl+Z убирает её целиком.
+        doc.History.Undo(doc);
+        Assert.Null(doc.FloatingPickup);
+        Assert.Equal(SKColors.White, ((PixelLayer)doc.Layers[0]).Bitmap.GetPixel(20, 20));
+        Assert.Equal(0, doc.History.Cursor);
+    }
+
+    /// <summary>
+    /// Та же вставка, но между ней и прижатием легла чужая правка: вычеркнуть надо именно
+    /// запись вставки, а не «последнюю».
+    /// </summary>
+    [Fact]
+    public void A_committed_paste_is_folded_even_after_another_edit()
+    {
+        var doc = new Document(40, 40);
+        using var img = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using (var c = new SKCanvas(img)) c.Clear(SKColors.Red);
+
+        doc.History.ExecuteAndPush(new PasteCommand(img, new SKPoint(5, 5)), doc);
+        doc.History.ExecuteAndPush(
+            new Commands.LayerPropertyCommand(doc.Layers[0], true, 0.5f), doc);
+        PickupOps.Translate(doc.FloatingPickup!, 10, 10);
+        doc.CommitFloating();
+
+        Assert.Equal(2, doc.History.Commands.Count);
+        Assert.Equal("Layer properties", doc.History.Commands[0].DisplayName);
+        Assert.Equal("Вставка", doc.History.Commands[1].DisplayName);
+        Assert.Equal(2, doc.History.Cursor);
     }
 }

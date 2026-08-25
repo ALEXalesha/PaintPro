@@ -193,10 +193,30 @@ public partial class HistoryManager : ObservableObject
         return true;
     }
 
+    /// <summary>
+    /// Снять с рук то, что прогулка по ленте вернуть на место не сможет.
+    ///
+    /// Поднятое пользователем выделение держит снимок слоя на момент подъёма: после
+    /// шага по ленте этот снимок описывает состояние, которого больше нет, и прижать
+    /// такой объект значило бы воскресить отменённый штрих. Его возвращают на место.
+    ///
+    /// Пикап вставки - другое дело: его создала запись, которая лежит в ленте, и лента
+    /// сама с ним разберётся. Пройдёт мимо своей записи - <see
+    /// cref="Commands.PasteCommand.Undo"/> его снимет; остановится выше - картинка обязана
+    /// остаться в руках. Пока здесь снималось всё подряд, клик по строке «Вставка» в
+    /// панели истории и обычный Ctrl+Y убирали картинку с холста, а запись о ней
+    /// оставалась применённой: вернуть её было нечем. То же правило, по которому решает
+    /// первый Ctrl+Z (<see cref="Undo"/>).
+    /// </summary>
+    private static void ReleaseUnownedFloating(Document doc)
+    {
+        if (doc.FloatingPickup is { Owner: null }) doc.CancelFloating();
+    }
+
     public bool Redo(Document doc)
     {
         if (_cursor >= _commands.Count) return false;
-        doc.CancelFloating();
+        ReleaseUnownedFloating(doc);
         _applying = true;
         try
         {
@@ -217,7 +237,7 @@ public partial class HistoryManager : ObservableObject
     {
         target = Math.Clamp(target, 0, _commands.Count);
         if (target == _cursor) return;
-        doc.CancelFloating();
+        ReleaseUnownedFloating(doc);
         _applying = true;
         try
         {
