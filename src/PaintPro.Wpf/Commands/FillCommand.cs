@@ -62,9 +62,6 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
 
         var buffer = new byte[byteCount];
         Marshal.Copy(pixels, buffer, 0, byteCount);
-        // Untouched copy the undo snapshot is cut from, so no second pass is needed to
-        // reconstruct what the filled pixels used to be.
-        var original = (byte[])buffer.Clone();
 
         int seedOffset = _seed.Y * stride + _seed.X * 4;
         var target = ReadPixel(buffer, seedOffset);
@@ -87,11 +84,17 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
         var bounds = ScanlineFill(buffer, w, h, stride, _seed, target, fill);
         if (!bounds.HasArea()) return;
 
+        // Снимок «до» снимаем С САМОГО СЛОЯ и ДО того, как записать в него залитое:
+        // заливка идёт в отдельном буфере, и слой всё это время держит прежние пиксели.
+        // Прежде для этого хранилась копия ВСЕГО буфера, снятая на всякий случай ещё до
+        // обхода, - вторая картинка целиком в памяти ради области, которая обычно куда
+        // меньше. На холсте в 120 млн пикселей это 480 лишних мегабайт на каждый щелчок
+        // заливкой.
+        _affectedBounds = bounds;
+        _previousRegion = pl.ExtractRegion(bounds);
+
         Marshal.Copy(buffer, 0, pixels, byteCount);
         bmp.NotifyPixelsChanged();
-
-        _affectedBounds = bounds;
-        _previousRegion = CropBuffer(original, stride, bounds, bmp.ColorType, bmp.AlphaType);
     }
 
     public void Dispose()
@@ -132,7 +135,8 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
         (byte B, byte G, byte R, byte A) target, (byte B, byte G, byte R, byte A) fill)
     {
         int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
-        var seen = new bool[w * h];
+        // По биту на пиксель, а не по байту: см. Services.BitmapKeying.Bitmap1.
+        var seen = new Services.BitmapKeying.Bitmap1(w * h);
         var stack = new Stack<(int X, int Y)>();
         stack.Push((seed.X, seed.Y));
 
@@ -171,7 +175,8 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
     }
 
     private static void SeedRow(byte[] buf, int stride, int w, int left, int right, int y,
-        (byte B, byte G, byte R, byte A) target, bool[] seen, Stack<(int X, int Y)> stack)
+        (byte B, byte G, byte R, byte A) target, Services.BitmapKeying.Bitmap1 seen,
+        Stack<(int X, int Y)> stack)
     {
         int row = y * stride, mark = y * w;
         bool inRun = false;
@@ -224,20 +229,5 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
         int inv = 255 - src.A;
         static byte Mix(byte s, byte d, int inv) => (byte)Math.Min(255, s + (d * inv + 127) / 255);
         return (Mix(src.B, dst.B, inv), Mix(src.G, dst.G, inv), Mix(src.R, dst.R, inv), Mix(src.A, dst.A, inv));
-    }
-
-    private static SKBitmap CropBuffer(byte[] source, int stride, SKRectI region,
-        SKColorType colorType, SKAlphaType alphaType)
-    {
-        var dst = new SKBitmap(region.Width, region.Height, colorType, alphaType);
-        var dstPixels = dst.GetPixels();
-        int dstStride = dst.RowBytes;
-        for (int y = 0; y < region.Height; y++)
-        {
-            int srcOffset = (region.Top + y) * stride + region.Left * 4;
-            Marshal.Copy(source, srcOffset, dstPixels + y * dstStride, region.Width * 4);
-        }
-        dst.NotifyPixelsChanged();
-        return dst;
     }
 }

@@ -37,6 +37,34 @@ public sealed class LayerStackCommand : IDocumentCommand, IDisposable
         _content = content;
     }
 
+    /// <summary>
+    /// Сколько пикселей всего вправе занимать стопка слоёв. Столько же, сколько лента
+    /// истории (<see cref="Services.HistoryManager.MaxBytes"/>), - 768 МБ по четыре байта
+    /// на пиксель.
+    ///
+    /// Потолок у документа был только на площадь ОДНОГО холста - сторона до 20000 и до 120
+    /// млн пикселей. Числа слоёв не ограничивал никто, а каждый слой заводится размером с
+    /// холст: на снимке 4000x3000 это 48 МБ за нажатие «Добавить слой», и удерживать
+    /// клавишу можно было до тех пор, пока приложение не умрёт. Та же дыра, что была у
+    /// масштаба до 1.21.0: потолок стоит на том, что хранится по одной штуке, и не стоит
+    /// на том, что складывается.
+    /// </summary>
+    public const long MaxLayerPixels = 192_000_000;
+
+    /// <summary>
+    /// Верхняя граница на само число слоёв, независимо от их размера. На крохотном холсте
+    /// площадь не кончится никогда, а панель из тысячи строк не нужна никому.
+    /// </summary>
+    public const int MaxLayerCount = 100;
+
+    /// <summary>Сколько слоёв ещё влезет в документ такого размера.</summary>
+    public static int MaxLayersFor(int canvasWidth, int canvasHeight)
+    {
+        long area = (long)Math.Max(1, canvasWidth) * Math.Max(1, canvasHeight);
+        long byArea = Math.Max(1, MaxLayerPixels / area);
+        return (int)Math.Min(MaxLayerCount, byArea);
+    }
+
     /// <summary>Append an empty transparent layer on top of the stack.</summary>
     public static LayerStackCommand Add(Document doc, string name)
         => new(true, doc.Layers.Count, Guid.NewGuid(), name,

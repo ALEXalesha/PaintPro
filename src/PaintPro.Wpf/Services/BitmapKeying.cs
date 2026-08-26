@@ -37,17 +37,27 @@ public static class BitmapKeying
         var pixels = dst.Pixels; // SKColor[] copy, unpremultiplied
         byte br = background.Red, bg = background.Green, bb = background.Blue;
 
-        var seen = new bool[w * h];
+        // Карта пройденного - битами, а не байтами: на большом холсте это разница между
+        // одним байтом и одним битом на пиксель, то есть между 120 и 15 мегабайтами.
+        var seen = new Bitmap1(w * h);
         var stack = new Stack<int>();
+
+        // Пиксель помечается пройденным В МОМЕНТ ПОМЕЩЕНИЯ в стек, а не когда до него
+        // дойдёт очередь. Пока метка ставилась при извлечении, один и тот же пиксель
+        // попадал в стек столько раз, сколько у него соседей: стек рос до нескольких
+        // размеров самой картинки, и подъём выделения во весь холст просил пять с
+        // половиной его объёмов. Обход от этого не меняется ни на пиксель - каждый индекс
+        // всё равно обрабатывается ровно один раз, - зато стек больше не может стать
+        // длиннее, чем есть пикселей.
+        void Push(int i) { if (!seen[i]) { seen[i] = true; stack.Push(i); } }
+
         // Стартуем со всей рамки битмапа: фон - это то, что связано с краем.
-        for (int x = 0; x < w; x++) { stack.Push(x); stack.Push((h - 1) * w + x); }
-        for (int y = 0; y < h; y++) { stack.Push(y * w); stack.Push(y * w + w - 1); }
+        for (int x = 0; x < w; x++) { Push(x); Push((h - 1) * w + x); }
+        for (int y = 0; y < h; y++) { Push(y * w); Push(y * w + w - 1); }
 
         while (stack.Count > 0)
         {
             int i = stack.Pop();
-            if (seen[i]) continue;
-            seen[i] = true;
 
             var p = pixels[i];
             if (p.Alpha == 0) continue; // уже прозрачный - дальше не идём
@@ -58,10 +68,10 @@ public static class BitmapKeying
             pixels[i] = SKColors.Transparent;
 
             int x = i % w, y = i / w;
-            if (x > 0)     stack.Push(i - 1);
-            if (x < w - 1) stack.Push(i + 1);
-            if (y > 0)     stack.Push(i - w);
-            if (y < h - 1) stack.Push(i + w);
+            if (x > 0)     Push(i - 1);
+            if (x < w - 1) Push(i + 1);
+            if (y > 0)     Push(i - w);
+            if (y < h - 1) Push(i + w);
         }
 
         dst.Pixels = pixels;
@@ -69,4 +79,27 @@ public static class BitmapKeying
     }
 
     private static bool Near(byte a, byte b, int tolerance) => Math.Abs(a - b) <= tolerance;
+
+    /// <summary>
+    /// Карта «этот пиксель уже смотрели», по биту на пиксель.
+    ///
+    /// <c>bool[]</c> тратит на то же самое целый байт: на холсте в 120 млн пикселей это
+    /// 120 МБ вместо 15. Обходы по всей площади есть и здесь, и в заливке
+    /// (<see cref="Commands.FillCommand"/>), и обоим этот массив нужен размером с картинку.
+    /// </summary>
+    internal sealed class Bitmap1
+    {
+        private readonly ulong[] _bits;
+        public Bitmap1(int count) => _bits = new ulong[(count + 63) / 64];
+
+        public bool this[int i]
+        {
+            get => (_bits[i >> 6] & (1UL << (i & 63))) != 0;
+            set
+            {
+                if (value) _bits[i >> 6] |= 1UL << (i & 63);
+                else _bits[i >> 6] &= ~(1UL << (i & 63));
+            }
+        }
+    }
 }

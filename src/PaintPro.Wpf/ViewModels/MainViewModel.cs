@@ -204,6 +204,17 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void AddLayer()
     {
+        // Каждый слой - это целый холст в памяти, и складываются они без всякого предела.
+        // На большом документе «Добавить слой» отъедало по полсотни мегабайт за нажатие;
+        // потолок стоял на площади ОДНОГО холста и не стоял на их сумме.
+        int max = LayerStackCommand.MaxLayersFor(Document.CanvasWidth, Document.CanvasHeight);
+        if (Document.Layers.Count >= max)
+        {
+            ShowHint(max <= 1
+                ? $"Холст {Document.CanvasWidth}×{Document.CanvasHeight} слишком велик, чтобы завести ещё один слой"
+                : $"Больше {max} слоёв на холсте такого размера завести нельзя");
+            return;
+        }
         Document.CommitFloating();
         Document.History.ExecuteAndPush(LayerStackCommand.Add(Document, NextLayerName()), Document);
         InvalidateCanvas?.Invoke();
