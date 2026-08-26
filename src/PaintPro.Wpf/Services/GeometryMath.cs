@@ -238,9 +238,18 @@ public static class GeometryMath
     /// Snap zoom factor to the nearest discrete step ≥ <paramref name="current"/> when zooming in,
     /// or ≤ when zooming out. Steps from REWRITE_PROMPT_CSHARP.md §"Масштаб (zoom)".
     /// </summary>
+    /// <summary>
+    /// Ступени масштаба. Наружу - потому что по ним же выбирает потолок, который ставит
+    /// размер холста (<see cref="ViewGeometry.LargestAllowedZoom"/>): зажатый масштаб
+    /// обязан оставаться на той же лесенке, а не вставать на дробное число между её
+    /// ступенями.
+    /// </summary>
+    public static readonly float[] ZoomSteps =
+        { 0.1f, 0.25f, 0.5f, 0.67f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, 8.0f };
+
     public static float NextZoomStep(float current, bool zoomIn)
     {
-        var steps = new[] { 0.1f, 0.25f, 0.5f, 0.67f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, 8.0f };
+        var steps = ZoomSteps;
         if (zoomIn)
         {
             foreach (var s in steps)

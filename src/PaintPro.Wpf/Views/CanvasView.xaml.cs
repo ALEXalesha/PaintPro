@@ -109,14 +109,14 @@ public partial class CanvasView : UserControl
     private void UpdateLayout2()
     {
         if (_vm is null) return;
-        // Round to whole pixels — fractional sizes cause WriteableBitmap blur and snap-jitter.
-        var w = Math.Round(_vm.Document.CanvasWidth  * _vm.Zoom);
-        var h = Math.Round(_vm.Document.CanvasHeight * _vm.Zoom);
+        // Счёт живёт в ViewGeometry: здесь остаётся только разложить его по элементам.
+        var (w, h) = ViewGeometry.SurfaceSize(_vm.Document.CanvasWidth, _vm.Document.CanvasHeight, _vm.Zoom);
+        var (contentW, contentH) = ViewGeometry.ContentSize(w, h);
         CanvasFrame.Width = Skia.Width = Overlay.Width = w;
         CanvasFrame.Height = Skia.Height = Overlay.Height = h;
-        ContentRoot.Width  = w + 80;
-        ContentRoot.Height = h + 80;
-        CanvasFrame.Margin = Skia.Margin = Overlay.Margin = new Thickness(40);
+        ContentRoot.Width  = contentW;
+        ContentRoot.Height = contentH;
+        CanvasFrame.Margin = Skia.Margin = Overlay.Margin = new Thickness(ViewGeometry.CanvasMargin);
         DrawOverlay();
     }
 
@@ -313,10 +313,7 @@ public partial class CanvasView : UserControl
         // У маленького объекта ручки ужимаются, иначе они накрывают его целиком и тело
         // не ухватить - см. PickupOps.HandleSize.
         double size = PickupOps.HandleSize(fp, zoom, HandleSize);
-        var localPos = GeometryMath.LocalHandlePosition(fp.X, fp.Y, fp.Width, fp.Height, handle);
-        var worldPos = fp.Rotation == 0
-            ? localPos
-            : GeometryMath.Rotate(localPos, fp.Center, fp.Rotation);
+        var worldPos = ViewGeometry.ResizeHandleAnchor(fp, handle);
 
         var r = new Rectangle
         {
@@ -328,11 +325,15 @@ public partial class CanvasView : UserControl
             RadiusX = 2, RadiusY = 2,
             Tag = handle,
         };
-        Canvas.SetLeft(r, worldPos.X * zoom - size / 2);
-        Canvas.SetTop(r,  worldPos.Y * zoom - size / 2);
+        var (left, top) = ViewGeometry.HandleTopLeft(worldPos, zoom, size);
+        Canvas.SetLeft(r, left);
+        Canvas.SetTop(r,  top);
         r.MouseLeftButtonDown += OnHandleMouseDown;
         Overlay.Children.Add(r);
     }
+
+    /// <summary>Отступ ручки поворота над верхним краем объекта, в ЭКРАННЫХ пикселях.</summary>
+    private const double RotateHandleOffset = 28;
 
     private void AddRotateHandle(FloatingPickup fp, double zoom)
     {
@@ -342,11 +343,7 @@ public partial class CanvasView : UserControl
         // вместе с масштабом - на восьмикратном увеличении ручка поворота улетала на
         // четверть экрана вверх, а на уменьшенной картинке ложилась прямо на объект и
         // перекрывала его верхний край.
-        double offset = 28 / Math.Max(zoom, 0.01);
-        var localPos = new SKPoint(fp.X + fp.Width / 2f, fp.Y - (float)offset);
-        var worldPos = fp.Rotation == 0
-            ? localPos
-            : GeometryMath.Rotate(localPos, fp.Center, fp.Rotation);
+        var worldPos = ViewGeometry.RotateHandleAnchor(fp, zoom, RotateHandleOffset);
 
         var rot = new System.Windows.Shapes.Ellipse
         {
@@ -357,8 +354,9 @@ public partial class CanvasView : UserControl
             Cursor = Cursors.Hand,
             Tag = "rotate",
         };
-        Canvas.SetLeft(rot, worldPos.X * zoom - size / 2);
-        Canvas.SetTop(rot,  worldPos.Y * zoom - size / 2);
+        var (rotLeft, rotTop) = ViewGeometry.HandleTopLeft(worldPos, zoom, size);
+        Canvas.SetLeft(rot, rotLeft);
+        Canvas.SetTop(rot,  rotTop);
         rot.MouseLeftButtonDown += OnHandleMouseDown;
         Overlay.Children.Add(rot);
 
@@ -391,7 +389,7 @@ public partial class CanvasView : UserControl
         // не по нажатию: нажатие на ручку без перетаскивания стирало пиксели и делало
         // документ изменённым, хотя пользователь ничего не сдвинул.
         var p = e.GetPosition(Overlay);
-        _dragStartMouseDoc = new SKPoint((float)(p.X / _vm.Zoom), (float)(p.Y / _vm.Zoom));
+        _dragStartMouseDoc = ViewGeometry.ToDocument(p.X, p.Y, _vm.Zoom);
         _rotationAtDragStart = _vm.Document.FloatingPickup?.Rotation ?? 0;
         _vm.ToolContext.IsDrawing = true;
         Overlay.CaptureMouse();
@@ -405,7 +403,7 @@ public partial class CanvasView : UserControl
         if (e.LeftButton != MouseButtonState.Pressed) return;
 
         var p = e.GetPosition(Overlay);
-        var docPos = new SKPoint((float)(p.X / _vm.Zoom), (float)(p.Y / _vm.Zoom));
+        var docPos = ViewGeometry.ToDocument(p.X, p.Y, _vm.Zoom);
 
         PickupOps.EnsureLazyErase(_vm.Document, fp);
 
@@ -465,10 +463,7 @@ public partial class CanvasView : UserControl
     /// <summary>Последняя позиция курсора в координатах документа: ею завершается жест, потерявший захват.</summary>
     private SKPoint _lastDocPos;
     private SKPoint ToDoc(System.Windows.Point p)
-    {
-        var s = _vm?.Zoom ?? 1;
-        return new SKPoint((float)(p.X / s), (float)(p.Y / s));
-    }
+        => ViewGeometry.ToDocument(p.X, p.Y, _vm?.Zoom ?? 1);
 
     private void OnSkiaMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -497,7 +492,7 @@ public partial class CanvasView : UserControl
         if ((now - _lastStatusUpdate).TotalMilliseconds > 33)
         {
             _lastStatusUpdate = now;
-            if (pos.X < 0 || pos.Y < 0 || pos.X >= _vm.Document.CanvasWidth || pos.Y >= _vm.Document.CanvasHeight)
+            if (!ViewGeometry.IsOverCanvas(pos, _vm.Document.CanvasWidth, _vm.Document.CanvasHeight))
             {
                 PixelPositionChanged?.Invoke(null);
                 PixelColorChanged?.Invoke(null);
@@ -505,7 +500,8 @@ public partial class CanvasView : UserControl
             else
             {
                 PixelPositionChanged?.Invoke(pos);
-                PixelColorChanged?.Invoke(_vm.Document.SampleComposite((int)pos.X, (int)pos.Y));
+                PixelColorChanged?.Invoke(_vm.Document.SampleComposite(
+                    (int)MathF.Floor(pos.X), (int)MathF.Floor(pos.Y)));
             }
         }
         if (e.LeftButton == MouseButtonState.Pressed)
@@ -513,8 +509,11 @@ public partial class CanvasView : UserControl
             if (_panAnchor is { } anchor)
             {
                 var cursor = e.GetPosition(Scroll);
-                Scroll.ScrollToHorizontalOffset(Scroll.HorizontalOffset - (cursor.X - anchor.X));
-                Scroll.ScrollToVerticalOffset(Scroll.VerticalOffset - (cursor.Y - anchor.Y));
+                var (ox, oy) = ViewGeometry.PanOffset(
+                    Scroll.HorizontalOffset, Scroll.VerticalOffset,
+                    cursor.X, cursor.Y, anchor.X, anchor.Y);
+                Scroll.ScrollToHorizontalOffset(ox);
+                Scroll.ScrollToVerticalOffset(oy);
                 _panAnchor = cursor;
             }
             _vm.ActiveToolInstance.OnPointerMove(pos, _vm.ToolContext);
@@ -562,9 +561,10 @@ public partial class CanvasView : UserControl
         var docX = inSkia.X / oldZoom;
         var docY = inSkia.Y / oldZoom;
 
-        // Bump zoom (discrete steps per spec).
+        // Bump zoom (discrete steps per spec). Потолок тот же, что у Ctrl+= : поверхность
+        // растрируется целиком, и «холст × масштаб» обязан влезать в память.
         var step = (float)oldZoom;
-        var newZoom = (double)GeometryMath.NextZoomStep(step, e.Delta > 0);
+        var newZoom = _vm.ClampZoom(GeometryMath.NextZoomStep(step, e.Delta > 0));
         if (Math.Abs(newZoom - oldZoom) < 1e-6) { e.Handled = true; return; }
         _vm.Zoom = newZoom;
 
@@ -575,11 +575,9 @@ public partial class CanvasView : UserControl
         // scroll so that (docX,docY) is at the same viewport pixel as (inScroll.X,inScroll.Y).
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            // ContentRoot embeds Skia with Margin=40 on all sides.
-            var contentX = docX * newZoom + Skia.Margin.Left;
-            var contentY = docY * newZoom + Skia.Margin.Top;
-            Scroll.ScrollToHorizontalOffset(contentX - inScroll.X);
-            Scroll.ScrollToVerticalOffset(contentY - inScroll.Y);
+            var (ox, oy) = ViewGeometry.ZoomFocusOffset(docX, docY, newZoom, inScroll.X, inScroll.Y);
+            Scroll.ScrollToHorizontalOffset(ox);
+            Scroll.ScrollToVerticalOffset(oy);
         }), System.Windows.Threading.DispatcherPriority.Loaded);
 
         e.Handled = true;

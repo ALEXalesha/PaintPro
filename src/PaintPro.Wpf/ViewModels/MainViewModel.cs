@@ -91,6 +91,15 @@ public partial class MainViewModel : ObservableObject
             {
                 InvalidateCanvas?.Invoke();
             }
+            // Холст стал больше - прежний масштаб может оказаться неподъёмным. Открытие
+            // фотографии в документ, увеличенный до восьмикратного, просило три гигабайта
+            // под экранную поверхность и роняло приложение до того, как пользователь
+            // успевал что-либо нажать.
+            if (e.PropertyName is nameof(Document.CanvasWidth) or nameof(Document.CanvasHeight))
+            {
+                var capped = ClampZoom(Zoom);
+                if (Math.Abs(capped - Zoom) > 1e-9) Zoom = capped;
+            }
             // Подъём и снятие пикапа меняют ответ CanUndo, а истории об этом знать неоткуда.
             if (e.PropertyName == nameof(Document.FloatingPickup)) UndoCommand.NotifyCanExecuteChanged();
         };
@@ -331,9 +340,44 @@ public partial class MainViewModel : ObservableObject
     /// «десять пикселей» означало десять экранных только при масштабе 1:1.
     /// </summary>
     partial void OnZoomChanged(double value) => ToolContext.Zoom = value;
-    [RelayCommand] private void ZoomIn()  => Zoom = GeometryMath.NextZoomStep((float)Zoom, true);
+
+    /// <summary>
+    /// Наибольший масштаб для нынешнего холста. Поверхность на экране - это холст,
+    /// умноженный на масштаб, и растрируется она целиком: без потолка обычная фотография
+    /// на восьмикратном увеличении просила три гигабайта и роняла приложение нехваткой
+    /// памяти (<see cref="ViewGeometry.MaxSurfacePixels"/>).
+    /// </summary>
+    private double MaxZoom => ViewGeometry.LargestAllowedZoom(Document.CanvasWidth, Document.CanvasHeight);
+
+    [RelayCommand] private void ZoomIn()
+    {
+        var next = GeometryMath.NextZoomStep((float)Zoom, true);
+        if (next > MaxZoom + 1e-6)
+        {
+            // Молчащий отказ неотличим от сломанной кнопки - см. остальные отказы.
+            ShowHint($"Дальше увеличивать нельзя: холст {Document.CanvasWidth}×{Document.CanvasHeight} " +
+                     "не помещается в память на большем масштабе");
+            return;
+        }
+        Zoom = next;
+    }
+
     [RelayCommand] private void ZoomOut() => Zoom = GeometryMath.NextZoomStep((float)Zoom, false);
-    [RelayCommand] private void ZoomReset() => Zoom = 1.0;
+
+    /// <summary>
+    /// «Один к одному» - если холст такой величины вообще можно показать один к одному.
+    /// У документа в сто с лишним мегапикселей нельзя, и притвориться, что можно, значит
+    /// уронить приложение по кнопке «1:1».
+    /// </summary>
+    [RelayCommand] private void ZoomReset() => Zoom = Math.Min(1.0, MaxZoom);
+
+    /// <summary>
+    /// Прижать масштаб к потолку нынешнего холста. Зовут это и смена размера холста, и
+    /// открытие файла: увеличили мелкий документ до восьмикратного, открыли фотографию -
+    /// и масштаб, оставшийся от прежнего документа, уже неподъёмный.
+    /// </summary>
+    public double ClampZoom(double value)
+        => Math.Clamp(value, GeometryMath.ZoomSteps[0], MaxZoom);
 
     // ───────── Palette / recent colours ─────────
     public ObservableCollection<ColorEntryViewModel> Palette { get; } = new();

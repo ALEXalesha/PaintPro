@@ -52,14 +52,10 @@ public partial class MainWindow : Window
         if (_wired) return;
         _wired = true;
 
-        Canvas.PixelPositionChanged += p =>
-        {
-            StatusPos.Text = p.HasValue ? $"X: {(int)p.Value.X}, Y: {(int)p.Value.Y}" : "—";
-        };
-        Canvas.PixelColorChanged += c =>
-        {
-            StatusHex.Text = c is { } v ? $" #{v.Red:X2}{v.Green:X2}{v.Blue:X2}" : "";
-        };
+        // Сами строки собирает ViewGeometry: их формат проверяется тестами, а code-behind
+        // остаётся тем, чем должен быть, - раскладкой готового по элементам.
+        Canvas.PixelPositionChanged += p => StatusPos.Text = Services.ViewGeometry.PositionLabel(p);
+        Canvas.PixelColorChanged += c => StatusHex.Text = Services.ViewGeometry.HexLabel(c);
 
         // Ctrl+wheel zoom, centred on the cursor.
         PreviewMouseWheel += OnMouseWheel;
