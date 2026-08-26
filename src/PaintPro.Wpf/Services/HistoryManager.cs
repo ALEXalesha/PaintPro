@@ -168,11 +168,20 @@ public partial class HistoryManager : ObservableObject
         return true;
     }
 
-    /// <summary>Run cmd.Execute(doc) then push. The conventional way to record an edit.</summary>
+    /// <summary>
+    /// Run cmd.Execute(doc) then push. The conventional way to record an edit.
+    ///
+    /// Правка, не изменившая ни одного пикселя, в ленту не попадает - см.
+    /// <see cref="IDocumentCommand.ChangedAnything"/>. Выполнить её всё равно надо: снятие
+    /// выделения и прочие побочные действия команда делает у себя в Execute, и пропустить
+    /// его значило бы оставить рамку висеть после кадрирования. А вот пиксели, которые
+    /// такая запись держала для отмены, отпускаем сразу: возвращать ей нечего.
+    /// </summary>
     public void ExecuteAndPush(IDocumentCommand cmd, Document doc)
     {
         cmd.Execute(doc);
-        Push(cmd);
+        if (cmd.ChangedAnything) Push(cmd);
+        else Release(cmd);
     }
 
     public bool Undo(Document doc)
@@ -244,8 +253,21 @@ public partial class HistoryManager : ObservableObject
     public void JumpTo(int target, Document doc)
     {
         target = Math.Clamp(target, 0, _commands.Count);
-        if (target == _cursor) return;
+
+        // Поднятое снимаем ДО проверки «идти некуда», а не после. Строка ленты обязана
+        // означать одно и то же состояние документа, каким бы путём на неё ни пришли, а
+        // щелчок по ТЕКУЩЕЙ строке возвращался отсюда сразу и объект в руках не трогал:
+        // на одной и той же позиции получалось то с картинкой в руках, то без - смотря
+        // щёлкнули по ней самой или пришли на неё с соседней. Это тот же четвёртый
+        // инвариант, что проверяет фаззер ленты, только в обход него: он ходит между
+        // разными позициями и мимо этой развилки проскакивал.
+        bool released = doc.FloatingPickup is { Owner: null };
         ReleaseUnownedFloating(doc);
+        if (target == _cursor)
+        {
+            if (released) Notify();
+            return;
+        }
         _applying = true;
         try
         {

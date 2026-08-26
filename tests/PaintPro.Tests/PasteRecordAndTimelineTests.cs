@@ -292,8 +292,15 @@ public class PasteRecordAndTimelineTests
     public void The_eraser_is_not_told_off_for_a_zero_opacity()
     {
         // Ластик прозрачность не учитывает вовсе - так же, как в Electron-версии.
+        //
+        // Стирать при этом должно быть что: с 1.20.0 штрих, не изменивший ни одного
+        // пикселя, в ленту не попадает, и ластик по нетронутой белой бумаге записи не
+        // оставляет по совсем другой причине. Красим место заранее, чтобы проверять
+        // именно молчание про прозрачность, а не пустую работу.
         string hint = "";
         var doc = new Document(40, 40);
+        using (var c = new SKCanvas(((PixelLayer)doc.Layers[0]).Bitmap))
+            c.DrawRect(new SKRect(10, 10, 30, 30), new SKPaint { Color = SKColors.Red });
         var ctx = new ToolContext(doc) { ToolSize = 10f, Opacity = 0f, ReportHint = s => hint = s };
         var eraser = new EraserTool();
         eraser.OnPointerDown(new SKPoint(20, 20), ctx);

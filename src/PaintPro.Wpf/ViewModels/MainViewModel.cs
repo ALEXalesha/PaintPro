@@ -221,8 +221,13 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void RemoveLayer(LayerListItemViewModel? item)
     {
-        if (item is null || Document.Layers.Count <= 1) return;
+        if (item is null) return;
         if (item.Layer is not PixelLayer pl || Document.Layers.IndexOf(pl) < 0) return;
+        // Проверка «слой в стопке один» стояла ПЕРЕД объяснением про бумагу и молча
+        // съедала единственный случай, когда она вообще срабатывает: в новом документе
+        // слой ровно один, он же бумага, и нажатие на «x» рядом с ним не делало ничего и
+        // не говорило ни слова. Порядок теперь обратный - причина отказа у обоих случаев
+        // одна и та же и называется одинаково.
         // Нижний слой - это бумага документа, и весь остальной код исходит именно из
         // этого: ластик красит по нему белым, а не вычитает пиксели; подъём выделения
         // выкусывает из него фон; смена размера холста заливает новую площадь белым;
@@ -236,6 +241,11 @@ public partial class MainViewModel : ObservableObject
         if (ReferenceEquals(Document.Layers[0], pl))
         {
             ShowHint($"Слой «{pl.Name}» - бумага документа, удалить его нельзя. Очистите его или спрячьте.");
+            return;
+        }
+        if (Document.Layers.Count <= 1)
+        {
+            ShowHint("В документе всего один слой - удалить его нельзя.");
             return;
         }
         Document.CommitFloating();
@@ -676,7 +686,15 @@ public partial class MainViewModel : ObservableObject
             InvalidateCanvas?.Invoke();
             return;
         }
-        if (Document.Selection is null) return;
+        if (Document.Selection is null)
+        {
+            // Ctrl+C без выделения копирует весь холст, а Ctrl+X - не делал ничего и
+            // молчал: одна и та же пара клавиш на одном и том же документе отвечала
+            // по-разному, и понять, почему, было нельзя. Вырезать холст целиком нельзя -
+            // после этого не осталось бы документа, - значит надо сказать словами.
+            ShowHint("Вырезать нечего — сначала выделите область");
+            return;
+        }
         // Команду строим до копирования: по скрытому слою стирать нечего, и класть при
         // этом пиксели в буфер обмена значило бы соврать, что вырезание состоялось.
         var cut = BuildEraseCommand();
@@ -920,6 +938,11 @@ public partial class MainViewModel : ObservableObject
                     PickupOps.PromoteQuad(Document, ps.Corners);
                     break;
                 default:
+                    // Поворачивать нечего, и раньше об этом не говорилось ни слова:
+                    // нажатие «[» или «]» на документе без выделения не делало ровно
+                    // ничего. Хоткей мало кому известен, и молчание в ответ читается как
+                    // «не работает». Остальные отказы объясняют себя с 1.19.0.
+                    ShowHint("Поворачивать нечего — выделите область или вставьте картинку");
                     return;
             }
         }

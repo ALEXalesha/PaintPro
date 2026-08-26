@@ -41,21 +41,43 @@ public sealed class DrawStrokeCommand : IDocumentCommand, IDisposable
 
     public string DisplayName => "Draw stroke";
 
+    /// <summary>
+    /// Изменил ли штрих хоть один пиксель. Один штрих - и кисть, и карандаш, и маркер, и
+    /// ластик, и фигура, и текст: все они ложатся на слой этой командой.
+    ///
+    /// Пустым штрих выходит чаще, чем кажется: ластик по нетронутой белой бумаге, белая
+    /// кисть по белому, фигура белым по белому, надпись белым по белому, любой жест мимо
+    /// холста. Каждый такой оставлял в ленте строку «Штрих» и объявлял документ
+    /// изменённым - приложение спрашивало про сохранение после того, чего на холсте не
+    /// видно. Тем же вопросом отсеивает свою пустую работу заливка
+    /// (<see cref="FillCommand.ChangedAnything"/>) и стирание выделения.
+    /// </summary>
+    public bool ChangedAnything { get; private set; } = true;
+
     public long ApproximateBytes => Bytes(_strokeBitmap) + Bytes(_underlying);
 
     private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;
 
     public void Execute(Document doc)
     {
+        ChangedAnything = false;
         if (LayerTarget.Resolve(doc, ref _layerId) is not { } pl) return;
         _underlying ??= pl.ExtractRegion(_bounds);
-        using var canvas = new SKCanvas(pl.Bitmap);
-        using var paint = new SKPaint
+        using (var canvas = new SKCanvas(pl.Bitmap))
+        using (var paint = new SKPaint
         {
             BlendMode = _blendMode,
             Color = SKColors.White.WithAlpha(_alpha),
-        };
-        canvas.DrawBitmap(_strokeBitmap, new SKPoint(_bounds.Left, _bounds.Top), paint);
+        })
+        {
+            canvas.DrawBitmap(_strokeBitmap, new SKPoint(_bounds.Left, _bounds.Top), paint);
+        }
+
+        // Сравниваем ту же область, снимок которой держим для отмены: «до» уже снято выше,
+        // «после» стоит ровно один такой же вырез. Оба сняты с одного слоя и одного
+        // габарита, значит побайтное сравнение законно.
+        using var after = pl.ExtractRegion(_bounds);
+        ChangedAnything = !Models.Document.SamePixels(_underlying, after);
     }
 
     /// <summary>Запись вытеснена из истории: её битмапы больше никому не нужны.</summary>

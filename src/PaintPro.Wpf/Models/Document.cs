@@ -397,7 +397,7 @@ public partial class Document : ObservableObject
             // Объект ложится поверх своего слоя, но под теми, что выше, - как на экране.
             if (pickup is not null && layer.Id == pickup.SourceLayerId)
             {
-                if (SamplePickup(pickup, x, y) is { } fp) Over(fp, layer.Opacity);
+                if (SamplePickup(pickup, x, y) is { } fp) Over(fp, PickupOpacity(layer));
                 pickupSampled = true;
             }
         }
@@ -483,7 +483,14 @@ public partial class Document : ObservableObject
 
             if (layer is PixelLayer pl)
             {
-                if (pl.Visible)
+                // Прозрачность в ноль - это то же самое, что спрятанный слой, и рисовать
+                // его не надо вовсе. Skia на краске с нулевой альфой всё равно
+                // подмешивает картинку примерно на один уровень из 255: слой, выкрученный
+                // ползунком в полную прозрачность, подкрашивал и экран, и сохранённый
+                // файл - белая бумага под ним выходила #FEFEFE вместо #FFFFFF. Пипетка
+                // при этом отвечала честным #FFFFFF (она такие слои пропускает), и два
+                // места расходились на ровном месте.
+                if (pl.Visible && opacity > 0f)
                 {
                     // Внутри отдельного слоя прозрачность уже учтена в его собственной
                     // краске: применить её второй раз значило бы возвести в квадрат.
@@ -496,7 +503,7 @@ public partial class Document : ObservableObject
             // Превью ложится на активный слой, поэтому и показывать его надо там же и с
             // прозрачностью этого слоя: иначе на полупрозрачном слое штрих во время
             // рисования темнее, чем окажется после.
-            if (previewHere)
+            if (previewHere && (isolate || opacity > 0f) && previewAlpha > 0)
             {
                 paint.Color = SKColors.White.WithAlpha((byte)(previewAlpha * (isolate ? 1f : opacity)));
                 paint.BlendMode = previewBlend;
@@ -511,13 +518,33 @@ public partial class Document : ObservableObject
             // пользователь сейчас тащит, хуже любой нестыковки.
             if (pickup is not null && layer.Id == pickup.SourceLayerId)
             {
-                DrawPickup(canvas, pickup, (byte)(255 * opacity));
+                DrawPickup(canvas, pickup, (byte)(255 * PickupOpacity(layer)));
                 pickupDrawn = true;
             }
         }
 
         // Слоя-источника уже нет (его удалили, пока объект висел) - кладём сверху.
         if (pickup is not null && !pickupDrawn) DrawPickup(canvas, pickup);
+    }
+
+    /// <summary>
+    /// С какой прозрачностью показывать объект, поднятый с этого слоя.
+    ///
+    /// Обычно - с прозрачностью самого слоя: объект есть его будущее содержимое, и видеть
+    /// его надо таким, каким он туда ляжет. Но у спрятанного слоя и у слоя, выкрученного
+    /// ползунком в ноль, это означало бы спрятать то, что пользователь держит в руках, -
+    /// правило для видимости так и записано (см. <see cref="Render"/>), а про
+    /// прозрачность его забыли, и объект пропадал с экрана целиком: рамка и ручки на
+    /// месте, внутри пусто. Довожу до конца: и то и другое - «слоя сейчас не видно», и в
+    /// обоих случаях объект показывается полностью.
+    ///
+    /// Одна на всех, кто собирает картинку: и <see cref="Render"/>, и
+    /// <see cref="SampleComposite"/> обязаны отвечать одинаково.
+    /// </summary>
+    private static float PickupOpacity(Layer layer)
+    {
+        float o = Math.Clamp(layer.Opacity, 0f, 1f);
+        return !layer.Visible || o <= 0f ? 1f : o;
     }
 
     /// <summary>Composite a pickup (rotation + optional quad clip) onto a bitmap.</summary>

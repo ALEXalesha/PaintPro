@@ -42,9 +42,40 @@ public sealed class ReplaceAllLayersCommand : IDocumentCommand, IDisposable
         DisplayName = displayName;
         _before = before; _beforeW = beforeW; _beforeH = beforeH; _beforeProps = beforeProps;
         _after = after; _afterW = afterW; _afterH = afterH; _afterProps = afterProps;
+        ChangedAnything = Differs();
+    }
+
+    /// <summary>Отличается ли «после» от «до» хоть чем-нибудь.</summary>
+    private bool Differs()
+    {
+        if (_beforeW != _afterW || _beforeH != _afterH) return true;
+        if (_before.Length != _after.Length) return true;
+        for (int i = 0; i < _before.Length; i++)
+            if (!Models.Document.SamePixels(_before[i], _after[i])) return true;
+        if (_beforeProps is null != (_afterProps is null)) return true;
+        if (_beforeProps is { } bp && _afterProps is { } ap)
+        {
+            if (bp.Length != ap.Length) return true;
+            for (int i = 0; i < bp.Length; i++) if (!bp[i].Equals(ap[i])) return true;
+        }
+        return false;
     }
 
     public string DisplayName { get; }
+
+    /// <summary>
+    /// Изменила ли операция хоть что-нибудь: размер холста, пиксели слоёв или их свойства.
+    ///
+    /// Поворот квадратного чистого листа, отражение симметричной картинки, кадрирование по
+    /// всему холсту, открытие файла, который на холсте и так лежит, - каждый из них
+    /// оставлял в ленте строку и объявлял документ изменённым, при том что на экране не
+    /// менялось ничего. То же правило, по которому отсеивают свою пустую работу штрих
+    /// (<see cref="DrawStrokeCommand.ChangedAnything"/>), заливка и стирание.
+    ///
+    /// Свойства слоёв считаются наравне с пикселями: открытие файла в документ со скрытой
+    /// бумагой пикселей не меняет, а видимость - меняет, и такую запись пропускать нельзя.
+    /// </summary>
+    public bool ChangedAnything { get; }
 
     // The heaviest command in the app: two full copies of every layer.
     public long ApproximateBytes => Total(_before) + Total(_after);
