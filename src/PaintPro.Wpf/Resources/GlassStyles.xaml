@@ -135,23 +135,129 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     </Style>
-    <Style TargetType="MenuItem">
-        <!-- Заголовки в самой строке меню стоят на нашем тёмном фоне. -->
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-        <Style.Triggers>
-            <!--
-              А пункты внутри выпадающего списка - на СИСТЕМНОМ светлом фоне: его рисует
-              не наш стиль, а тема Windows, и достать до него отсюда нечем. Светлый текст
-              на нём пропадал начисто - меню открывалось пустой панелью. Роль пункта
-              (Role) - единственное, что отличает заголовок в строке меню от пункта в
-              выпадающем списке, и по ней же выбирается цвет.
-            -->
-            <Trigger Property="Role" Value="SubmenuItem">
-                <Setter Property="Foreground" Value="{StaticResource TextOnLight}"/>
+    <!--
+      Меню рисуется своими шаблонами, а не системными.
+
+      Пока список рисовала тема Windows, он приходил со своим светлым фоном, и наш светлый
+      текст пропадал на нём начисто: меню открывалось пустой панелью, пункты были на месте
+      и нажимались, но прочесть их было нельзя. Покрасить текст в тёмный не помогло:
+      сквозной стиль TextBlock задаёт цвет НАСТАВЛЕНИЕМ, а оно сильнее наследования, и до
+      подписи внутри пункта наш цвет не доходил вовсе. Проще и надёжнее оказалось забрать
+      отрисовку целиком - заодно меню стало похоже на остальную программу.
+    -->
+    <ControlTemplate x:Key="MenuTopLevelTemplate" TargetType="MenuItem">
+        <Grid>
+            <Border x:Name="bd" Background="Transparent" CornerRadius="6" Padding="10,4">
+                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"/>
+            </Border>
+            <Popup x:Name="PART_Popup" AllowsTransparency="True" Placement="Bottom"
+                   IsOpen="{TemplateBinding IsSubmenuOpen}" Focusable="False"
+                   PopupAnimation="Fade" HorizontalOffset="-4">
+                <Border Background="{StaticResource MenuBg}"
+                        BorderBrush="{StaticResource GlassBorder}" BorderThickness="1"
+                        CornerRadius="10" Padding="4" Margin="0,4,10,10">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
+                    </Border.Effect>
+                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                </Border>
+            </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
             </Trigger>
-            <Trigger Property="Role" Value="SubmenuHeader">
-                <Setter Property="Foreground" Value="{StaticResource TextOnLight}"/>
+            <Trigger Property="IsSubmenuOpen" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <ControlTemplate x:Key="MenuSubItemTemplate" TargetType="MenuItem">
+        <Border x:Name="bd" Background="Transparent" CornerRadius="6"
+                Padding="12,6" Margin="0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ContentPresenter Grid.Column="0" ContentSource="Header"
+                                  RecognizesAccessKey="True" VerticalAlignment="Center"/>
+                <!-- Подсказка про хоткей: тусклее подписи, но на том же тёмном фоне. -->
+                <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}"
+                           Margin="28,0,0,0" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextDim}"/>
+            </Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4"/>
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Style.Triggers>
+            <!-- Роль - единственное, что отличает заголовок в строке меню от пункта внутри списка. -->
+            <Trigger Property="Role" Value="TopLevelHeader">
+                <Setter Property="Template" Value="{StaticResource MenuTopLevelTemplate}"/>
+            </Trigger>
+            <Trigger Property="Role" Value="SubmenuItem">
+                <Setter Property="Template" Value="{StaticResource MenuSubItemTemplate}"/>
             </Trigger>
         </Style.Triggers>
+    </Style>
+
+    <!--
+      Всплывающая подсказка - та же беда, что была у меню, и по той же причине: система
+      рисует её своим светлым фоном, а сквозной стиль TextBlock задаёт светлый текст
+      наставлением, которое сильнее наследования. Подсказки у кнопок инструментов
+      («Карандаш (P)») и у строк истории выходили пустой белой полосой. Забираем отрисовку
+      себе - тогда и фон, и текст наши.
+    -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Background" Value="{StaticResource MenuBg}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource GlassBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="MaxWidth" Value="360"/>
+        <Setter Property="HasDropShadow" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.5" Color="Black"/>
+                        </Border.Effect>
+                        <ContentPresenter>
+                            <ContentPresenter.Resources>
+                                <!-- Длинные объяснения переносятся, а не уезжают за край. -->
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                    <Setter Property="FontFamily" Value="Segoe UI"/>
+                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                </Style>
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Разделитель внутри меню: на тёмном фоне системный не виден. -->
+    <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="10,5"/>
+        <Setter Property="Background" Value="{StaticResource GlassBorder}"/>
     </Style>
 </ResourceDictionary>
