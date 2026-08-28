@@ -52,6 +52,16 @@ public sealed class EraseRegionCommand : IDocumentCommand, IDisposable
     /// </summary>
     public bool ChangedAnything { get; private set; }
 
+    /// <summary>Стирание закрашивает свою форму поверх слоя, а не заменяет область целиком.</summary>
+    public bool WritesSnapshot => false;
+
+    /// <summary>Снимок «до» снимется заново на следующем <see cref="Execute"/>.</summary>
+    public void ForgetBefore()
+    {
+        _underlying?.Dispose();
+        _underlying = null;
+    }
+
     public void Execute(Document doc)
     {
         ChangedAnything = false;

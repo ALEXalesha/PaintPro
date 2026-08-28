@@ -40,6 +40,13 @@ public sealed class FillCommand : IDocumentCommand, IDisposable
     /// </summary>
     public bool ChangedAnything => _previousRegion is not null;
 
+    /// <summary>
+    /// Заливка пересчитывается от того, что на слое СЕЙЧАС: она не кладёт готовых пикселей,
+    /// а заново обходит область от точки клика. Снимок «до» она тоже пересобирает на каждом
+    /// <see cref="Execute"/>, поэтому <see cref="ForgetBefore"/> ей не нужен.
+    /// </summary>
+    public bool WritesSnapshot => false;
+
     public long ApproximateBytes => Bytes(_previousRegion);
 
     private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;

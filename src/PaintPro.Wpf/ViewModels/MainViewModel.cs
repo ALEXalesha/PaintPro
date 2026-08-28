@@ -475,6 +475,37 @@ public partial class MainViewModel : ObservableObject
         AfterHistoryWalk();
     }
 
+    /// <summary>
+    /// Выключить правку или включить её обратно. Идущие после неё остаются на месте - в
+    /// этом весь смысл, в отличие от прыжка по ленте, который откатывает всё после
+    /// выбранной строки.
+    ///
+    /// Отказ объясняется словами: у строк без выключателя галочки в панели нет вовсе, но
+    /// правило зависит от ЛЕНТЫ, а не от самой записи, - стоит дорисовать что-нибудь
+    /// поверх, и вчера выключаемая правка сегодня уже нет. Между тем, как пользователь
+    /// увидел галочку, и тем, как он по ней щёлкнул, лента могла измениться.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleHistoryEntry(HistoryEntryViewModel? entry)
+    {
+        if (entry?.Command is not { } cmd) return;
+        if (!Document.History.SetEnabled(cmd, !entry.Enabled, Document))
+        {
+            ShowHint("Эту правку выключить нельзя: ниже неё есть та, что пишет картинку целиком");
+            RebuildHistoryItems();
+            return;
+        }
+        AfterHistoryWalk();
+    }
+
+    /// <summary>Почему у строки нет выключателя - словами, для подсказки при наведении.</summary>
+    private static string ExplainNoToggle(IDocumentCommand cmd, HistoryManager history)
+    {
+        if (cmd.WritesSnapshot)
+            return "Эту правку выключить нельзя: она записывает картинку целиком, а не поверх неё";
+        return "Выключить нельзя: ниже в ленте есть правка, которая записывает картинку целиком";
+    }
+
     private void RebuildHistoryItems()
     {
         var history = Document.History;
@@ -491,7 +522,14 @@ public partial class MainViewModel : ObservableObject
         for (int i = 0; i < history.Commands.Count; i++)
         {
             int target = i + 1; // this command applied
-            HistoryItems.Add(new HistoryEntryViewModel(target, LocalizeCommand(history.Commands[i].DisplayName))
+            var cmd = history.Commands[i];
+            bool canToggle = history.CanToggle(cmd);
+            HistoryItems.Add(new HistoryEntryViewModel(
+                target, LocalizeCommand(cmd.DisplayName), cmd,
+                history.IsEnabled(cmd), canToggle,
+                canToggle
+                    ? "Выключить эту правку, не трогая те, что идут после неё"
+                    : ExplainNoToggle(cmd, history))
             {
                 IsCurrent = target == history.Cursor,
                 IsFuture = target > history.Cursor,

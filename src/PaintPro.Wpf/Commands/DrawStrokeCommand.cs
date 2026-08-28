@@ -54,6 +54,16 @@ public sealed class DrawStrokeCommand : IDocumentCommand, IDisposable
     /// </summary>
     public bool ChangedAnything { get; private set; } = true;
 
+    /// <summary>Штрих подмешивает свой битмап поверх слоя, а не заменяет область целиком.</summary>
+    public bool WritesSnapshot => false;
+
+    /// <summary>Снимок «до» снимется заново на следующем <see cref="Execute"/>.</summary>
+    public void ForgetBefore()
+    {
+        _underlying?.Dispose();
+        _underlying = null;
+    }
+
     public long ApproximateBytes => Bytes(_strokeBitmap) + Bytes(_underlying);
 
     private static long Bytes(SKBitmap? b) => b is null ? 0 : (long)b.RowBytes * b.Height;

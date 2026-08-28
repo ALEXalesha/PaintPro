@@ -49,7 +49,7 @@ public class TimelineFuzzTests
         ctx.Opacity = 0.3f + (float)rnd.NextDouble() * 0.7f;
         ctx.ToolSize = 1 + rnd.Next(8);
 
-        switch (rnd.Next(25))
+        switch (rnd.Next(26))
         {
             case 0:
             {
@@ -307,6 +307,20 @@ public class TimelineFuzzTests
                 doc.CommitFloating();
                 break;
             }
+            // Правка, добавленная в 1.23.0: выключить или включить обратно случайную
+            // запись ленты. Выключенная запись остаётся на месте, но в картинку не идёт, и
+            // все инварианты обязаны пережить это так же, как обычные правки.
+            case 25:
+            {
+                doc.CommitFloating();
+                var switchable = doc.History.Commands.Where(doc.History.CanToggle).ToList();
+                if (switchable.Count > 0)
+                {
+                    var cmd = switchable[rnd.Next(switchable.Count)];
+                    doc.History.SetEnabled(cmd, !doc.History.IsEnabled(cmd), doc);
+                }
+                break;
+            }
             case 24:
             {
                 // То же «Четырёхугольником».
@@ -464,6 +478,36 @@ public class TimelineFuzzTests
             ? "none"
             : $"fp:{fp.X:F2},{fp.Y:F2},{fp.Width:F2},{fp.Height:F2},{fp.Rotation:F3},q{fp.Quad?.Length ?? 0}");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Пятый инвариант, добавлен в 1.23.0 вместе с выключателем правок: выключить запись и
+    /// включить её обратно обязано вернуть документ до пикселя, какой бы ни была лента.
+    ///
+    /// Инвариант «позиция курсора однозначно задаёт документ» выключатель проверяет заодно:
+    /// переключения идут в случайных правках наравне с остальными, и после них лента
+    /// обязана оставаться такой же предсказуемой.
+    /// </summary>
+    [Theory]
+    [InlineData(1)] [InlineData(2)] [InlineData(3)] [InlineData(4)] [InlineData(5)]
+    [InlineData(6)] [InlineData(7)] [InlineData(8)] [InlineData(9)] [InlineData(10)]
+    [InlineData(11)] [InlineData(12)] [InlineData(13)] [InlineData(14)] [InlineData(15)]
+    public void Switching_an_entry_off_and_on_reproduces_the_document(int seed)
+    {
+        var rnd = new Random(seed * 15485863);
+        var doc = Play(seed);
+        var switchable = doc.History.Commands.Where(doc.History.CanToggle).ToList();
+        if (switchable.Count == 0) return;   // в этой ленте выключать нечего - тоже ответ
+
+        var cmd = switchable[rnd.Next(switchable.Count)];
+        bool was = doc.History.IsEnabled(cmd);
+        var expected = SnapAll(doc);
+
+        doc.History.SetEnabled(cmd, !was, doc);
+        doc.History.SetEnabled(cmd, was, doc);
+
+        Assert.Equal(0, DiffAll(expected, SnapAll(doc)));
+        Assert.Equal(was, doc.History.IsEnabled(cmd));
     }
 
     [Theory]

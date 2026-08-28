@@ -530,7 +530,44 @@
                                     <ItemsControl ItemsSource="{Binding HistoryItems}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Button HorizontalContentAlignment="Left"
+                                              <Grid ToolTip="{Binding ToggleHint}">
+                                                <Grid.ColumnDefinitions>
+                                                    <!-- Ширина колонки постоянная: у строк без
+                                                         выключателя подписи обязаны стоять там же. -->
+                                                    <ColumnDefinition Width="22"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <!--
+                                                  Выключатель правки. Снятая галочка убирает её из
+                                                  картинки, не трогая те, что идут после, - в отличие
+                                                  от щелчка по строке, который откатывает всё после
+                                                  неё. Есть он не у всех: правку, записывающую
+                                                  картинку целиком, пропустить нельзя, и ту, ниже
+                                                  которой такая есть, - тоже (HistoryManager.CanToggle).
+                                                  Привязка ОДНОСТОРОННЯЯ, переключает команда: в ответ
+                                                  на неё лента пересобирает строки, и запись обратно в
+                                                  уже выброшенный объект была бы записью в никуда.
+                                                -->
+                                                <CheckBox Grid.Column="0" VerticalAlignment="Center"
+                                                          Margin="4,0,0,0" Focusable="False"
+                                                          IsChecked="{Binding Enabled, Mode=OneWay}"
+                                                          Foreground="{StaticResource TextPrimary}"
+                                                          Command="{Binding DataContext.ToggleHistoryEntryCommand,
+                                                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                          CommandParameter="{Binding}">
+                                                    <CheckBox.Style>
+                                                        <Style TargetType="CheckBox">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding CanToggle}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </CheckBox.Style>
+                                                </CheckBox>
+                                                <Button Grid.Column="1"
+                                                        HorizontalContentAlignment="Left"
                                                         Padding="8,4" Margin="0,1" Cursor="Hand"
                                                         BorderThickness="0" FontSize="12"
                                                         Foreground="{StaticResource TextPrimary}"
@@ -557,8 +594,23 @@
                                                             </ControlTemplate.Triggers>
                                                         </ControlTemplate>
                                                     </Button.Template>
-                                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Style.Triggers>
+                                                                    <!-- Выключенная правка видна как
+                                                                         зачёркнутая: она осталась в
+                                                                         ленте, но в картинку не идёт. -->
+                                                                    <DataTrigger Binding="{Binding Enabled}" Value="False">
+                                                                        <Setter Property="TextDecorations" Value="Strikethrough"/>
+                                                                        <Setter Property="Opacity" Value="0.5"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
                                                 </Button>
+                                              </Grid>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>

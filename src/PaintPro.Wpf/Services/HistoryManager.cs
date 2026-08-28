@@ -22,6 +22,20 @@ public partial class HistoryManager : ObservableObject
     private int _cursor; // commands[0.._cursor-1] are applied
     private bool _applying; // true while Undo/Redo/JumpTo is walking the list
 
+    /// <summary>
+    /// Записи, выключенные пользователем в панели истории. Курсор через них проходит, но
+    /// применяться они перестают - это «правку из середины ленты убрать, не трогая те, что
+    /// после неё».
+    ///
+    /// Ключ - сама команда, а не её номер: номера едут при обрезке переполнения
+    /// (<see cref="Drop"/>) и при вычёркивании вставки (<see cref="Forget"/>), и набор по
+    /// номерам разъехался бы молча.
+    /// </summary>
+    private readonly HashSet<IDocumentCommand> _disabled = new();
+
+    /// <summary>Каким набор выключенных был на момент сохранения - см. <see cref="IsDirtySinceSave"/>.</summary>
+    private HashSet<IDocumentCommand> _savedDisabled = new();
+
     [ObservableProperty] private bool _canUndo;
     [ObservableProperty] private bool _canRedo;
 
@@ -68,11 +82,75 @@ public partial class HistoryManager : ObservableObject
     /// </summary>
     public bool Trimmed { get; private set; }
 
-    /// <summary>Запомнить текущую позицию как сохранённую.</summary>
-    public void MarkSaved() => _savedCursor = _cursor;
+    /// <summary>Запомнить текущую позицию как сохранённую - вместе с набором выключенных записей.</summary>
+    public void MarkSaved()
+    {
+        _savedCursor = _cursor;
+        _savedDisabled = new HashSet<IDocumentCommand>(_disabled);
+    }
 
-    /// <summary>Есть ли правки, которых нет в файле.</summary>
-    public bool IsDirtySinceSave => _cursor != _savedCursor;
+    /// <summary>
+    /// Есть ли правки, которых нет в файле.
+    ///
+    /// Считается не только позиция курсора, но и набор выключенных записей: выключить
+    /// правку - это изменить картинку, а включить обратно - вернуться ровно к тому, что
+    /// сохранено, и вопроса про сохранение тогда быть не должно.
+    /// </summary>
+    public bool IsDirtySinceSave => _cursor != _savedCursor || !_disabled.SetEquals(_savedDisabled);
+
+    /// <summary>Применяется ли эта запись, или пользователь её выключил.</summary>
+    public bool IsEnabled(IDocumentCommand cmd) => !_disabled.Contains(cmd);
+
+    /// <summary>
+    /// Можно ли выключить эту запись, не соврав.
+    ///
+    /// Два условия. Первое: сама запись должна СКЛАДЫВАТЬСЯ с картинкой, а не писать
+    /// готовый снимок (<see cref="IDocumentCommand.WritesSnapshot"/>). Второе: ниже неё в
+    /// ленте не должно быть ни одной записи, пишущей снимок, - такая при пересборке
+    /// положит свои пиксели поверх вместе с тем, что выключили, и выключатель окажется
+    /// бесполезным. Прижатие поднятого объекта попадает в этот список наравне с поворотом.
+    ///
+    /// Смотрим по ВСЕЙ ленте, а не до курсора: хвост повтора никуда не делся, и вернуться
+    /// на него можно в любой момент.
+    /// </summary>
+    public bool CanToggle(IDocumentCommand cmd)
+    {
+        int index = _commands.IndexOf(cmd);
+        if (index < 0) return false;
+        if (cmd.WritesSnapshot) return false;
+        for (int i = index + 1; i < _commands.Count; i++)
+            if (_commands[i].WritesSnapshot) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Выключить или включить запись обратно.
+    ///
+    /// Идём одним путём: откат в самое начало обычным способом (снимки «до» на этот момент
+    /// ещё верны), потом смена пометки, потом проигрывание вперёд до прежней позиции с
+    /// пропуском выключенных. Записи от переключённой и ниже обязаны забыть свой снимок
+    /// «до» - он описывает слой вместе с той правкой, которую только что выключили, и
+    /// первый же Ctrl+Z вернул бы пиксели по устаревшему.
+    ///
+    /// False - выключить эту запись нельзя, документ не тронут.
+    /// </summary>
+    public bool SetEnabled(IDocumentCommand cmd, bool enabled, Document doc)
+    {
+        if (_applying) return false;
+        if (!CanToggle(cmd)) return false;
+        if (IsEnabled(cmd) == enabled) return true;
+
+        int target = _cursor;
+        int index = _commands.IndexOf(cmd);
+
+        JumpTo(0, doc);
+        if (enabled) _disabled.Remove(cmd); else _disabled.Add(cmd);
+        for (int i = index; i < _commands.Count; i++) _commands[i].ForgetBefore();
+        JumpTo(target, doc);
+
+        Notify();
+        return true;
+    }
 
     /// <summary>Raised after any change to the timeline or cursor (push/undo/redo/jump/clear).</summary>
     public event Action? Changed;
@@ -134,7 +212,7 @@ public partial class HistoryManager : ObservableObject
     {
         if (_cursor >= _commands.Count) return;
         if (_savedCursor > _cursor) _savedCursor = Unreachable;
-        for (int i = _cursor; i < _commands.Count; i++) Release(_commands[i]);
+        for (int i = _cursor; i < _commands.Count; i++) Forgo(_commands[i]);
         _commands.RemoveRange(_cursor, _commands.Count - _cursor);
     }
 
@@ -163,7 +241,7 @@ public partial class HistoryManager : ObservableObject
         // Метка сохранения считает записи слева от курсора: та, что стояла за
         // вычеркнутой, уезжает вместе с ней.
         if (_savedCursor > index) _savedCursor--;
-        Release(cmd);
+        Forgo(cmd);
         Notify();
         return true;
     }
@@ -203,7 +281,9 @@ public partial class HistoryManager : ObservableObject
         try
         {
             _cursor--;
-            _commands[_cursor].Undo(doc);
+            // Выключенную запись курсор проходит насквозь: применена она не была, и
+            // отменять нечего.
+            if (IsEnabled(_commands[_cursor])) _commands[_cursor].Undo(doc);
         }
         finally { _applying = false; }
         Notify();
@@ -237,7 +317,7 @@ public partial class HistoryManager : ObservableObject
         _applying = true;
         try
         {
-            _commands[_cursor].Execute(doc);
+            if (IsEnabled(_commands[_cursor])) _commands[_cursor].Execute(doc);
             _cursor++;
         }
         finally { _applying = false; }
@@ -271,8 +351,16 @@ public partial class HistoryManager : ObservableObject
         _applying = true;
         try
         {
-            while (_cursor > target) { _cursor--; _commands[_cursor].Undo(doc); }
-            while (_cursor < target) { _commands[_cursor].Execute(doc); _cursor++; }
+            while (_cursor > target)
+            {
+                _cursor--;
+                if (IsEnabled(_commands[_cursor])) _commands[_cursor].Undo(doc);
+            }
+            while (_cursor < target)
+            {
+                if (IsEnabled(_commands[_cursor])) _commands[_cursor].Execute(doc);
+                _cursor++;
+            }
         }
         finally { _applying = false; }
         Notify();
@@ -282,6 +370,8 @@ public partial class HistoryManager : ObservableObject
     {
         foreach (var c in _commands) Release(c);
         _commands.Clear();
+        _disabled.Clear();
+        _savedDisabled.Clear();
         _cursor = 0;
         _savedCursor = 0;
         Trimmed = false;
@@ -312,7 +402,7 @@ public partial class HistoryManager : ObservableObject
         // Битмапы внутри команды — нативная память, давления на сборщик она не создаёт.
         // Без явного Dispose обрезка по MaxBytes освобождала ссылку, но не память, и лимит
         // был лимитом только на бумаге.
-        for (int i = 0; i < count; i++) Release(_commands[i]);
+        for (int i = 0; i < count; i++) Forgo(_commands[i]);
         _commands.RemoveRange(0, count);
         Trimmed = true;
         _cursor = Math.Max(0, _cursor - count);
@@ -323,6 +413,18 @@ public partial class HistoryManager : ObservableObject
     private static void Release(IDocumentCommand cmd)
     {
         if (cmd is IDisposable d) d.Dispose();
+    }
+
+    /// <summary>
+    /// Проводить запись из ленты совсем: отпустить её пиксели и убрать из наборов
+    /// выключенных. Пометка, оставшаяся от выброшенной записи, держала бы её в памяти и
+    /// сбивала сравнение с сохранённым состоянием.
+    /// </summary>
+    private void Forgo(IDocumentCommand cmd)
+    {
+        _disabled.Remove(cmd);
+        _savedDisabled.Remove(cmd);
+        Release(cmd);
     }
 
     private void Notify()

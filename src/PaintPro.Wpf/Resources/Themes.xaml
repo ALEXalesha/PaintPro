@@ -13,6 +13,13 @@
 
     <SolidColorBrush x:Key="TextPrimary"     Color="#F4F4F8"/>
     <SolidColorBrush x:Key="TextDim"         Color="#9EA0AE"/>
+    <!--
+      Тёмный текст для того, что рисуется НЕ на нашем фоне. Выпадающие списки меню
+      система рисует своим светлым фоном, и наш светлый TextPrimary на нём пропадал
+      начисто: меню открывалось пустой панелью, пункты были на месте, но их не было
+      видно. Найдено только запуском приложения - тестами такое не ловится.
+    -->
+    <SolidColorBrush x:Key="TextOnLight"     Color="#1A1330"/>
 
     <!-- Glass surfaces: translucent overlays placed atop the coloured window background. -->
     <SolidColorBrush x:Key="GlassBg"         Color="#14FFFFFF"/>

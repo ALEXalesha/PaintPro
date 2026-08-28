@@ -136,6 +136,22 @@
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
     </Style>
     <Style TargetType="MenuItem">
+        <!-- Заголовки в самой строке меню стоят на нашем тёмном фоне. -->
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Style.Triggers>
+            <!--
+              А пункты внутри выпадающего списка - на СИСТЕМНОМ светлом фоне: его рисует
+              не наш стиль, а тема Windows, и достать до него отсюда нечем. Светлый текст
+              на нём пропадал начисто - меню открывалось пустой панелью. Роль пункта
+              (Role) - единственное, что отличает заголовок в строке меню от пункта в
+              выпадающем списке, и по ней же выбирается цвет.
+            -->
+            <Trigger Property="Role" Value="SubmenuItem">
+                <Setter Property="Foreground" Value="{StaticResource TextOnLight}"/>
+            </Trigger>
+            <Trigger Property="Role" Value="SubmenuHeader">
+                <Setter Property="Foreground" Value="{StaticResource TextOnLight}"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 </ResourceDictionary>
