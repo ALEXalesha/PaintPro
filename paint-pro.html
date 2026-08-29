@@ -64,64 +64,8 @@
     position: relative;
   }
 
-  /* === Анимированные пузыри на фоне === */
-  .bubbles {
-    position: fixed;
-    inset: 0;
-    overflow: hidden;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .bubble {
-    position: absolute;
-    border-radius: 50%;
-    bottom: -200px;
-    background: radial-gradient(circle at 30% 30%,
-      rgba(255,255,255,0.55) 0%,
-      rgba(180, 200, 255, 0.25) 35%,
-      rgba(120, 90, 255, 0.10) 70%,
-      transparent 100%);
-    box-shadow:
-      inset -8px -8px 18px rgba(255,255,255,0.18),
-      inset 6px 6px 18px rgba(255,255,255,0.35),
-      0 8px 30px rgba(120, 90, 255, 0.25);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
-    opacity: 0;
-    animation: bubbleRise var(--dur, 24s) ease-in-out infinite;
-    animation-delay: var(--delay, 0s);
-    will-change: transform, opacity;
-  }
-
-  .bubble::after {
-    content: '';
-    position: absolute;
-    top: 12%;
-    left: 18%;
-    width: 28%;
-    height: 22%;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(255,255,255,0.85) 0%, transparent 70%);
-    filter: blur(1.5px);
-  }
-
-  @keyframes bubbleRise {
-    0%   { transform: translate(0, 0) scale(0.85); opacity: 0; }
-    8%   { opacity: 0.85; }
-    50%  { transform: translate(var(--drift, 30px), -55vh) scale(1); opacity: 0.95; }
-    92%  { opacity: 0.6; }
-    100% { transform: translate(calc(var(--drift, 30px) * -0.6), -120vh) scale(1.08); opacity: 0; }
-  }
-
-  /* Пузыри пастельных тонов */
-  .bubble.pink   { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(255,170,210,0.28) 40%, rgba(255,100,180,0.12) 75%, transparent); }
-  .bubble.cyan   { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(170,230,255,0.28) 40%, rgba(60,200,255,0.12) 75%, transparent); }
-  .bubble.green  { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(180,255,210,0.28) 40%, rgba(100,255,180,0.12) 75%, transparent); }
-  .bubble.violet { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(200,180,255,0.28) 40%, rgba(150,100,255,0.14) 75%, transparent); }
-  .bubble.gold   { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), rgba(255,225,170,0.28) 40%, rgba(255,180,80,0.12) 75%, transparent); }
-
-  /* Все базовые слои контента поднимаются над пузырями */
+  /* Содержимое лежит над фоном-градиентом. Прежде здесь же плавали пузыри - их
+     убрали, а порядок слоёв остаётся: на нём стоит вся раскладка. */
   .menubar, .toolbar, .main, .statusbar, .zoom-controls { position: relative; z-index: 2; }
 
   /* === Ripple на кнопках при клике === */
@@ -315,27 +259,6 @@
     z-index: 0;
   }
   .toolbar > *, .sidebar > *, .statusbar > * { position: relative; z-index: 1; }
-  /* Бегущий блик только на сайдбаре — у тулбара overflow:visible нужен для тултипов */
-  .sidebar::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -50%;
-    width: 50%;
-    height: 100%;
-    background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.10) 45%, rgba(255,255,255,0.20) 50%, rgba(255,255,255,0.10) 55%, transparent 100%);
-    pointer-events: none;
-    border-radius: inherit;
-    animation: shimmer 12s linear infinite;
-    animation-delay: -8s;
-    z-index: 0;
-  }
-
-  @keyframes shimmer {
-    0%   { transform: translateX(0); }
-    100% { transform: translateX(400%); }
-  }
-
   /* === Панель инструментов === */
   .toolbar {
     display: flex;
@@ -1221,21 +1144,6 @@
 <body>
 
 <!-- Анимированные пузыри на заднем плане -->
-<div class="bubbles" aria-hidden="true">
-  <span class="bubble violet" style="left:6%;  width:140px; height:140px; --dur:26s; --delay:0s;   --drift:60px;"></span>
-  <span class="bubble pink"   style="left:18%; width:90px;  height:90px;  --dur:22s; --delay:-6s;  --drift:-40px;"></span>
-  <span class="bubble cyan"   style="left:30%; width:180px; height:180px; --dur:30s; --delay:-12s; --drift:80px;"></span>
-  <span class="bubble green"  style="left:46%; width:70px;  height:70px;  --dur:18s; --delay:-3s;  --drift:-30px;"></span>
-  <span class="bubble violet" style="left:58%; width:120px; height:120px; --dur:28s; --delay:-15s; --drift:50px;"></span>
-  <span class="bubble gold"   style="left:70%; width:100px; height:100px; --dur:24s; --delay:-9s;  --drift:-70px;"></span>
-  <span class="bubble pink"   style="left:82%; width:160px; height:160px; --dur:32s; --delay:-18s; --drift:40px;"></span>
-  <span class="bubble cyan"   style="left:92%; width:80px;  height:80px;  --dur:20s; --delay:-2s;  --drift:-50px;"></span>
-  <span class="bubble green"  style="left:14%; width:110px; height:110px; --dur:34s; --delay:-22s; --drift:90px;"></span>
-  <span class="bubble violet" style="left:38%; width:60px;  height:60px;  --dur:16s; --delay:-7s;  --drift:-25px;"></span>
-  <span class="bubble gold"   style="left:64%; width:200px; height:200px; --dur:38s; --delay:-25s; --drift:-90px;"></span>
-  <span class="bubble pink"   style="left:78%; width:55px;  height:55px;  --dur:14s; --delay:-1s;  --drift:35px;"></span>
-</div>
-
 <!-- Верхняя панель — macOS Tahoe menu bar -->
 <div class="menubar" id="menubar">
   <div class="mb-left">
