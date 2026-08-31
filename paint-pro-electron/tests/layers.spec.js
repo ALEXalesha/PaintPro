@@ -349,3 +349,82 @@ test('открытие файла заменяет стопку целиком',
   expect(st.visible).toEqual([true]);
   expect(isNear(await app.pixel(100, 60), 255, 0, 0), 'картинка легла в невидимый слой').toBe(true);
 });
+
+// ─────────── Панель слоёв ───────────
+
+/** Строки панели сверху вниз: имя, активность, видимость. */
+async function panelRows(app) {
+  return app.page.evaluate(() => Array.from(document.querySelectorAll('.layer-row')).map((r) => ({
+    index: Number(r.dataset.index),
+    name: r.querySelector('.layer-name').textContent,
+    active: r.classList.contains('active'),
+    hidden: r.classList.contains('hidden'),
+  })));
+}
+
+test('панель показывает стопку сверху вниз, как она лежит на холсте', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  await addLayer(app);
+  const rows = await panelRows(app);
+  expect(rows.map((r) => r.index)).toEqual([2, 1, 0]);
+});
+
+test('панель отмечает активный слой', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  expect((await panelRows(app)).filter((r) => r.active).map((r) => r.index)).toEqual([1]);
+
+  await app.page.evaluate(() => setActiveLayer(0));
+  expect((await panelRows(app)).filter((r) => r.active).map((r) => r.index)).toEqual([0]);
+});
+
+test('щелчок по строке делает слой активным', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  await app.page.evaluate(() => {
+    document.querySelector('.layer-row[data-index="0"]').click();
+  });
+  expect((await stack(app)).active).toBe(0);
+});
+
+test('щелчок по глазу прячет слой и не меняет активный', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);          // активен 1
+  await app.page.evaluate(() => {
+    document.querySelector('.layer-row[data-index="0"] .layer-eye').click();
+  });
+  const st = await stack(app);
+  expect(st.visible).toEqual([false, true]);
+  expect(st.active, 'щелчок по глазу увёл активный слой').toBe(1);
+  expect((await panelRows(app)).find((r) => r.index === 0).hidden).toBe(true);
+});
+
+test('ползунок непрозрачности показывает активный слой, а не последний тронутый', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  await app.page.evaluate(() => setLayerOpacity(1, 0.4));
+  expect(await app.page.evaluate(() => document.getElementById('layer-opacity').value)).toBe('40');
+
+  await app.page.evaluate(() => setActiveLayer(0));
+  expect(await app.page.evaluate(() => document.getElementById('layer-opacity').value),
+    'ползунок держит чужое значение').toBe('100');
+});
+
+test('бумагу нельзя увести вниз, и кнопка это показывает', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  const disabled = await app.page.evaluate(() => {
+    const row = document.querySelector('.layer-row[data-index="0"]');
+    return Array.from(row.querySelectorAll('.layer-move')).map((b) => b.disabled);
+  });
+  expect(disabled, 'у бумаги обе стрелки должны быть недоступны').toEqual([true, true]);
+});
+
+test('панель переживает отмену', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  expect((await panelRows(app)).length).toBe(2);
+  await app.undo();
+  expect((await panelRows(app)).length).toBe(1);
+});
