@@ -1202,11 +1202,12 @@
         <button class="mb-dd-item" onclick="undo()"><span>Отменить</span><span class="kb">Ctrl Z</span></button>
         <button class="mb-dd-item" onclick="redo()"><span>Повторить</span><span class="kb">Ctrl Y</span></button>
         <div class="mb-sep"></div>
-        <button class="mb-dd-item" onclick="if(state.selection||state.floating)copySelection()"><span>Копировать</span><span class="kb">Ctrl C</span></button>
-        <button class="mb-dd-item" onclick="if(state.selection||state.floating)cutSelection()"><span>Вырезать</span><span class="kb">Ctrl X</span></button>
+        <button class="mb-dd-item" onclick="copySelection()"><span>Копировать</span><span class="kb">Ctrl C</span></button>
+        <button class="mb-dd-item" onclick="cutSelection()"><span>Вырезать</span><span class="kb">Ctrl X</span></button>
         <button class="mb-dd-item" onclick="pasteFromClipboard()"><span>Вставить</span><span class="kb">Ctrl V</span></button>
         <div class="mb-sep"></div>
         <button class="mb-dd-item" onclick="selectAll()"><span>Выделить всё</span><span class="kb">Ctrl A</span></button>
+        <button class="mb-dd-item" onclick="deselect()"><span>Снять выделение</span><span class="kb">Ctrl D</span></button>
       </div>
     </div>
 
@@ -1602,6 +1603,12 @@ const MAX_HISTORY = 150;
 // начала (HistoryManager.MaxBytes), сюда он не доехал.
 const MAX_HISTORY_BYTES = 512 * 1024 * 1024;
 
+// Размер чистого листа. Новый документ - это чистый лист, а не старый, залитый белым:
+// после фотографии 4000x3000 «Создать» давал такой же огромный лист, а после кадрирования
+// до марки - лоскут в полсотни пикселей. В WPF-версии это починено в 1.18.0.
+const DEFAULT_CANVAS_W = 900;
+const DEFAULT_CANVAS_H = 600;
+
 // Инициализация белого фона
 function fillWhite() {
   ctx.fillStyle = 'white';
@@ -1655,11 +1662,22 @@ function schedulePixelPreview(x, y) {
   pixelPreviewPending = true;
   requestAnimationFrame(samplePixelPreview);
 }
+// Курсор ушёл с холста - показывать нечего. Пока последний цвет оставался на месте,
+// он читался как цвет под курсором, которого на холсте уже нет. Координаты в этом
+// случае гаснут прочерком с самого начала, HEX - нет. В WPF-версии это 1.17.0.
+function clearPixelPreview() {
+  pixelPreviewCurrentHex = '#ffffff';
+  const sw = document.getElementById('pixel-swatch');
+  const hx = document.getElementById('pixel-hex');
+  if (sw) sw.style.background = 'transparent';
+  if (hx) hx.textContent = '—';
+}
+
 function samplePixelPreview() {
   pixelPreviewPending = false;
   const x = Math.floor(pixelPreviewLastX);
   const y = Math.floor(pixelPreviewLastY);
-  if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
+  if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) { clearPixelPreview(); return; }
   try {
     const d = ctx.getImageData(x, y, 1, 1).data;
     const hex = '#' + [d[0], d[1], d[2]].map(c => c.toString(16).padStart(2, '0')).join('');
@@ -1681,6 +1699,10 @@ window.addEventListener('DOMContentLoaded', () => {
 // почему нельзя. Здесь собраны все места, где действие законно не делает ничего.
 // Показываем строку, которая гаснет сама через несколько секунд.
 let hintTimer = null;
+
+// Одна формулировка на все рисующие инструменты: разные слова для одной и той же
+// причины читались бы как разные причины.
+const INK_HINT = 'Чернила прозрачные: поднимите ползунок непрозрачности выше нуля.';
 
 function hint(text) {
   const el = document.getElementById('hint');
@@ -1843,6 +1865,10 @@ canvas.addEventListener('mousedown', onDown);
 canvas.addEventListener('mousemove', onMove);
 canvas.addEventListener('mouseup', onUp);
 canvas.addEventListener('mouseleave', onUp);
+canvas.addEventListener('mouseleave', () => {
+  clearPixelPreview();
+  document.getElementById('pos').textContent = '—';
+});
 // mousedown приходит для любой кнопки. Правый клик кистью ставил точку и писал
 // запись в историю, а вместе с ним вылезало системное контекстное меню.
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1936,7 +1962,7 @@ function onDown(e) {
     // Прозрачность в нуле - заливка не положит ни одного пикселя. Молча это выглядит
     // как сломанный инструмент; в WPF-версии то же самое объясняется с 1.20.0.
     if (state.opacity <= 0) {
-      hint('Заливка прозрачная: поднимите ползунок непрозрачности выше нуля.');
+      hint(INK_HINT);
     } else if (floodFill(Math.floor(x), Math.floor(y), state.color)) {
       saveHistory('Заливка');
     }
@@ -2071,6 +2097,9 @@ function onUp(e) {
 
   if (t === 'pencil' || t === 'brush' || t === 'marker') {
     mergePreviewStroke(t);
+    // Ползунок прозрачности начинается с нуля, дотянуть до него - одно движение.
+    // Мазок при этом не кладёт ни одного пикселя, и молча это неотличимо от поломки.
+    if (state.opacity <= 0) hint(INK_HINT);
     saveHistory(t === 'marker' ? 'Маркер' : 'Штрих');
   } else if (t === 'eraser') {
     saveHistory('Ластик');
@@ -2079,6 +2108,7 @@ function onUp(e) {
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     drawShape(previewCtx, t, state.startX, state.startY, x, y);
     mergePreviewStroke(t);
+    if (state.opacity <= 0) hint(INK_HINT);
     saveHistory('Фигура');
   } else if (t === 'select') {
     const sel = normalizeSelection();
@@ -3330,6 +3360,7 @@ function positionTextToolbar() {
 function commitText() {
   if (textEditor.style.display !== 'block') return;
   const text = textEditor.innerText.trim();
+  if (text && state.opacity <= 0) hint(INK_HINT);
   if (text) {
     const fontSize = clampTextSize(document.getElementById('text-size').value);
     const fontFamily = document.getElementById('text-font').value;
@@ -3467,12 +3498,12 @@ function copySelection() {
     pushToSystemClipboard(c);
     return true;
   }
-  if (!state.selection || state.selection.w < 2 || state.selection.h < 2) {
-    hint('Копировать нечего: сначала выделите область инструментом «Выделение» (S).');
-    return false;
-  }
-  const s = state.selection;
-  // Копируем область с холста в отдельный canvas (с прозрачностью)
+  // Без выделения копируется весь холст. Так это устроено в WPF-версии, и там же
+  // разобрано, почему у Ctrl+X ответ другой: вырезать холст целиком нельзя, после
+  // этого не осталось бы документа (1.20.0).
+  const s = (state.selection && state.selection.w >= 2 && state.selection.h >= 2)
+    ? state.selection
+    : { x: 0, y: 0, w: canvas.width, h: canvas.height };
   const c = document.createElement('canvas');
   c.width = Math.round(s.w);
   c.height = Math.round(s.h);
@@ -3492,9 +3523,10 @@ function cutSelection() {
     return;
   }
   if (!state.selection || state.selection.w < 2 || state.selection.h < 2) {
-    // Ctrl+C в том же положении объясняется своими словами, Ctrl+X - своими:
-    // сказать «копировать нечего» на попытку вырезать было бы не про то.
-    hint('Вырезать нечего: сначала выделите область инструментом «Выделение» (S).');
+    // Ctrl+C в том же положении копирует весь холст. Ctrl+X так не может: после этого
+    // не осталось бы документа. Раз одна и та же пара клавиш отвечает по-разному,
+    // разницу надо назвать словами - иначе понять её нельзя.
+    hint('Вырезать холст целиком нельзя: сначала выделите область инструментом «Выделение» (S).');
     return;
   }
   if (!copySelection()) return;
@@ -3520,7 +3552,11 @@ function pasteFromClipboard() {
   c.height = state.clipboard.height;
   c.getContext('2d').drawImage(state.clipboard, 0, 0);
 
-  createFloatingFromCanvas(c, 20, 20);
+  // Отступ от угла показывает, что картинка лежит ПОВЕРХ, а не приклеена. Но на холсте
+  // меньше самого отступа он уносил её за край целиком: Ctrl+V выглядел как ничего не
+  // сделавший, а отмена при этом была нужна. В WPF-версии это починено в 1.19.0.
+  const off = (side) => Math.max(0, Math.min(20, Math.floor(side / 4)));
+  createFloatingFromCanvas(c, off(canvas.width), off(canvas.height));
   return true;
 }
 
@@ -3640,6 +3676,10 @@ async function newCanvas() {
     textToolbar.classList.remove('active');
   }
   hideSelection();
+  if (canvas.width !== DEFAULT_CANVAS_W || canvas.height !== DEFAULT_CANVAS_H) {
+    setCanvasSize(DEFAULT_CANVAS_W, DEFAULT_CANVAS_H);
+    updateCanvasInfo();
+  }
   fillWhite();
   // Новый холст - это уже не тот файл. Забываем путь и здесь, и в main-процессе,
   // иначе Ctrl+S молча перезапишет ранее открытую картинку чистым листом.
@@ -3828,6 +3868,14 @@ function flipV() {
 // «Выделить всё». Одна функция на три вызова: пункт меню, Ctrl+A и действие из
 // main-процесса — раньше это был трижды скопированный кусок, и правки в него
 // приходилось вносить в три места.
+// «Снять выделение»: прижать поднятое и убрать рамку. Проверка на одну только рамку
+// отправляла бы Ctrl+D в никуда, пока объект висит над холстом с ручками.
+function deselect() {
+  if (state.floating) commitFloating();
+  hideSelection();
+  updateOverlays();
+}
+
 function selectAll() {
   document.querySelector('[data-tool="select"]').click();
   commitSelection();
@@ -3864,13 +3912,15 @@ document.addEventListener('keydown', (e) => {
     else if (k === 'y') { e.preventDefault(); redo(); }
     else if (k === 's') { e.preventDefault(); saveCanvas(e.shiftKey); }
     else if (k === 'n') { e.preventDefault(); newCanvas(); }
-    else if (k === 'c') {
-      if ((state.selection || state.floating) && copySelection()) e.preventDefault();
-    }
-    else if (k === 'x') {
-      if (state.selection || state.floating) { e.preventDefault(); cutSelection(); }
-    }
+    // Условия «есть выделение» здесь быть не должно: без выделения Ctrl+C копирует
+    // весь холст, а Ctrl+X объясняет, почему так не может. Пока условие стояло,
+    // обе клавиши в этом положении не делали ничего и молчали.
+    else if (k === 'c') { e.preventDefault(); copySelection(); }
+    else if (k === 'x') { e.preventDefault(); cutSelection(); }
     else if (k === 'a') { e.preventDefault(); selectAll(); }
+    // Снять выделение: закончить с тем, что в руках, и убрать рамку. Одна команда на
+    // оба случая - так же, как MainViewModel.Deselect в WPF-версии.
+    else if (k === 'd') { e.preventDefault(); deselect(); }
     else if (k === '=' || k === '+') { e.preventDefault(); zoomIn(); }
     else if (k === '-' || k === '_') { e.preventDefault(); zoomOut(); }
     else if (k === '0') { e.preventDefault(); zoomReset(); }

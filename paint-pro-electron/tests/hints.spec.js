@@ -5,18 +5,26 @@
 const { test, expect } = require('@playwright/test');
 const { openApp } = require('./harness');
 
-test('копирование без выделения объясняется', async ({ page }) => {
+test('копирование без выделения берёт весь холст и ничего не объясняет', async ({ page }) => {
+  // Так это устроено в WPF-версии: Ctrl+C без выделения копирует холст целиком.
   const app = await openApp(page);
-  await app.page.evaluate(() => copySelection());
-  expect(await app.hintText()).toMatch(/выдел/i);
+  await app.pickTool('pencil');
+  await app.setSize(14);
+  await app.drag(200, 200, 500, 400);
+
+  expect(await app.page.evaluate(() => copySelection())).toBe(true);
+  expect(await app.hintText()).toBe('');
+  expect(await app.page.evaluate(() => [state.clipboard.width, state.clipboard.height]))
+    .toEqual([900, 600]);
 });
 
 test('вырезание без выделения объясняется своими словами', async ({ page }) => {
+  // А вот Ctrl+X так не может: после этого не осталось бы документа.
   const app = await openApp(page);
   await app.page.evaluate(() => cutSelection());
   const text = await app.hintText();
+  expect(text).toMatch(/целиком/i);
   expect(text).toMatch(/выдел/i);
-  expect(text).toMatch(/резать/i);   // «Вырезать нечего», а не «копировать нечего»
 });
 
 test('вставка по пустому буферу объясняется', async ({ page }) => {
@@ -41,6 +49,32 @@ test('заливка прозрачными чернилами объясняе�
   await app.clickAt(450, 300);
   expect(await app.hintText()).toMatch(/прозрачн/i);
   expect((await app.history()).labels.length).toBe(n);
+});
+
+test('штрих прозрачными чернилами объясняется', async ({ page }) => {
+  const app = await openApp(page);
+  await app.pickTool('brush');
+  await app.setOpacity(0);
+  await app.drag(200, 200, 500, 400);
+  expect(await app.hintText()).toMatch(/прозрачн/i);
+});
+
+test('фигура прозрачными чернилами объясняется', async ({ page }) => {
+  const app = await openApp(page);
+  await app.pickTool('rect');
+  await app.setOpacity(0);
+  await app.drag(200, 200, 500, 400);
+  expect(await app.hintText()).toMatch(/прозрачн/i);
+});
+
+test('текст прозрачными чернилами объясняется', async ({ page }) => {
+  const app = await openApp(page);
+  await app.pickTool('text');
+  await app.setOpacity(0);
+  await app.clickAt(300, 300);
+  await app.page.evaluate(() => { textEditor.innerText = 'Привет'; commitText(); });
+  await app.settle();
+  expect(await app.hintText()).toMatch(/прозрачн/i);
 });
 
 test('увеличение, упёршееся в потолок, объясняется', async ({ page }) => {
@@ -108,6 +142,15 @@ test('обычная заливка ничего не объясняет', async
 test('нормальная рамка выделения ничего не объясняет', async ({ page }) => {
   const app = await openApp(page);
   await app.pickTool('select');
+  await app.drag(200, 200, 500, 400);
+  expect(await app.hintText()).toBe('');
+});
+
+test('обычный штрих ничего не объясняет', async ({ page }) => {
+  const app = await openApp(page);
+  await app.pickTool('brush');
+  await app.setOpacity(1);
+  await app.setSize(12);
   await app.drag(200, 200, 500, 400);
   expect(await app.hintText()).toBe('');
 });
