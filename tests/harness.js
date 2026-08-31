@@ -154,6 +154,14 @@ class App {
   async undo() { await this.page.evaluate(() => undo()); await this.settle(); }
   async redo() { await this.page.evaluate(() => redo()); await this.settle(); }
 
+  /** Текст видимой сейчас подсказки про отказ; пустая строка, если её нет. */
+  async hintText() {
+    return this.page.evaluate(() => {
+      const el = document.getElementById('hint');
+      return el && el.classList.contains('visible') ? el.textContent.trim() : '';
+    });
+  }
+
   /** Текущая строка статусбара с подсказкой, если она есть. */
   async statusText() {
     return this.page.evaluate(() => {

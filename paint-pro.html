@@ -816,6 +816,39 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* === Подсказка про отказ ===
+     Действие, которое ничего не сделало, должно сказать почему. Модальное окно для
+     такого слишком много: «в буфере пусто» не заслуживает того, чтобы его закрывали
+     руками. Поэтому строка, которая гаснет сама. В WPF-версии ту же роль играет
+     подсказка в модели представления (1.19.0-1.21.0). */
+  .hint {
+    position: fixed;
+    left: 50%;
+    bottom: 64px;
+    transform: translateX(-50%) translateY(8px);
+    padding: 10px 18px;
+    max-width: 70vw;
+    background: var(--glass-bg-strong, rgba(40, 30, 65, 0.92));
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 60;
+  }
+
+  .hint.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
   /* === Контекстное меню обрезки === */
   .crop-controls {
     position: absolute;
@@ -1485,6 +1518,9 @@
   <button class="zoom-btn" onclick="zoomReset()" title="Сбросить (Ctrl 0)" style="font-size: 11px;">1:1</button>
 </div>
 
+<!-- Подсказка про то, почему действие ничего не сделало -->
+<div class="hint" id="hint" role="status" aria-live="polite"></div>
+
 <!-- Tooltip для отображения размеров при drag -->
 <div class="resize-tooltip" id="resize-tooltip"></div>
 
@@ -1639,6 +1675,21 @@ window.addEventListener('DOMContentLoaded', () => {
   const sw = document.getElementById('pixel-swatch');
   if (sw) sw.addEventListener('click', () => setColor(pixelPreviewCurrentHex));
 });
+
+// ============ ПОДСКАЗКИ ============
+// Отказ без слов - худший вид отказа: пользователь нажал, ничего не произошло, и понять
+// почему нельзя. Здесь собраны все места, где действие законно не делает ничего.
+// Показываем строку, которая гаснет сама через несколько секунд.
+let hintTimer = null;
+
+function hint(text) {
+  const el = document.getElementById('hint');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('visible');
+  if (hintTimer) clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => el.classList.remove('visible'), 3200);
+}
 
 function hexToRgb(hex) {
   const r = parseInt(hex.slice(1,3), 16);
@@ -1882,7 +1933,13 @@ function onDown(e) {
     // залитой этим же цветом), а запись нужна только если пиксели изменились. Пустая
     // включает признак несохранённой работы, и приложение спрашивает про сохранение
     // после действия, которое ничего не сделало. В WPF-версии это починено в 1.7.0.
-    if (floodFill(Math.floor(x), Math.floor(y), state.color)) saveHistory('Заливка');
+    // Прозрачность в нуле - заливка не положит ни одного пикселя. Молча это выглядит
+    // как сломанный инструмент; в WPF-версии то же самое объясняется с 1.20.0.
+    if (state.opacity <= 0) {
+      hint('Заливка прозрачная: поднимите ползунок непрозрачности выше нуля.');
+    } else if (floodFill(Math.floor(x), Math.floor(y), state.color)) {
+      saveHistory('Заливка');
+    }
     state.drawing = false;
   } else if (t === 'picker') {
     // Сэмплим из композита: основной холст + текущий floating сверху. Так
@@ -2031,6 +2088,9 @@ function onUp(e) {
       // так холст не трогается, пока пользователь не начал двигать.
       state.selectionData = ctx.getImageData(sel.x, sel.y, sel.w, sel.h);
     } else {
+      // Нижняя граница у рамки есть, и она разумна. Но пока рамка пропадала молча, это
+      // выглядело так, будто выделение просто не работает.
+      if (sel && (sel.w > 0 || sel.h > 0)) hint('Рамка слишком мала: протяните её шире.');
       hideSelection();
     }
   } else if (t === 'crop') {
@@ -2039,6 +2099,7 @@ function onUp(e) {
       state.cropping = true;
       showCropControls();
     } else {
+      if (sel && (sel.w > 0 || sel.h > 0)) hint('Рамка обрезки слишком мала: протяните её шире.');
       hideSelection();
     }
   } else if (t === 'quad') {
@@ -2063,6 +2124,7 @@ function onUp(e) {
         renderFloating();
       }
     } else {
+      if (sel && (sel.w > 0 || sel.h > 0)) hint('Для полигона нужна рамка не меньше 20 на 20 пикселей.');
       hideSelection();
     }
   }
@@ -3405,7 +3467,10 @@ function copySelection() {
     pushToSystemClipboard(c);
     return true;
   }
-  if (!state.selection || state.selection.w < 2 || state.selection.h < 2) return false;
+  if (!state.selection || state.selection.w < 2 || state.selection.h < 2) {
+    hint('Копировать нечего: сначала выделите область инструментом «Выделение» (S).');
+    return false;
+  }
   const s = state.selection;
   // Копируем область с холста в отдельный canvas (с прозрачностью)
   const c = document.createElement('canvas');
@@ -3426,6 +3491,12 @@ function cutSelection() {
     if (deleteFloating()) saveHistory('Вырезание');
     return;
   }
+  if (!state.selection || state.selection.w < 2 || state.selection.h < 2) {
+    // Ctrl+C в том же положении объясняется своими словами, Ctrl+X - своими:
+    // сказать «копировать нечего» на попытку вырезать было бы не про то.
+    hint('Вырезать нечего: сначала выделите область инструментом «Выделение» (S).');
+    return;
+  }
   if (!copySelection()) return;
   const s = state.selection;
   // Очищаем область - прозрачность
@@ -3439,7 +3510,10 @@ function cutSelection() {
 
 // Вставка из внутреннего буфера
 function pasteFromClipboard() {
-  if (!state.clipboard) return false;
+  if (!state.clipboard) {
+    hint('В буфере пусто: сначала скопируйте область (Ctrl+C) или вырежьте её (Ctrl+X).');
+    return false;
+  }
   // Создаём копию, чтобы можно было вставлять многократно
   const c = document.createElement('canvas');
   c.width = state.clipboard.width;
@@ -3828,6 +3902,8 @@ document.addEventListener('keydown', (e) => {
         }));
       }
       renderFloating();
+    } else {
+      hint('Поворот «[» и «]» работает по поднятому объекту: выделите область и щёлкните внутрь.');
     }
   }
   if (e.key === 'Delete') {
@@ -3842,7 +3918,11 @@ document.addEventListener('keydown', (e) => {
       ctx.fillStyle = 'white';
       ctx.fillRect(state.selection.x, state.selection.y, state.selection.w, state.selection.h);
       hideSelection();
+      // Стирание по нетронутой бумаге ничего не меняет - saveHistory сам такую запись
+      // отбросит, а признак несохранённой работы не включится.
       saveHistory('Удаление');
+    } else {
+      hint('Удалять нечего: сначала выделите область инструментом «Выделение» (S).');
     }
   }
   if (e.key === 'Escape') {
@@ -4093,14 +4173,19 @@ function applyZoom() {
 function zoomIn() {
   const cur = state.zoom;
   const next = ZOOM_STEPS.find(s => s > cur + 0.001);
-  if (next) { state.zoom = next; applyZoom(); }
+  // Кнопка нажимается, а ничего не происходит - это выглядит поломкой, хотя это потолок.
+  if (!next) { hint('Больше увеличить нельзя: это предел масштаба.'); return; }
+  state.zoom = next;
+  applyZoom();
 }
 
 function zoomOut() {
   const cur = state.zoom;
   const reversed = [...ZOOM_STEPS].reverse();
   const next = reversed.find(s => s < cur - 0.001);
-  if (next) { state.zoom = next; applyZoom(); }
+  if (!next) { hint('Меньше уменьшить нельзя: это предел масштаба.'); return; }
+  state.zoom = next;
+  applyZoom();
 }
 
 function zoomReset() {
