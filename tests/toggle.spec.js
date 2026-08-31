@@ -235,3 +235,188 @@ test('щелчок по галочке не перегоняет докумен�
   await app.settle();
   expect((await app.history()).index, 'галочка увела курсор ленты').toBe(idx);
 });
+
+// ─────────── Края и взаимодействия ───────────
+
+// ─── Край: базового снимка в ленте не осталось ───
+test('выключение первой записи, когда снимка выше неё нет', async ({ page }) => {
+  const app = await openApp(page);
+  await stroke(app, '#ff0000', 200);
+  await stroke(app, '#0000ff', 400);
+  // Выбрасываем «Исходное состояние»: ровно так поступает переполнение ленты.
+  await app.page.evaluate(() => {
+    state.history.shift();
+    state.historyIndex--;
+    state.savedHistoryIndex--;
+    renderHistoryPanel();
+  });
+  const can = await app.page.evaluate(() => canToggleEntry(0));
+  if (!can) return;                       // отказали - это честно
+  const before = await app.fingerprint();
+  await toggle(app, 0, false);
+  expect(await app.fingerprint(), 'галочку дали, а выключение ничего не сделало').not.toBe(before);
+});
+
+// ─── Выключатель и ходьба по ленте ───
+test('новая правка после выключения отрезает хвост корректно', async ({ page }) => {
+  const app = await openApp(page);
+  await stroke(app, '#ff0000', 150);
+  await stroke(app, '#00aa00', 300);
+  await stroke(app, '#0000ff', 450);
+  await toggle(app, 2, false);
+
+  await app.undo();
+  await stroke(app, '#000000', 520);
+  const h = await app.history();
+  expect(h.index).toBe(h.labels.length - 1);
+  // Выключенная запись стояла ВЫШЕ курсора, в отрезаемый хвост она не попадала и
+  // законно осталась выключенной. А новая запись обязана быть включённой.
+  const st = await app.page.evaluate(() => ({
+    offs: state.history.map((e, i) => (e.enabled === false ? i : -1)).filter((i) => i >= 0),
+    lastEnabled: state.history[state.history.length - 1].enabled !== false,
+  }));
+  expect(st.offs, JSON.stringify({ h, st })).toEqual([2]);
+  expect(st.lastEnabled).toBe(true);
+
+  // И включить старую запись обратно должно быть можно: то, что после неё, тоже
+  // складывающееся.
+  const before = await app.fingerprint();
+  await toggle(app, 2, true);
+  expect(await app.fingerprint(), 'вернуть выключенную правку не вышло').not.toBe(before);
+});
+
+test('выключение при курсоре не в конце ленты', async ({ page }) => {
+  const app = await openApp(page);
+  await stroke(app, '#ff0000', 150);
+  await stroke(app, '#00aa00', 300);
+  await stroke(app, '#0000ff', 450);
+  await app.undo();                       // курсор на втором штрихе
+  const here = await app.fingerprint();
+  const idx = (await app.history()).index;
+
+  await toggle(app, 1, false);
+  expect((await app.history()).index, 'курсор уехал').toBe(idx);
+  expect(await app.fingerprint()).not.toBe(here);
+
+  await toggle(app, 1, true);
+  expect(await app.fingerprint(), 'возврат галочки не восстановил вид').toBe(here);
+});
+
+test('повтор после выключения даёт кадр с учётом выключенного', async ({ page }) => {
+  const app = await openApp(page);
+  await stroke(app, '#ff0000', 150);
+  await stroke(app, '#00aa00', 300);
+  await stroke(app, '#0000ff', 450);
+  await toggle(app, 1, false);
+  const end = await app.fingerprint();
+
+  await app.undo();
+  await app.undo();
+  await app.redo();
+  await app.redo();
+  expect(await app.fingerprint()).toBe(end);
+});
+
+// ─── Выключатель и слои ───
+test('выключение штриха на верхнем слое не трогает бумагу', async ({ page }) => {
+  const app = await openApp(page);
+  await app.page.evaluate(() => {
+    const g = lctx();
+    g.fillStyle = '#ff0000';
+    g.fillRect(0, 0, 900, 600);
+    composite();
+    saveHistory('Заливка слоя');
+    addLayer();
+  });
+  await app.settle();
+  await stroke(app, '#000000', 300);
+  expect(isWhite(await app.pixel(450, 300))).toBe(false);
+
+  const can = await app.page.evaluate(() =>
+    state.history.map((e, i) => (canToggleEntry(i) ? i : -1)).filter((i) => i >= 0));
+  expect(can.length, 'выключаемых записей нет').toBeGreaterThan(0);
+  await toggle(app, can[can.length - 1], false);
+  expect(isNear(await app.pixel(450, 300), 255, 0, 0), 'под выключенным штрихом не бумага').toBe(true);
+});
+
+test('добавление слоя отнимает галочку у того, что выше', async ({ page }) => {
+  const app = await openApp(page);
+  await stroke(app, '#ff0000', 200);
+  expect(await app.page.evaluate(() => canToggleEntry(1))).toBe(true);
+  await app.page.evaluate(() => addLayer());
+  await app.settle();
+  expect(await app.page.evaluate(() => canToggleEntry(1)),
+    'добавление слоя кладёт снимок и обязано отнять галочку').toBe(false);
+});
+
+// ─── Выключатель и плавающий объект ───
+test('прижатие поднятого отнимает галочку у того, что выше', async ({ page }) => {
+  const app = await openApp(page);
+  await stroke(app, '#ff0000', 300);
+  await app.pickTool('select');
+  await app.drag(150, 250, 750, 350);
+  await app.clickAt(400, 300);
+  await app.drag(400, 300, 500, 450);
+  await page.keyboard.press('Enter');
+  await app.settle();
+  expect(await app.page.evaluate(() => canToggleEntry(1)),
+    'прижатие кладёт готовый снимок').toBe(false);
+});
+
+// ─── Потолок: пересборка длинной ленты ───
+test('пересборка ленты в две дюжины записей проходит без расхождений', async ({ page }) => {
+  test.setTimeout(600000);
+  const app = await openApp(page);
+  for (let i = 0; i < 25; i++) {
+    await app.page.evaluate((k) => {
+      const id = activeLayer().id;
+      const x = (k * 31) % 800;
+      const y = (k * 17) % 500;
+      const g = lctx();
+      const saved = { color: state.color, size: state.size, fillMode: state.fillMode };
+      state.color = '#000000';
+      state.size = 1;
+      state.fillMode = 'solid';
+      drawShape(g, 'rect', x, y, x + 6, y + 6);
+      state.color = saved.color;
+      state.size = saved.size;
+      state.fillMode = saved.fillMode;
+      composite();
+      saveHistory('Фигура', {
+        kind: 'shape', tool: 'rect', x0: x, y0: y, x1: x + 6, y1: y + 6,
+        color: '#000000', size: 1, opacity: 1, fillMode: 'solid', layerId: id
+      });
+    }, i);
+  }
+  const before = await app.fingerprint();
+  await app.page.evaluate(() => rebuildTimeline());
+  await app.settle();
+  expect(await app.fingerprint(), 'пересборка без выключений изменила документ').toBe(before);
+});
+
+// ─── Сохранение и выключатель ───
+test('сохранение запоминает и набор выключенных', async ({ page }) => {
+  const app = await openApp(page);
+  await stroke(app, '#ff0000', 200);
+  await stroke(app, '#0000ff', 400);
+  await toggle(app, 1, false);
+  await app.page.evaluate(() => {
+    state.savedHistoryIndex = state.historyIndex;
+    state.savedDisabledKey = disabledKey();
+  });
+  expect(await app.isDirty()).toBe(false);
+
+  await toggle(app, 1, true);
+  expect(await app.isDirty(), 'вернули правку, а документ считается прежним').toBe(true);
+});
+
+// ─── Выключенная правка и сохраняемая картинка ───
+test('выключенная правка не попадает в сохраняемую картинку', async ({ page }) => {
+  const app = await openApp(page);
+  await stroke(app, '#ff0000', 200);
+  await stroke(app, '#0000ff', 400);
+  await toggle(app, 1, false);
+  const url = await app.page.evaluate(() => canvas.toDataURL());
+  expect(url).toBe(await app.fingerprint());
+  expect(isWhite(await app.pixel(450, 200)), 'выключенная правка попала в картинку').toBe(true);
+});
