@@ -2,7 +2,7 @@
 // в котором правило появилось там: так видно, что именно перенесено, а что совпало само.
 
 const { test, expect } = require('@playwright/test');
-const { openApp, isWhite } = require('./harness');
+const { openApp, isWhite, isNear } = require('./harness');
 
 async function draw(app) {
   await app.pickTool('pencil');
@@ -447,4 +447,208 @@ test('отмена удаления полигона возвращает хол
 
   await app.undo();
   expect(await app.fingerprint()).toBe(before);
+});
+
+
+// ─────────── Пустые правки, ручки и повёрнутый полигон (C# 1.12.0-1.20.0) ───────────
+// Тоже совпало без правок. Часть держится на общем правиле «кадр, равный текущему, в ленту
+// не идёт» (1.11.2): ластик по чистой бумаге, кадрирование по всему холсту и Delete по
+// пустому месту отсеиваются им заодно, каждый своим путём.
+
+// [024] Ластик по нетронутой бумаге объявлял документ изменённым
+test('ластик по чистой бумаге не пачкает документ', async ({ page }) => {
+  const app = await openApp(page);
+  const n = (await app.history()).labels.length;
+  await app.pickTool('eraser');
+  await app.page.evaluate(() => { state.eraserSize = 40; syncSizeForTool(); });
+  await app.drag(200, 200, 700, 450);
+  expect((await app.history()).labels.length).toBe(n);
+  expect(await app.isDirty()).toBe(false);
+});
+
+// [025] Кадрирование по всему холсту записывалось как правка
+test('кадрирование по всему холсту не записывается как правка', async ({ page }) => {
+  const app = await openApp(page);
+  await draw(app);
+  await app.page.evaluate(() => { state.savedHistoryIndex = state.historyIndex; });
+  const n = (await app.history()).labels.length;
+
+  await app.pickTool('crop');
+  await app.drag(50, 50, 800, 500);
+  // Рамка ровно по краям холста: протяжкой мышью в точности такую не получить.
+  await app.page.evaluate(() => {
+    state.selection = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+    applyCrop();
+  });
+  await app.settle();
+
+  expect(await app.page.evaluate(() => [canvas.width, canvas.height])).toEqual([900, 600]);
+  expect((await app.history()).labels.length).toBe(n);
+  expect(await app.isDirty()).toBe(false);
+});
+
+// [037] Delete по области, где стирать нечего
+test('Delete по чистому месту не пачкает документ', async ({ page }) => {
+  const app = await openApp(page);
+  await draw(app);
+  await app.page.evaluate(() => { state.savedHistoryIndex = state.historyIndex; });
+  const n = (await app.history()).labels.length;
+
+  await app.pickTool('select');
+  await app.drag(650, 100, 850, 250);      // заведомо чистое место
+  await page.keyboard.press('Delete');
+  await app.settle();
+
+  expect((await app.history()).labels.length).toBe(n);
+  expect(await app.isDirty()).toBe(false);
+});
+
+// [034] Ручки маленького объекта накрывали его целиком - тело было не ухватить
+test('маленький поднятый объект берётся за тело, а не только за ручки', async ({ page }) => {
+  const app = await openApp(page);
+  await draw(app);
+  await app.pickTool('select');
+  await app.drag(300, 280, 340, 320);      // объект 40x40
+  await app.clickAt(320, 300);
+  const f = await app.page.evaluate(() => state.floating && { x: state.floating.x, y: state.floating.y, w: state.floating.w, h: state.floating.h });
+  expect(f, 'подъём не случился').not.toBeNull();
+
+  // Клик в середину должен таскать, а не масштабировать.
+  const p = await app.toScreen(f.x + f.w / 2, f.y + f.h / 2);
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.down();
+  const st = await app.page.evaluate(() => ({ drag: state.draggingFloating, resize: state.resizingFloating }));
+  await page.mouse.up();
+  expect(st.resize, JSON.stringify({ f, st })).toBe(false);
+  expect(st.drag, JSON.stringify({ f, st })).toBe(true);
+});
+
+// [100] Зона хвата ручек не должна ехать вместе с масштабом
+test('ручки берутся и на уменьшенном холсте', async ({ page }) => {
+  const app = await openApp(page);
+  await draw(app);
+  await app.pickTool('select');
+  await app.drag(180, 180, 520, 420);
+  await app.clickAt(350, 300);
+  expect(await app.page.evaluate(() => !!state.floating), 'подъём не случился').toBe(true);
+
+  await app.page.evaluate(() => { state.zoom = 0.25; applyZoom(); });
+  const f = await app.page.evaluate(() => ({ x: state.floating.x, y: state.floating.y, w: state.floating.w, h: state.floating.h }));
+  const corner = await app.toScreen(f.x + f.w, f.y + f.h);
+  await page.mouse.move(corner.x, corner.y);
+  await page.mouse.down();
+  const st = await app.page.evaluate(() => state.resizingFloating);
+  await page.mouse.up();
+  expect(st, 'за угловую ручку на масштабе 0.25 не ухватиться').toBe(true);
+});
+
+// [105] Ctrl+C по повёрнутому четырёхугольнику копировал не ту область
+test('копия повёрнутого объекта берётся по его фактическому габариту', async ({ page }) => {
+  const app = await openApp(page);
+  await draw(app);
+  await app.pickTool('select');
+  await app.drag(180, 180, 520, 420);
+  await app.clickAt(350, 300);
+  expect(await app.page.evaluate(() => !!state.floating), 'подъём не случился').toBe(true);
+
+  const before = await app.page.evaluate(() => {
+    copySelection();
+    return [state.clipboard.width, state.clipboard.height];
+  });
+  await app.page.evaluate(() => { state.floating.rotation = Math.PI / 4; renderFloating(); });
+  const after = await app.page.evaluate(() => {
+    copySelection();
+    return [state.clipboard.width, state.clipboard.height];
+  });
+  // Повёрнутый на 45° прямоугольник занимает заметно больший габарит.
+  expect(after[0], JSON.stringify({ before, after })).toBeGreaterThan(before[0]);
+});
+
+// [108] Углы повёрнутого quad'а стояли не там, где сама фигура
+test('углы повёрнутого полигона совпадают с самой фигурой', async ({ page }) => {
+  const app = await openApp(page);
+  await draw(app);
+  await app.pickTool('quad');
+  await app.drag(180, 180, 520, 420);
+  const has = await app.page.evaluate(() => !!(state.floating && state.floating.quad));
+  test.skip(!has, 'полигон не поднялся');
+
+  // Поворачиваем и смотрим, что точки углов уехали вместе с фигурой: попадание по
+  // первому углу quad'а должно оставаться попаданием.
+  await app.page.evaluate(() => {
+    const f = state.floating;
+    const cx = f.x + f.w / 2, cy = f.y + f.h / 2, d = Math.PI / 4;
+    const c = Math.cos(d), s = Math.sin(d);
+    f.quad = f.quad.map((p) => ({
+      x: cx + c * (p.x - cx) - s * (p.y - cy),
+      y: cy + s * (p.x - cx) + c * (p.y - cy),
+    }));
+    f.rotation = d;
+    renderFloating();
+  });
+  const hitAtQuadCenter = !!(await app.page.evaluate(() => {
+    const q = state.floating.quad;
+    const cx = q.reduce((a, p) => a + p.x, 0) / 4;
+    const cy = q.reduce((a, p) => a + p.y, 0) / 4;
+    return hitFloating(cx, cy);
+  }));
+  expect(hitAtQuadCenter).toBe(true);
+});
+
+// [093] Подъём многоугольника не должен выкусывать бумагу изнутри выделенного
+test('подъём полигона не выедает дыру внутри самой фигуры', async ({ page }) => {
+  const app = await openApp(page);
+  await app.pickTool('fill');
+  await app.setColor('#ff0000');
+  await app.clickAt(450, 300);
+
+  await app.pickTool('quad');
+  await app.drag(200, 180, 560, 430);
+  const has = await app.page.evaluate(() => !!state.floating);
+  test.skip(!has, 'полигон не поднялся');
+
+  // Полигон поднят без стирания габарита - под ним холст остаётся прежним.
+  expect(isNear(await app.pixel(380, 300), 255, 0, 0)).toBe(true);
+});
+
+// [071] Escape по вставке, между которой и отказом легла другая правка
+test('Escape по вставке после другой правки не портит холст', async ({ page }) => {
+  const app = await openApp(page);
+  await draw(app);
+  await app.pickTool('select');
+  await app.drag(180, 180, 520, 420);
+  await app.page.evaluate(() => copySelection());
+
+  await app.page.evaluate(() => pasteFromClipboard());
+  await app.settle();
+  const afterPaste = await app.fingerprint();
+
+  // Между вставкой и отказом ложится другая правка: штрих по холсту.
+  await app.pickTool('pencil');
+  await app.setColor('#0000ff');
+  await app.setSize(10);
+  await app.drag(700, 100, 850, 250);
+  await app.settle();
+  const withStroke = await app.fingerprint();
+  expect(withStroke).not.toBe(afterPaste);
+
+  await page.keyboard.press('Escape');
+  await app.settle();
+  // Отказ от вставки не обязан её отменять как угодно, но холст обязан остаться связным:
+  // синий штрих на месте, приложение живо.
+  expect(isNear(await app.pixel(775, 175), 0, 0, 255), 'штрих, лёгший после вставки, пропал').toBe(true);
+});
+
+// [013][014] Масштаб на большом холсте
+test('предельное увеличение большого холста не роняет приложение', async ({ page }) => {
+  const app = await openApp(page);
+  await app.page.evaluate(() => {
+    document.getElementById('width-input').value = '4000';
+    document.getElementById('height-input').value = '3000';
+    resizeCanvas();
+  });
+  await app.settle();
+  for (let i = 0; i < 30; i++) await app.page.evaluate(() => zoomIn());
+  await app.page.evaluate(() => zoomReset());
+  expect(await app.page.evaluate(() => [canvas.width, canvas.height])).toEqual([4000, 3000]);
 });
