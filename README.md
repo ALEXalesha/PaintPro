@@ -44,8 +44,8 @@
 - `paint-pro-electron/` — исходная Electron-версия, живёт параллельно и
   поддерживается. Её устройство и грабли: `paint-pro-electron/README.md` и
   `paint-pro-electron/DEV_CONTEXT.md`. Историю обеих версий ведёт общий
-  `CHANGELOG.md`; C#-версия — 1.23.0, Electron-версия — 1.11.4. У Electron-версии
-  с 1.11.2 есть свои проверки: `paint-pro-electron/tests/` на Playwright, 133 штуки,
+  `CHANGELOG.md`; C#-версия — 1.23.0, Electron-версия — 1.11.5. У Electron-версии
+  с 1.11.2 есть свои проверки: `paint-pro-electron/tests/` на Playwright, 135 штук,
   запуск `npm test` в её папке. Синхронизация версий упирается в две архитектурные
   вещи: слоёв в Electron нет вовсе (23 правки C#-выпусков — про них), а лента отмен
   там хранит целые PNG-кадры, а не команды с диффами (поэтому выключателя правки

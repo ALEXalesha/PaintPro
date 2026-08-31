@@ -652,3 +652,50 @@ test('предельное увеличение большого холста н
   await app.page.evaluate(() => zoomReset());
   expect(await app.page.evaluate(() => [canvas.width, canvas.height])).toEqual([4000, 3000]);
 });
+
+// ─────────── Вставка идёт двумя путями, и оба должны вести себя одинаково ───────────
+// Проверять функцию вместо пути пользователя - значит проверять не то: Ctrl+V приходит
+// событием paste, и до pasteFromClipboard доходит только когда в системном буфере нет
+// картинки. Первая версия этой проверки звала функцию напрямую и мимо этого прошла.
+
+test('Ctrl+V событием paste по пустому буферу объясняется', async ({ page }) => {
+  const app = await openApp(page);
+  await app.page.evaluate(() => {
+    const dt = new DataTransfer();
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+  });
+  await app.page.waitForTimeout(80);
+  expect(await app.hintText()).toMatch(/буфер/i);
+});
+
+test('картинка из системного буфера кладётся с тем же отступом, что и своя', async ({ page }) => {
+  const app = await openApp(page);
+  await app.page.evaluate(() => {
+    document.getElementById('width-input').value = '15';
+    document.getElementById('height-input').value = '15';
+    resizeCanvas();
+  });
+  await app.settle();
+
+  // Тот же путь, каким идёт картинка из системного буфера.
+  await app.page.evaluate(async () => {
+    const c = document.createElement('canvas');
+    c.width = 40; c.height = 40;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ff0000';
+    g.fillRect(0, 0, 40, 40);
+    await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        createFloatingFromImage(img, pasteOffset(canvas.width), pasteOffset(canvas.height));
+        resolve();
+      };
+      img.src = c.toDataURL();
+    });
+  });
+  await app.settle();
+  const f = await app.page.evaluate(() => state.floating && { x: state.floating.x, y: state.floating.y });
+  expect(f, 'вставка не случилась').not.toBeNull();
+  expect(f.x, JSON.stringify(f)).toBeLessThan(15);
+  expect(f.y, JSON.stringify(f)).toBeLessThan(15);
+});
