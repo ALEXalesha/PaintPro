@@ -1739,6 +1739,10 @@ let state = {
   quadPhase: 'idle' // 'idle' | 'drawing' | 'warping'
 };
 
+// Стойкий номер записи ленты. Место в ленте не годится: переполнение выбрасывает начало,
+// и все места съезжают - см. disabledKey().
+let historySeq = 0;
+
 // Глубина истории отмен. Снимки — полные PNG холста, поэтому не задираем до тысяч,
 // но 150 шагов — это «намного длиннее» прежних 50.
 const MAX_HISTORY = 150;
@@ -1891,7 +1895,10 @@ function setActiveLayer(index) {
   if (index < 0 || index >= state.layers.length || index === state.activeLayer) return;
   // Жест начинается на одном слое, а исполняется на отпускании: если слой сменить
   // посреди штриха, краска ушла бы не туда, где её начали класть.
-  if (state.drawing) return;
+  if (state.drawing) {
+    hint('Слой не меняется посреди жеста: отпустите кнопку мыши.');
+    return;
+  }
   if (state.floating) commitFloating();
   state.activeLayer = index;
   // Смена слоя - не правка документа, записи в ленте ей делать нечего. Но позиция, на
@@ -1931,7 +1938,10 @@ function setLayerOpacity(index, opacity) {
 function moveLayer(index, delta) {
   const to = index + delta;
   if (index <= 0 || to <= 0 || index >= state.layers.length || to >= state.layers.length) {
+    // Отказ обязан назвать причину: их две, и они разные. Без слов кнопка выглядит
+    // сломанной, а не упёршейся в край.
     if (index === 0 || to === 0) hint('Бумага документа всегда лежит снизу.');
+    else hint('Слой уже с краю стопки: двигать его дальше некуда.');
     return false;
   }
   if (state.floating) commitFloating();
@@ -2223,6 +2233,10 @@ window.addEventListener('DOMContentLoaded', () => {
 // Отказ без слов - худший вид отказа: пользователь нажал, ничего не произошло, и понять
 // почему нельзя. Здесь собраны все места, где действие законно не делает ничего.
 // Показываем строку, которая гаснет сама через несколько секунд.
+// Очередь операций над лентой: пересборка и восстановление кадра не должны идти
+// вперемешку - обе перекладывают стопку слоёв.
+let timelineChain = Promise.resolve();
+
 let hintTimer = null;
 
 // Одна формулировка на все рисующие инструменты: разные слова для одной и той же
@@ -3081,6 +3095,12 @@ function clampCanvasSize(w, h) {
 // оказывается растянутой в старую рамку. Поэтому applyZoom() здесь обязателен,
 // и звать его руками на каждом вызывающем месте больше не нужно.
 function setCanvasSize(w, h) {
+  // Проверка размера стояла в диалоге и в ручке, а здесь - нигде: любой новый вызов
+  // повторил бы ошибку заново. Вырожденный размер оставляет холсты слоёв нулевыми, и
+  // дальше падает КАЖДАЯ операция - приложение не чинится ничем, кроме перезапуска.
+  w = Math.round(Number(w));
+  h = Math.round(Number(h));
+  if (!isFinite(w) || !isFinite(h) || w < 1 || h < 1) return false;
   canvas.width = w;
   canvas.height = h;
   previewCanvas.width = w;
@@ -3096,6 +3116,7 @@ function setCanvasSize(w, h) {
     }
   }
   applyZoom();
+  return true;
 }
 
 function applyCrop() {
@@ -3355,6 +3376,8 @@ function saveHistory(label, replay) {
   if (state.savedHistoryIndex > state.historyIndex) state.savedHistoryIndex = -1;
   state.history = state.history.slice(0, state.historyIndex + 1);
   state.history.push({
+    // Стойкий номер записи: место в ленте съезжает при переполнении, он - нет.
+    seq: ++historySeq,
     url,
     key,
     label: label || 'Изменение',
@@ -3402,6 +3425,15 @@ function saveHistory(label, replay) {
 function canToggleEntry(i) {
   const e = state.history[i];
   if (!e || !e.replay) return false;
+  // Пересборка начинается с последнего снимка ВЫШЕ записи и проигрывает всё, что ниже.
+  // Если такого снимка нет - а его не остаётся, когда переполнение ленты выбрасывает
+  // начало, - базой пришлось бы взять саму эту запись, то есть состояние УЖЕ с ней.
+  // Пропустить её тогда нельзя, и галочка обещала бы несбыточное.
+  let hasBase = false;
+  for (let j = 0; j < i; j++) {
+    if (!state.history[j].replay) { hasBase = true; break; }
+  }
+  if (!hasBase) return false;
   for (let j = i + 1; j < state.history.length; j++) {
     if (!state.history[j].replay) return false;
   }
@@ -3416,6 +3448,14 @@ function whyNoToggle(i) {
     return 'Эта правка кладёт готовый снимок холста, а не складывается с ним: '
          + 'пропустить её при пересборке нельзя.';
   }
+  let hasBase = false;
+  for (let j = 0; j < i; j++) {
+    if (!state.history[j].replay) { hasBase = true; break; }
+  }
+  if (!hasBase) {
+    return 'Начало ленты уже забыто: состояния до этой правки не осталось, '
+         + 'и пересобрать документ без неё нечем.';
+  }
   return 'Ниже есть правка, кладущая готовый снимок холста: она перекрыла бы результат.';
 }
 
@@ -3428,13 +3468,19 @@ function whyNoToggle(i) {
  * В WPF-версии тому же служит IDocumentCommand.ForgetBefore.
  */
 async function rebuildTimeline() {
-  const cursor = state.historyIndex;
+  // Пересборка и восстановление кадра оба перекладывают стопку слоёв, и вперемешку они
+  // портят друг друга: отмена посреди пересборки оставляла на холсте кадр, на котором
+  // курсор уже не стоит. Поэтому очередь: следующая операция ждёт предыдущую.
+  timelineChain = timelineChain.then(doRebuildTimeline, doRebuildTimeline);
+  return timelineChain;
+}
+
+async function doRebuildTimeline() {
   let base = 0;
-  for (let i = cursor; i >= 0; i--) {
+  for (let i = state.historyIndex; i >= 0; i--) {
     if (!state.history[i].replay) { base = i; break; }
   }
   state.restoring = true;
-  const generation = ++restoreGeneration;
   await applyStack(state.history[base]);
   for (let i = base + 1; i < state.history.length; i++) {
     const e = state.history[i];
@@ -3446,7 +3492,10 @@ async function rebuildTimeline() {
     e.w = canvas.width;
     e.h = canvas.height;
   }
-  await applyStack(state.history[cursor]);
+  // Курсор читаем ЗАНОВО: пока шла пересборка, его могли увести отменой, и показать
+  // надо тот кадр, на котором он стоит сейчас.
+  const generation = ++restoreGeneration;
+  await applyStack(state.history[state.historyIndex]);
   if (generation === restoreGeneration) state.restoring = false;
   renderHistoryPanel();
 }
@@ -3470,9 +3519,15 @@ function toggleEntry(i) {
   setEntryEnabled(i, e.enabled === false);
 }
 
-/** Отпечаток набора выключенных записей: он тоже меняет картинку. */
+/**
+ * Отпечаток набора выключенных записей: он тоже меняет картинку.
+ *
+ * Считается по СТОЙКОМУ номеру записи, а не по её месту в ленте. Переполнение выбрасывает
+ * начало ленты, и все места съезжают: отпечаток по местам менялся сам собой, и сохранённый
+ * документ объявлялся изменённым без единого действия пользователя.
+ */
 function disabledKey() {
-  return state.history.map((e, i) => (e.enabled === false ? i : '')).filter(Boolean).join(',');
+  return state.history.filter((e) => e.enabled === false).map((e) => e.seq).join(',');
 }
 
 function undo() {
@@ -3576,7 +3631,7 @@ function restoreHistory() {
   const generation = ++restoreGeneration;
   state.restoring = true;
   const entry = state.history[state.historyIndex];
-  restorePending = new Promise((resolve) => {
+  restorePending = timelineChain.then(() => new Promise((resolve) => {
     // Флаг снимает только самый свежий запрос: кадр, который успели обогнать, никого
     // уже не интересует, а снятый им флаг открыл бы холст посреди следующего кадра.
     const finish = () => {
@@ -3586,10 +3641,10 @@ function restoreHistory() {
     if (!entry || !entry.layers) { finish(); return; }
 
     applyStack(entry).then(() => {
-      if (generation !== restoreGeneration) { finish(); return; }
       finish();
     });
-  });
+  }));
+  timelineChain = restorePending.catch(() => {});
   return restorePending;
 }
 
@@ -3692,6 +3747,10 @@ function keyOutWhite(cnv, tol) {
 function promoteSelectionToFloating(opts) {
   opts = opts || {};
   const eraseBbox = opts.eraseBbox !== false;
+  // Подъём ВЫКУСЫВАЕТ пиксели из слоя - то же самое, что делает стирание, и проверка на
+  // видимость ему нужна та же. Без неё скрытый слой менялся молча: на экране не двигалось
+  // ничего, а дыра в нём оставалась.
+  if (!canDrawOnActiveLayer()) return null;
   if (!state.selection) return null;
   const s = state.selection;
   if (s.w < 2 || s.h < 2) return null;
