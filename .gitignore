@@ -47,3 +47,7 @@ paint-pro-electron.zip
 
 # Local tooling state
 .remember/
+
+# Playwright (Electron-версия)
+paint-pro-electron/test-results/
+paint-pro-electron/playwright-report/
