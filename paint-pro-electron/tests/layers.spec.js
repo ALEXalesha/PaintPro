@@ -428,3 +428,193 @@ test('панель переживает отмену', async ({ page }) => {
   await app.undo();
   expect((await panelRows(app)).length).toBe(1);
 });
+
+// ─────────── Многослойная семантика (правила C# 1.12.0-1.20.0) ───────────
+// Номер в скобках - пункт C#-выпуска, из которого правило взято.
+
+// [066] Штрих ложится на слой, активный на ОТПУСКАНИИ, а не на нажатии
+test('слой, сменённый посреди штриха, не уводит краску', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);                       // активен 1
+  await app.pickTool('pencil');
+  await app.setColor('#000000');
+  await app.setSize(20);
+
+  const a = await app.toScreen(200, 300);
+  const b = await app.toScreen(700, 300);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  // Слой меняют посреди жеста - панель под рукой всё это время.
+  await app.page.evaluate(() => { state.activeLayer = 0; });
+  await page.mouse.up();
+  await app.settle();
+
+  const ink = await app.page.evaluate(() => state.layers.map((l) => {
+    const d = l.canvas.getContext('2d').getImageData(450, 300, 1, 1).data;
+    return d[3] > 0 && d[0] < 100;
+  }));
+  expect(ink[1], 'краска должна лечь туда, где жест начался').toBe(true);
+  expect(ink[0], 'краска ушла в чужой слой').toBe(false);
+});
+
+// [111] Превью рисуется поверх ВСЕХ слоёв
+test('превью штриха по нижнему слою не лежит поверх верхнего', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  await paintLayer(app, '#0000ff');           // верхний слой сплошь синий
+  await app.page.evaluate(() => setActiveLayer(0));
+
+  await app.pickTool('pencil');
+  await app.setColor('#ff0000');
+  await app.setSize(30);
+  const a = await app.toScreen(200, 300);
+  const b = await app.toScreen(700, 300);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  // Пока кнопка не отпущена, штрих по бумаге НЕ должен быть виден: сверху сплошной слой.
+  // Читаем ровно то, что видит пользователь: сборку. Отдельный холст превью на время
+  // мазка спрятан, и складывать его сюда ещё раз значило бы мерить не то.
+  const during = await app.page.evaluate(() => ({
+    pixel: Array.from(ctx.getImageData(450, 300, 1, 1).data),
+    previewHidden: getComputedStyle(previewCanvas).visibility === 'hidden',
+  }));
+  await page.mouse.up();
+  await app.settle();
+  expect(during.previewHidden, 'отдельный холст превью не спрятан').toBe(true);
+  expect(isNear(during.pixel, 0, 0, 255), 'превью вылезло поверх верхнего слоя: ' + JSON.stringify(during)).toBe(true);
+});
+
+// [095] Вставка на скрытый слой
+test('вставка на скрытый слой не проходит молча', async ({ page }) => {
+  const app = await openApp(page);
+  await app.pickTool('pencil');
+  await app.setSize(14);
+  await app.drag(200, 200, 500, 400);
+  await app.page.evaluate(() => copySelection());
+
+  await addLayer(app);
+  await app.page.evaluate(() => setLayerVisible(1, false));
+  const n = (await app.history()).labels.length;
+  await app.page.evaluate(() => pasteFromClipboard());
+  await app.settle();
+
+  const st = await app.page.evaluate(() => ({ floating: !!state.floating, n: state.history.length }));
+  const hinted = await app.hintText();
+  expect(!st.floating && hinted !== '', JSON.stringify({ st, hinted, n })).toBe(true);
+});
+
+// [103] Delete по скрытому слою
+test('Delete по скрытому слою не стирает невидимое молча', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  await paintLayer(app, '#0000ff');
+  await app.pickTool('select');
+  await app.drag(200, 200, 500, 400);
+  await app.page.evaluate(() => setLayerVisible(1, false));
+
+  const before = await app.page.evaluate(() =>
+    state.layers[1].canvas.toDataURL());
+  await page.keyboard.press('Delete');
+  await app.settle();
+  const after = await app.page.evaluate(() => state.layers[1].canvas.toDataURL());
+  const hinted = await app.hintText();
+  expect(after === before || hinted !== '', JSON.stringify({ changed: after !== before, hinted })).toBe(true);
+});
+
+// [022] Поднятая картинка видна, даже если её слой прозрачный
+test('поднятое в руках видно, даже когда слой прозрачен', async ({ page }) => {
+  const app = await openApp(page);
+  await app.pickTool('pencil');
+  await app.setColor('#000000');
+  await app.setSize(20);
+  await app.drag(200, 200, 500, 400);
+  await app.pickTool('select');
+  await app.drag(180, 180, 520, 420);
+  await app.clickAt(350, 300);
+  expect(await app.page.evaluate(() => !!state.floating), 'подъём не случился').toBe(true);
+
+  await app.page.evaluate(() => setLayerOpacity(0, 0));
+  const visible = await app.page.evaluate(() => {
+    const d = previewCtx.getImageData(300, 280, 60, 40).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true;
+    return false;
+  });
+  expect(visible, 'то, что пользователь держит, спрятали').toBe(true);
+});
+
+// [052] Отмена удаления слоя не уводит кисть
+test('отмена удаления слоя возвращает активным тот же слой', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  await addLayer(app);
+  await app.page.evaluate(() => setActiveLayer(1));
+  const before = await app.page.evaluate(() => state.activeLayer);
+
+  await app.page.evaluate(() => removeLayer(2));
+  await app.undo();
+  expect(await app.page.evaluate(() => state.activeLayer), 'кисть уехала на другой слой').toBe(before);
+});
+
+// [094] Подъём с верхнего слоя не должен терять белое
+test('подъём с верхнего слоя не съедает белое нарисованное', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  // На верхнем слое - белый квадрат внутри чёрной рамки.
+  await app.page.evaluate(() => {
+    const g = lctx();
+    g.fillStyle = '#000000';
+    g.fillRect(200, 200, 300, 200);
+    g.fillStyle = '#ffffff';
+    g.fillRect(250, 250, 200, 100);
+    composite();
+    saveHistory('Рисунок');
+  });
+
+  await app.pickTool('select');
+  await app.drag(190, 190, 510, 410);
+  await app.clickAt(350, 300);
+  expect(await app.page.evaluate(() => !!state.floating), 'подъём не случился').toBe(true);
+
+  const hasWhite = await app.page.evaluate(() => {
+    const f = state.floating;
+    const d = f.canvas.getContext('2d').getImageData(0, 0, f.canvas.width, f.canvas.height).data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 200 && d[i] > 240 && d[i + 1] > 240 && d[i + 2] > 240) return true;
+    }
+    return false;
+  });
+  expect(hasWhite, 'белое нарисованное выкусили вместе с фоном').toBe(true);
+});
+
+// Заливка на верхнем слое не должна красить его целиком
+test('заливка на верхнем слое кладёт только залитое', async ({ page }) => {
+  const app = await openApp(page);
+  await addLayer(app);
+  await app.pickTool('fill');
+  await app.setColor('#00aa00');
+  await app.clickAt(450, 300);
+
+  // Бумага под верхним слоем обязана остаться белой и нетронутой.
+  const paperWhite = await app.page.evaluate(() => {
+    const d = state.layers[0].canvas.getContext('2d').getImageData(450, 300, 1, 1).data;
+    return d[0] > 245 && d[1] > 245 && d[2] > 245;
+  });
+  expect(paperWhite, 'заливка залезла в чужой слой').toBe(true);
+  expect(isNear(await app.pixel(450, 300), 0, 170, 0)).toBe(true);
+});
+
+// Сохранение в файл берёт сборку, а не активный слой
+test('сохраняемая картинка - это сборка, а не один слой', async ({ page }) => {
+  const app = await openApp(page);
+  await paintLayer(app, '#ff0000');
+  await addLayer(app);
+  await app.page.evaluate(() => {
+    const g = lctx(); g.fillStyle = '#0000ff'; g.fillRect(0, 0, 300, 200); composite();
+  });
+  const url = await app.page.evaluate(() => canvas.toDataURL());
+  expect(url).toBe(await app.fingerprint());
+  expect(isNear(await app.pixel(150, 100), 0, 0, 255)).toBe(true);
+  expect(isNear(await app.pixel(700, 450), 255, 0, 0)).toBe(true);
+});
