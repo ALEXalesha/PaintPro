@@ -716,6 +716,99 @@
     font-weight: 600;
   }
 
+  /* === Панель слоёв === */
+  .layers-list {
+    max-height: 220px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .layer-row {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: var(--bg-3);
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .layer-row:hover { background: var(--bg-2); }
+
+  /* Активный слой - тот, куда ложится краска. Его видно сразу, иначе рисуешь вслепую. */
+  .layer-row.active {
+    border-color: var(--accent);
+    background: var(--bg-2);
+  }
+
+  .layer-eye {
+    background: none;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px;
+    opacity: 0.9;
+  }
+
+  /* Спрятанный слой должен читаться спрятанным и в списке. */
+  .layer-row.hidden .layer-name { opacity: 0.45; text-decoration: line-through; }
+  .layer-row.hidden .layer-eye { opacity: 0.45; }
+
+  .layer-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+  }
+
+  .layer-move {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 2px;
+  }
+  .layer-move:hover { color: var(--text); }
+  .layer-move:disabled { opacity: 0.25; cursor: default; }
+
+  .layer-opacity {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  /* Ползунку нужен min-width: 0, иначе он не ужимается и выдавливает число за край. */
+  .layer-opacity input { flex: 1; min-width: 0; }
+  #layer-opacity-value {
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .layer-buttons { display: flex; gap: 6px; }
+  .layer-buttons button {
+    flex: 1;
+    padding: 6px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .layer-buttons button:hover { background: var(--bg-2); }
+
   /* Панель «История изменений» */
   .history-list {
     max-height: 200px;
@@ -1463,6 +1556,21 @@
     </div>
 
     <div class="sidebar-section">
+      <div class="sidebar-title">Слои</div>
+      <div class="layers-list" id="layers-list"></div>
+      <div class="layer-opacity">
+        <span title="Непрозрачность активного слоя">Прозр.</span>
+        <input type="range" id="layer-opacity" min="0" max="100" value="100"
+               oninput="onLayerOpacityInput(this.value)">
+        <span id="layer-opacity-value">100%</span>
+      </div>
+      <div class="layer-buttons">
+        <button onclick="addLayer()" title="Добавить слой">+ Слой</button>
+        <button onclick="removeLayer()" title="Удалить активный слой">− Слой</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
       <div class="sidebar-title">Холст</div>
       <div class="info-row"><span>Ширина</span><span id="info-width">900 px</span></div>
       <div class="info-row"><span>Высота</span><span id="info-height">600 px</span></div>
@@ -1796,7 +1904,75 @@ function canDrawOnActiveLayer() {
   return true;
 }
 
-function renderLayersPanel() {}
+/**
+ * Список слоёв. Сверху - верхний слой: в панели стопка показывается так же, как лежит
+ * на холсте, то есть в обратном порядке относительно массива.
+ */
+function renderLayersPanel() {
+  const list = document.getElementById('layers-list');
+  if (!list) return;
+  list.innerHTML = '';
+  for (let i = state.layers.length - 1; i >= 0; i--) {
+    const l = state.layers[i];
+    const row = document.createElement('div');
+    row.className = 'layer-row'
+      + (i === state.activeLayer ? ' active' : '')
+      + (l.visible ? '' : ' hidden');
+    row.dataset.index = String(i);
+    row.onclick = () => setActiveLayer(i);
+
+    const eye = document.createElement('button');
+    eye.className = 'layer-eye';
+    eye.textContent = l.visible ? '◉' : '○';
+    eye.title = l.visible ? 'Скрыть слой' : 'Показать слой';
+    // Щелчок по глазу не должен заодно менять активный слой: это два разных намерения.
+    eye.onclick = (e) => { e.stopPropagation(); setLayerVisible(i, !l.visible); };
+
+    const name = document.createElement('div');
+    name.className = 'layer-name';
+    name.textContent = l.name + (l.opacity < 1 ? '  ' + Math.round(l.opacity * 100) + '%' : '');
+    name.title = l.name;
+
+    const moves = document.createElement('div');
+    const up = document.createElement('button');
+    up.className = 'layer-move';
+    up.textContent = '▲';
+    up.title = 'Выше';
+    up.disabled = i === 0 || i === state.layers.length - 1;
+    up.onclick = (e) => { e.stopPropagation(); moveLayer(i, 1); };
+    const down = document.createElement('button');
+    down.className = 'layer-move';
+    down.textContent = '▼';
+    down.title = 'Ниже';
+    // Ниже бумаги слоёв не бывает, и саму бумагу двигать некуда.
+    down.disabled = i <= 1;
+    down.onclick = (e) => { e.stopPropagation(); moveLayer(i, -1); };
+    moves.appendChild(up);
+    moves.appendChild(down);
+
+    row.appendChild(eye);
+    row.appendChild(name);
+    row.appendChild(moves);
+    list.appendChild(row);
+  }
+
+  // Ползунок показывает прозрачность АКТИВНОГО слоя. Пока он держал своё значение,
+  // переключение слоя оставляло на экране чужое число - в WPF-версии это 1.19.0.
+  const slider = document.getElementById('layer-opacity');
+  const label = document.getElementById('layer-opacity-value');
+  if (slider) {
+    const pct = Math.round(activeLayer().opacity * 100);
+    slider.value = String(pct);
+    if (label) label.textContent = pct + '%';
+  }
+}
+
+function onLayerOpacityInput(value) {
+  const pct = Math.max(0, Math.min(100, parseInt(value, 10) || 0));
+  const label = document.getElementById('layer-opacity-value');
+  if (label) label.textContent = pct + '%';
+  setLayerOpacity(state.activeLayer, pct / 100);
+}
 
 /** Бумага документа. */
 function paperLayer() {
@@ -1901,6 +2077,7 @@ saveHistory('Исходное состояние');
 // случаем), и только что открытая программа спрашивает про сохранение при закрытии,
 // хотя пользователь ничего не делал. Так же поступает newCanvas() ниже.
 state.savedHistoryIndex = state.historyIndex;
+renderLayersPanel();
 
 // Палитра цветов
 const colors = [
