@@ -200,8 +200,9 @@ test('первая запись ленты не обещает чистый ли
   const app = await openApp(page);
   for (let i = 0; i < 170; i++) {
     await app.page.evaluate((k) => {
-      ctx.fillStyle = '#000';
-      ctx.fillRect((k * 7) % 800, Math.floor(k / 100) * 5, 3, 3);
+      const g = lctx();
+      g.fillStyle = '#000';
+      g.fillRect((k * 7) % 800, Math.floor(k / 100) * 5, 3, 3);
       saveHistory('Штрих');
     }, i);
   }
@@ -316,8 +317,10 @@ test('копия поднятого объекта не тащит того, ч�
   // Синее пятно в правом нижнем углу готовим ЗАРАНЕЕ: смена инструмента прижала бы
   // поднятое, и проверка мерила бы совсем другое.
   await app.page.evaluate(() => {
-    ctx.fillStyle = '#0000ff';
-    ctx.fillRect(600, 380, 300, 220);
+    const g = lctx();
+    g.fillStyle = '#0000ff';
+    g.fillRect(600, 380, 300, 220);
+    composite();
   });
   await draw(app);
 
