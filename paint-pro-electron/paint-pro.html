@@ -818,6 +818,25 @@
     gap: 2px;
   }
   .history-list.collapsed { display: none; }
+  /* Строка ленты - сетка: галочка, подпись. Галочка есть не у всех, но колонка под неё
+     одна на все строки, иначе подписи скачут по горизонтали. */
+  .hist-row {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    align-items: center;
+    gap: 2px;
+  }
+  .hist-check {
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--accent, #5b8def);
+  }
+  .hist-check:disabled { opacity: 0.25; cursor: default; }
+  /* Выключенная правка показана зачёркнутой: её видно в ленте, но она не применяется. */
+  .hist-item.off { text-decoration: line-through; opacity: 0.55; }
+
   .hist-item {
     flex: 0 0 auto;            /* не сжиматься во flex-колонке — иначе текст обрезается, когда записей много */
     font-size: 12px;
@@ -1679,6 +1698,9 @@ let state = {
   // время, а у окна ввода текста между кликом и ответом проходит сколько угодно.
   // В WPF-версии это чинили в 1.17.0.
   strokeLayerId: null,
+  // Точки текущего жеста в координатах холста. Нужны, чтобы правку можно было
+  // ПОВТОРИТЬ, а не только отменить: на этом стоит выключатель записи в ленте.
+  strokePoints: null,
   // Слой, под который сейчас подкладывается превью мазка (см. composite).
   previewLayerId: null,
   history: [],
@@ -1686,6 +1708,8 @@ let state = {
   // Позиция в истории на момент последнего сохранения. Сравнение с historyIndex
   // и даёт признак несохранённой работы - см. isDirty().
   savedHistoryIndex: 0,
+  // Набор выключенных записей на момент сохранения - см. isDirty().
+  savedDisabledKey: '',
   // Кадр истории грузится через img.onload, то есть асинхронно: между Ctrl+Z и
   // появлением картинки на холсте лежат пиксели прежнего состояния - см. restoreHistory().
   restoring: false,
@@ -2121,6 +2145,7 @@ saveHistory('Исходное состояние');
 // случаем), и только что открытая программа спрашивает про сохранение при закрытии,
 // хотя пользователь ничего не делал. Так же поступает newCanvas() ниже.
 state.savedHistoryIndex = state.historyIndex;
+state.savedDisabledKey = disabledKey();
 renderLayersPanel();
 
 // Палитра цветов
@@ -2434,6 +2459,7 @@ function onDown(e) {
     return;
   }
   state.strokeLayerId = activeLayer().id;
+  state.strokePoints = [x, y];
 
   state.drawing = true;
   // На время рисования bbox прячем handles в selection-overlay — иначе при tiny drag
@@ -2482,7 +2508,10 @@ function onDown(e) {
     if (state.opacity <= 0) {
       hint(INK_HINT);
     } else if (floodFill(Math.floor(x), Math.floor(y), state.color)) {
-      saveHistory('Заливка');
+      saveHistory('Заливка', {
+        kind: 'fill', x: Math.floor(x), y: Math.floor(y),
+        color: state.color, opacity: state.opacity, layerId: state.strokeLayerId
+      });
     }
     state.drawing = false;
   } else if (t === 'picker') {
@@ -2568,6 +2597,7 @@ function onMove(e) {
     previewCtx.stroke();
     state.lastX = x;
     state.lastY = y;
+    if (state.strokePoints) state.strokePoints.push(x, y);
     composite();
   } else if (t === 'eraser') {
     // Плавное "стирание" - рисуем белой линией между предыдущей и текущей точкой
@@ -2588,6 +2618,7 @@ function onMove(e) {
     g.lineTo(x, y);
     g.stroke();
     g.restore();
+    if (state.strokePoints) state.strokePoints.push(x, y);
     composite();
     state.lastX = x;
     state.lastY = y;
@@ -2627,16 +2658,28 @@ function onUp(e) {
     // Ползунок прозрачности начинается с нуля, дотянуть до него - одно движение.
     // Мазок при этом не кладёт ни одного пикселя, и молча это неотличимо от поломки.
     if (state.opacity <= 0) hint(INK_HINT);
-    saveHistory(t === 'marker' ? 'Маркер' : 'Штрих');
+    saveHistory(t === 'marker' ? 'Маркер' : 'Штрих', {
+      kind: 'stroke', tool: t, points: state.strokePoints.slice(),
+      color: state.color, size: state.size, opacity: state.opacity,
+      layerId: state.strokeLayerId
+    });
   } else if (t === 'eraser') {
-    saveHistory('Ластик');
+    saveHistory('Ластик', {
+      kind: 'erase', points: state.strokePoints.slice(),
+      size: state.size, layerId: state.strokeLayerId
+    });
   } else if (SHAPE_TOOLS.includes(t)) {
     const {x, y} = getPos(e);
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     drawShape(previewCtx, t, state.startX, state.startY, x, y);
     mergePreviewStroke(t);
     if (state.opacity <= 0) hint(INK_HINT);
-    saveHistory('Фигура');
+    saveHistory('Фигура', {
+      kind: 'shape', tool: t,
+      x0: state.startX, y0: state.startY, x1: x, y1: y,
+      color: state.color, size: state.size, opacity: state.opacity,
+      fillMode: state.fillMode, layerId: state.strokeLayerId
+    });
   } else if (t === 'select') {
     const sel = normalizeSelection();
     if (sel && sel.w > 2 && sel.h > 2) {
@@ -3096,6 +3139,176 @@ function historyBytes() {
   return total;
 }
 
+/**
+ * Поставить стопку слоёв ровно такой, какой её запомнил кадр.
+ *
+ * Слоёв в кадре сколько угодно, и каждый грузится своей картинкой. Ждём все: собрать
+ * стопку из половины загруженных значит показать не тот документ. Битый кадр случиться
+ * не должен, но повиснуть на нём насовсем - хуже, поэтому onerror отдаёт пустой слой, а
+ * не оставляет холст запертым.
+ */
+function applyStack(entry) {
+  if (!entry || !entry.layers) return Promise.resolve();
+  const loads = entry.layers.map((meta) => new Promise((done) => {
+    const img = new Image();
+    img.onload = () => done(img);
+    img.onerror = () => done(null);
+    img.src = meta.url;
+  }));
+  return Promise.all(loads).then((imgs) => {
+    if (canvas.width !== entry.w || canvas.height !== entry.h) {
+      setCanvasSize(entry.w, entry.h);
+      updateCanvasInfo();
+    }
+    state.layers = entry.layers.map((meta, i) => {
+      const l = makeLayer(meta.name, entry.w, entry.h);
+      if (meta.id != null) l.id = meta.id;
+      l.name = meta.name;
+      l.visible = meta.visible;
+      l.opacity = meta.opacity;
+      if (imgs[i]) l.canvas.getContext('2d').drawImage(imgs[i], 0, 0);
+      return l;
+    });
+    // Счётчик не должен выдать номер, который уже занят восстановленным слоем.
+    for (const l of state.layers) if (l.id > layerSeq) layerSeq = l.id;
+    state.activeLayer = Math.min(entry.active || 0, state.layers.length - 1);
+    composite();
+    renderLayersPanel();
+  });
+}
+
+/**
+ * Повторить одну складывающуюся правку поверх текущего состояния слоёв.
+ *
+ * Именно повторить, а не наложить сохранённые пиксели: если правку ниже выключили,
+ * подложка стала другой, и заливка обязана растечься по-новому. Сохранённая заплатка
+ * этого не умеет и соврала бы.
+ */
+function replayEntry(r) {
+  if (!r) return;
+  const layer = state.layers.find((x) => x.id === r.layerId);
+  if (!layer) return;
+  const g = layer.canvas.getContext('2d');
+  const isPaper = state.layers.length > 0 && state.layers[0].id === r.layerId;
+
+  if (r.kind === 'stroke' || r.kind === 'shape') {
+    // Рисуем во временный холст и кладём его целиком с нужной прозрачностью - ровно
+    // так же, как это делает превью с mergePreviewStroke. Иначе перекрытия сегментов
+    // внутри одного штриха темнеют, и повтор расходится с оригиналом.
+    const tmp = makeLayerCanvas(canvas.width, canvas.height);
+    const tg = tmp.getContext('2d');
+    tg.strokeStyle = r.color;
+    tg.fillStyle = r.color;
+    tg.lineWidth = strokeWidthFor(r.tool, r.size);
+    tg.lineCap = 'round';
+    tg.lineJoin = 'round';
+    if (r.kind === 'stroke') {
+      // Повторяем ровно так, как рисовал оригинал: точка на нажатии, потом КАЖДЫЙ отрезок
+      // своим путём. Один сплошной путь дал бы почти то же самое - но именно почти:
+      // сглаживание на стыках считается иначе, и первый же прогон разошёлся на 18
+      // пикселей в начале штриха. «Почти» здесь недопустимо: на пересборке стоит
+      // обещание «выключить и включить обратно возвращает документ ДО ПИКСЕЛЯ».
+      const p = r.points;
+      tg.beginPath();
+      tg.moveTo(p[0], p[1]);
+      tg.lineTo(p[0] + 0.01, p[1] + 0.01);
+      tg.stroke();
+      for (let i = 2; i < p.length; i += 2) {
+        tg.beginPath();
+        tg.moveTo(p[i - 2], p[i - 1]);
+        tg.lineTo(p[i], p[i + 1]);
+        tg.stroke();
+      }
+    } else {
+      // drawShape берёт цвет, толщину и режим заливки из СОСТОЯНИЯ, а не из контекста.
+      // Повтор обязан рисовать записанными настройками, а не сегодняшними, поэтому на
+      // время вызова подставляем свои. Первый прогон фаззера поймал ровно это: фигура,
+      // повторённая нынешним цветом кисти, расходилась с оригиналом.
+      const saved = { color: state.color, size: state.size, fillMode: state.fillMode };
+      state.color = r.color;
+      state.size = r.size;
+      state.fillMode = r.fillMode;
+      drawShape(tg, r.tool, r.x0, r.y0, r.x1, r.y1);
+      state.color = saved.color;
+      state.size = saved.size;
+      state.fillMode = saved.fillMode;
+    }
+    g.save();
+    // Прозрачность мазка задаётся ЕГО записью, а не текущим положением ползунка:
+    // повтор обязан повторить, а не подставить сегодняшние настройки. Формула та же,
+    // что в strokeAlphaFor, только со своими числами.
+    g.globalAlpha = r.tool === 'marker' ? r.opacity * 0.4 : r.opacity;
+    g.drawImage(tmp, 0, 0);
+    g.restore();
+    return;
+  }
+
+  if (r.kind === 'erase') {
+    g.save();
+    g.globalAlpha = 1;
+    g.lineWidth = r.size;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    if (isPaper) {
+      g.strokeStyle = 'white';
+      g.fillStyle = 'white';
+    } else {
+      g.globalCompositeOperation = 'destination-out';
+      g.strokeStyle = '#000';
+      g.fillStyle = '#000';
+    }
+    // Точка на нажатии и КАЖДЫЙ отрезок своим путём - ровно как рисовал оригинал.
+    // Сплошной путь давал почти то же самое, расходясь на стыках.
+    const p = r.points;
+    g.beginPath();
+    g.arc(p[0], p[1], r.size / 2, 0, Math.PI * 2);
+    g.fill();
+    for (let i = 2; i < p.length; i += 2) {
+      g.beginPath();
+      g.moveTo(p[i - 2], p[i - 1]);
+      g.lineTo(p[i], p[i + 1]);
+      g.stroke();
+    }
+    g.restore();
+    return;
+  }
+
+  if (r.kind === 'text') {
+    g.save();
+    g.font = r.font;
+    g.fillStyle = r.color;
+    g.globalAlpha = r.opacity;
+    g.textBaseline = 'top';
+    const lines = String(r.text).split('\n');
+    lines.forEach((line, i) => {
+      g.fillText(line, r.x, r.y + i * r.lineHeight);
+      if (r.underline) {
+        const m = g.measureText(line);
+        g.fillRect(r.x, r.y + i * r.lineHeight + r.fontSize + 2, m.width, Math.max(1, r.fontSize / 20));
+      }
+    });
+    g.restore();
+    return;
+  }
+
+  if (r.kind === 'fill') {
+    // Заливка читает СБОРКУ, поэтому пересобираем перед ней: подложка могла измениться
+    // ровно потому, что правку ниже выключили.
+    composite();
+    const savedColor = state.color;
+    const savedOpacity = state.opacity;
+    const savedActive = state.activeLayer;
+    state.color = r.color;
+    state.opacity = r.opacity;
+    const idx = state.layers.findIndex((x) => x.id === r.layerId);
+    if (idx >= 0) state.activeLayer = idx;
+    floodFill(r.x, r.y, r.color);
+    state.color = savedColor;
+    state.opacity = savedOpacity;
+    state.activeLayer = savedActive;
+  }
+}
+
 /** Отпечаток стопки без пикселей: то, чего не видно в сборке, но что меняет документ. */
 function layersKey(stack, active) {
   return active + '|' + stack.map((l) =>
@@ -3105,6 +3318,9 @@ function layersKey(stack, active) {
 /** Снимок стопки: имена, видимость, прозрачность и пиксели каждого слоя. */
 function snapshotLayers() {
   return state.layers.map((l) => ({
+    // Номер слоя обязан пережить восстановление кадра: описание правки ссылается на
+    // слой именно по нему, и с новыми номерами повтор не нашёл бы, куда рисовать.
+    id: l.id,
     name: l.name,
     visible: l.visible,
     opacity: l.opacity,
@@ -3112,7 +3328,7 @@ function snapshotLayers() {
   }));
 }
 
-function saveHistory(label) {
+function saveHistory(label, replay) {
   // Сборка обязана быть свежей до снятия кадра: сравнение «изменилось ли что-нибудь»
   // идёт по ней, и устаревшая сборка отсеяла бы настоящую правку.
   composite();
@@ -3145,7 +3361,13 @@ function saveHistory(label) {
     w: canvas.width,
     h: canvas.height,
     active: state.activeLayer,
-    layers: stack
+    layers: stack,
+    // Описание правки для ПОВТОРА. Есть только у складывающихся правок - штриха,
+    // фигуры, надписи, заливки и стирания. Их можно пропустить при пересборке, и
+    // получится ровно «как если бы этой правки не делали». Всё остальное кладёт
+    // ГОТОВЫЙ снимок и пропуску не поддаётся: см. canToggleEntry.
+    replay: replay || null,
+    enabled: true
   });
   // Самый свежий кадр не выбрасываем никогда, каким бы тяжёлым он ни был: потерять
   // отмену только что сделанной правки хуже, чем занять память.
@@ -3160,6 +3382,97 @@ function saveHistory(label) {
   }
   state.historyIndex = state.history.length - 1;
   renderHistoryPanel();
+}
+
+/**
+ * Можно ли выключить запись ленты.
+ *
+ * Деление проходит не по «нарисованное против холста», а по тому, КАК правка ложится на
+ * картинку. Штрих, фигура, надпись, заливка и стирание СКЛАДЫВАЮТСЯ с тем, что на слое, -
+ * пропустить любую из них при пересборке можно, и получится ровно «как если бы этой правки
+ * не делали». А прижатие поднятого, вставка, поворот, отражение, кадрирование, смена
+ * размера, открытие файла, очистка и действия со слоями кладут ГОТОВЫЙ снимок: при
+ * пересборке они положат его поверх вместе с тем, что пользователь выключил, и выключатель
+ * начал бы врать.
+ *
+ * Поэтому галочка есть у складывающейся правки и только пока ниже неё нет ни одной пишущей
+ * снимок. Это строже, чем кажется, и намеренно: соврать хуже, чем отказать.
+ * В WPF-версии то же самое - HistoryManager.CanToggle (1.23.0).
+ */
+function canToggleEntry(i) {
+  const e = state.history[i];
+  if (!e || !e.replay) return false;
+  for (let j = i + 1; j < state.history.length; j++) {
+    if (!state.history[j].replay) return false;
+  }
+  return true;
+}
+
+/** Почему у записи нет галочки. */
+function whyNoToggle(i) {
+  const e = state.history[i];
+  if (!e) return '';
+  if (!e.replay) {
+    return 'Эта правка кладёт готовый снимок холста, а не складывается с ним: '
+         + 'пропустить её при пересборке нельзя.';
+  }
+  return 'Ниже есть правка, кладущая готовый снимок холста: она перекрыла бы результат.';
+}
+
+/**
+ * Пересобрать документ с учётом выключенных записей.
+ *
+ * Идём от последней записи со снимком (или от начала ленты) и ПОВТОРЯЕМ каждую
+ * складывающуюся правку заново, пропуская выключенные. Снимки повторённых записей
+ * устарели - снимаем их заново, иначе первый же Ctrl+Z вернул бы пиксели по устаревшему.
+ * В WPF-версии тому же служит IDocumentCommand.ForgetBefore.
+ */
+async function rebuildTimeline() {
+  const cursor = state.historyIndex;
+  let base = 0;
+  for (let i = cursor; i >= 0; i--) {
+    if (!state.history[i].replay) { base = i; break; }
+  }
+  state.restoring = true;
+  const generation = ++restoreGeneration;
+  await applyStack(state.history[base]);
+  for (let i = base + 1; i < state.history.length; i++) {
+    const e = state.history[i];
+    if (e.enabled !== false) replayEntry(e.replay);
+    composite();
+    e.layers = snapshotLayers();
+    e.url = canvas.toDataURL();
+    e.key = layersKey(e.layers, e.active || 0);
+    e.w = canvas.width;
+    e.h = canvas.height;
+  }
+  await applyStack(state.history[cursor]);
+  if (generation === restoreGeneration) state.restoring = false;
+  renderHistoryPanel();
+}
+
+/** Снять или вернуть галочку у записи ленты. */
+async function setEntryEnabled(i, enabled) {
+  if (!canToggleEntry(i)) {
+    hint(whyNoToggle(i));
+    return false;
+  }
+  const e = state.history[i];
+  if (e.enabled === enabled) return true;
+  e.enabled = enabled;
+  await rebuildTimeline();
+  return true;
+}
+
+function toggleEntry(i) {
+  const e = state.history[i];
+  if (!e) return;
+  setEntryEnabled(i, e.enabled === false);
+}
+
+/** Отпечаток набора выключенных записей: он тоже меняет картинку. */
+function disabledKey() {
+  return state.history.map((e, i) => (e.enabled === false ? i : '')).filter(Boolean).join(',');
 }
 
 function undo() {
@@ -3197,13 +3510,38 @@ function renderHistoryPanel() {
     // MAX_HISTORY нулевую запись вытесняет обычная правка, и жёсткое
     // «Исходное состояние» для i === 0 начинало врать.
     const label = (entry && entry.label) ? entry.label : 'Изменение';
+    const row = document.createElement('div');
+    row.className = 'hist-row';
+    row.dataset.index = String(i);
+
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.className = 'hist-check';
+    box.checked = entry.enabled !== false;
+    const can = canToggleEntry(i);
+    box.disabled = !can;
+    box.title = can
+      ? 'Снять - и эта правка перестанет применяться, а идущие после неё останутся'
+      : whyNoToggle(i);
+    // Щелчок по галочке не должен заодно перегонять документ к этой позиции: снять
+    // правку и прийти к ней - разные намерения.
+    box.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!can) { e.preventDefault(); hint(whyNoToggle(i)); return; }
+      setEntryEnabled(i, box.checked);
+    });
+
     const div = document.createElement('div');
     div.className = 'hist-item' + (i === state.historyIndex ? ' current' : '')
-                                + (i > state.historyIndex ? ' future' : '');
+                                + (i > state.historyIndex ? ' future' : '')
+                                + (entry.enabled === false ? ' off' : '');
     div.textContent = label;
     div.title = label;
     div.addEventListener('click', () => jumpHistory(i));
-    list.appendChild(div);
+
+    row.appendChild(box);
+    row.appendChild(div);
+    list.appendChild(row);
   }
   const cur = list.querySelector('.hist-item.current');
   if (cur) cur.scrollIntoView({ block: 'nearest' });
@@ -3247,34 +3585,8 @@ function restoreHistory() {
     };
     if (!entry || !entry.layers) { finish(); return; }
 
-    // Слоёв в кадре сколько угодно, и каждый грузится своей картинкой. Ждём все:
-    // собрать стопку из половины загруженных значит показать не тот документ.
-    // Битый кадр случиться не должен, но повиснуть на нём насовсем - хуже, поэтому
-    // onerror разрешает обещание пустым слоем, а не оставляет холст запертым.
-    const loads = entry.layers.map((meta) => new Promise((done) => {
-      const img = new Image();
-      img.onload = () => done(img);
-      img.onerror = () => done(null);
-      img.src = meta.url;
-    }));
-
-    Promise.all(loads).then((imgs) => {
+    applyStack(entry).then(() => {
       if (generation !== restoreGeneration) { finish(); return; }
-      if (canvas.width !== entry.w || canvas.height !== entry.h) {
-        setCanvasSize(entry.w, entry.h);
-        updateCanvasInfo();
-      }
-      state.layers = entry.layers.map((meta, i) => {
-        const l = makeLayer(meta.name, entry.w, entry.h);
-        l.name = meta.name;
-        l.visible = meta.visible;
-        l.opacity = meta.opacity;
-        if (imgs[i]) l.canvas.getContext('2d').drawImage(imgs[i], 0, 0);
-        return l;
-      });
-      state.activeLayer = Math.min(entry.active || 0, state.layers.length - 1);
-      composite();
-      renderLayersPanel();
       finish();
     });
   });
@@ -4054,7 +4366,14 @@ function commitText() {
     });
     g.restore();
     composite();
-    saveHistory('Текст');
+    saveHistory('Текст', {
+      // Координаты храним УЖЕ со смещением редактора (offX/offY): повтор обязан рисовать
+      // ровно там же, а не «примерно там». Разница в шесть пикселей по горизонтали дала
+      // расхождение почти в две тысячи пикселей.
+      kind: 'text', text: text, x: currentTextX + offX, y: currentTextY + offY,
+      font: fontStr, lineHeight: lineHeight, underline: underline, fontSize: fontSize,
+      color: state.color, opacity: state.opacity, layerId: state.strokeLayerId
+    });
   }
   textEditor.style.display = 'none';
   textEditor.innerHTML = '';
@@ -4329,6 +4648,7 @@ async function openImageAsDocument(dataUrl, fileName) {
     saveHistory('Открытие');
     // Только что открытый файл - не несохранённая работа.
     state.savedHistoryIndex = state.historyIndex;
+  state.savedDisabledKey = disabledKey();
     if (fileName) {
       state.currentFileName = fileName;
       document.title = 'Paint Pro — ' + fileName;
@@ -4371,6 +4691,7 @@ async function newCanvas() {
   if (window.electronAPI && window.electronAPI.clearSavePath) window.electronAPI.clearSavePath();
   saveHistory('Новый холст');
   state.savedHistoryIndex = state.historyIndex;
+  state.savedDisabledKey = disabledKey();
 }
 
 // MIME-тип и качество по расширению файла. toDataURL молча падает обратно на PNG
@@ -4410,6 +4731,7 @@ async function saveCanvas(saveAs = false) {
       state.currentFileName = result.filePath.split(/[\\/]/).pop();
       document.title = 'Paint Pro — ' + state.currentFileName;
       state.savedHistoryIndex = state.historyIndex;
+  state.savedDisabledKey = disabledKey();
       return true;
     }
     if (result && result.error) alert('Ошибка сохранения: ' + result.error);
@@ -4422,6 +4744,7 @@ async function saveCanvas(saveAs = false) {
   link.href = canvas.toDataURL('image/png');
   link.click();
   state.savedHistoryIndex = state.historyIndex;
+  state.savedDisabledKey = disabledKey();
   return true;
 }
 
@@ -4430,7 +4753,11 @@ async function saveCanvas(saveAs = false) {
 // сюда правка не доехала. Признак изменений живёт здесь, а не копией в
 // main-процессе - иначе его пришлось бы синхронизировать из десятка мест.
 function isDirty() {
-  return state.historyIndex !== state.savedHistoryIndex
+  // Выключить правку - значит изменить картинку; включить обратно - вернуться ровно к
+  // сохранённому, и вопроса при закрытии тогда быть не должно. Поэтому набор выключенных
+  // сравнивается наравне с позицией курсора. В WPF-версии это 1.23.0.
+  return disabledKey() !== (state.savedDisabledKey || '')
+      || state.historyIndex !== state.savedHistoryIndex
       // Именно сдвинутый пикап, а не сам факт подъёма: клик внутрь выделения поднимает
       // пиксели, но холст остаётся прежним до пикселя, и commitFloating такому событию
       // записи в историю не делает. Пока проверка была на !!state.floating, приложение
