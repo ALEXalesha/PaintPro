@@ -1,17 +1,19 @@
 {
   "name": "paint-pro",
-  "version": "1.11.1",
+  "version": "1.11.2",
   "description": "Paint Pro - полноценный графический редактор",
   "main": "main.js",
   "author": "Paint Pro",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "test": "playwright test",
     "build": "electron-builder --win portable --x64",
     "build-installer": "electron-builder --win nsis --x64",
     "build-all": "electron-builder --win portable nsis --x64"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8"
   },
@@ -29,7 +31,9 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "fileAssociations": [
