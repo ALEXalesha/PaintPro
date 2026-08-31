@@ -3541,6 +3541,14 @@ function cutSelection() {
 }
 
 // Вставка из внутреннего буфера
+// Отступ от угла показывает, что картинка лежит ПОВЕРХ, а не приклеена. Но на холсте
+// меньше самого отступа он уносил её за край целиком: Ctrl+V выглядел как ничего не
+// сделавший, а отмена при этом была нужна. В WPF-версии это починено в 1.19.0.
+// Путей вставки два - свой буфер и системный, - и отступ у них обязан быть один.
+function pasteOffset(side) {
+  return Math.max(0, Math.min(20, Math.floor(side / 4)));
+}
+
 function pasteFromClipboard() {
   if (!state.clipboard) {
     hint('В буфере пусто: сначала скопируйте область (Ctrl+C) или вырежьте её (Ctrl+X).');
@@ -3552,11 +3560,7 @@ function pasteFromClipboard() {
   c.height = state.clipboard.height;
   c.getContext('2d').drawImage(state.clipboard, 0, 0);
 
-  // Отступ от угла показывает, что картинка лежит ПОВЕРХ, а не приклеена. Но на холсте
-  // меньше самого отступа он уносил её за край целиком: Ctrl+V выглядел как ничего не
-  // сделавший, а отмена при этом была нужна. В WPF-версии это починено в 1.19.0.
-  const off = (side) => Math.max(0, Math.min(20, Math.floor(side / 4)));
-  createFloatingFromCanvas(c, off(canvas.width), off(canvas.height));
+  createFloatingFromCanvas(c, pasteOffset(canvas.width), pasteOffset(canvas.height));
   return true;
 }
 
@@ -3574,7 +3578,9 @@ document.addEventListener('paste', (e) => {
       reader.onload = (ev) => {
         const img = new Image();
         img.onload = () => {
-          createFloatingFromImage(img, 20, 20);
+          // Тот же отступ и та же оговорка, что в pasteFromClipboard: на холсте меньше
+          // самого отступа он унёс бы картинку за край целиком.
+          createFloatingFromImage(img, pasteOffset(canvas.width), pasteOffset(canvas.height));
           // Запомним в clipboard тоже
           const c = document.createElement('canvas');
           c.width = img.width;
@@ -4269,16 +4275,14 @@ if (window.electronAPI) {
       case 'save-as': saveCanvas(true); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
-      case 'copy':
-        if (state.selection || state.floating) copySelection();
-        break;
-      case 'cut':
-        if (state.selection || state.floating) cutSelection();
-        break;
-      case 'paste':
-        pasteFromClipboard();
-        break;
+      // Условий «есть выделение» тут быть не должно по той же причине, что и в
+      // обработчике клавиш: без выделения копируется весь холст, а вырезание
+      // объясняет, почему так не может.
+      case 'copy': copySelection(); break;
+      case 'cut': cutSelection(); break;
+      case 'paste': pasteFromClipboard(); break;
       case 'select-all': selectAll(); break;
+      case 'deselect': deselect(); break;
       case 'request-close': handleCloseRequest(); break;
       case 'zoom-in': zoomIn(); break;
       case 'zoom-out': zoomOut(); break;
