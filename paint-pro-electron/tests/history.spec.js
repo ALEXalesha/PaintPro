@@ -182,8 +182,9 @@ test('лента не растёт бесконечно, а курсор ост�
   const app = await openApp(page);
   for (let i = 0; i < 160; i++) {
     await app.page.evaluate((k) => {
-      ctx.fillStyle = '#000';
-      ctx.fillRect((k * 7) % 800, Math.floor(k / 100) * 5, 3, 3);
+      const g = lctx();
+      g.fillStyle = '#000';
+      g.fillRect((k * 7) % 800, Math.floor(k / 100) * 5, 3, 3);
       saveHistory('Штрих');
     }, i);
   }
@@ -195,8 +196,9 @@ test('лента не растёт бесконечно, а курсор ост�
 test('самый свежий кадр не выбрасывается, каким бы тяжёлым он ни был', async ({ page }) => {
   const app = await openApp(page);
   await app.page.evaluate(() => {
-    ctx.fillStyle = '#123456';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const g = lctx();
+    g.fillStyle = '#123456';
+    g.fillRect(0, 0, canvas.width, canvas.height);
     saveHistory('Тяжёлый кадр');
   });
   const h = await app.history();
