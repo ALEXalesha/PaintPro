@@ -1674,6 +1674,13 @@ let state = {
   // Стопка слоёв и номер активного. [0] - бумага документа.
   layers: [],
   activeLayer: 0,
+  // Слой, на котором НАЧАЛСЯ текущий жест. Жест начинается на mousedown, а исполняется
+  // на mouseup, и между этими мгновениями слой успевает смениться: панель под рукой всё
+  // время, а у окна ввода текста между кликом и ответом проходит сколько угодно.
+  // В WPF-версии это чинили в 1.17.0.
+  strokeLayerId: null,
+  // Слой, под который сейчас подкладывается превью мазка (см. composite).
+  previewLayerId: null,
   history: [],
   historyIndex: -1,
   // Позиция в истории на момент последнего сохранения. Сравнение с historyIndex
@@ -1759,9 +1766,28 @@ function activeLayer() {
   return state.layers[state.activeLayer];
 }
 
-/** Контекст активного слоя. Всё, что рисуют инструменты, идёт сюда. */
+/** Контекст активного слоя. */
 function lctx() {
   return activeLayer().canvas.getContext('2d');
+}
+
+/** Слой текущего жеста: тот, на котором нажали кнопку мыши. */
+function gestureLayer() {
+  if (state.strokeLayerId != null) {
+    const l = state.layers.find((x) => x.id === state.strokeLayerId);
+    if (l) return l;
+  }
+  return activeLayer();
+}
+
+/** Контекст слоя текущего жеста. Сюда идёт всё, что рисуют инструменты. */
+function gctx() {
+  return gestureLayer().canvas.getContext('2d');
+}
+
+/** Бумага ли слой, на котором идёт жест: от этого зависит, красит ластик или вычитает. */
+function isPaperGesture() {
+  return state.layers.length > 0 && state.layers[0].id === gestureLayer().id;
 }
 
 /**
@@ -1844,6 +1870,15 @@ function setActiveLayer(index) {
   if (state.drawing) return;
   if (state.floating) commitFloating();
   state.activeLayer = index;
+  // Смена слоя - не правка документа, записи в ленте ей делать нечего. Но позиция, на
+  // которой стоит курсор, обязана помнить, где была кисть: иначе отмена возвращает не
+  // тот слой, и пользователь продолжает рисовать не там, где рисовал минуту назад.
+  // В WPF-версии это 1.18.0.
+  const cur = state.history[state.historyIndex];
+  if (cur) {
+    cur.active = index;
+    cur.key = layersKey(cur.layers, index);
+  }
   renderLayersPanel();
 }
 
@@ -1988,6 +2023,9 @@ function isPaperActive() {
  * Одно место на вырезание и на Delete: два одинаковых куска расходились бы со временем.
  */
 function eraseRegion(x, y, w, h) {
+  // Стирание уносит пиксели из битмапа так же, как их туда кладут кисти, и проверка на
+  // видимость ему нужна та же: на экране не меняется ничего, а запись появляется.
+  if (!canDrawOnActiveLayer()) return false;
   const g = lctx();
   g.save();
   g.globalAlpha = 1;
@@ -2000,6 +2038,7 @@ function eraseRegion(x, y, w, h) {
   }
   g.restore();
   composite();
+  return true;
 }
 
 /** Пересобрать видимый холст из слоёв. Звать после КАЖДОЙ правки слоя. */
@@ -2014,6 +2053,11 @@ function composite() {
     if (!l.visible || l.opacity <= 0) continue;
     ctx.globalAlpha = Math.min(1, Math.max(0, l.opacity));
     ctx.drawImage(l.canvas, 0, 0);
+    // Недорисованный мазок лежит НА СВОЁМ слое, а не поверх стопки.
+    if (state.previewLayerId === l.id) {
+      ctx.globalAlpha = Math.min(1, Math.max(0, l.opacity)) * (state.previewAlpha || 1);
+      ctx.drawImage(previewCanvas, 0, 0);
+    }
   }
   ctx.restore();
 }
@@ -2389,6 +2433,7 @@ function onDown(e) {
   if ((DRAWING_TOOLS.includes(t) || t === 'fill' || t === 'text') && !canDrawOnActiveLayer()) {
     return;
   }
+  state.strokeLayerId = activeLayer().id;
 
   state.drawing = true;
   // На время рисования bbox прячем handles в selection-overlay — иначе при tiny drag
@@ -2410,13 +2455,13 @@ function onDown(e) {
     // Ластик рисует белым - как в классическом Paint. Так нет проблем с
     // полупрозрачными пикселями и сохранение в PNG/JPEG даёт ожидаемый
     // белый фон.
-    const g = lctx();
+    const g = gctx();
     g.save();
     g.globalAlpha = 1;
     // На бумаге ластик КРАСИТ белым - как в классическом Paint, и тогда сохранение в
     // PNG/JPEG даёт ожидаемый белый фон. На слое выше бумаги он ВЫЧИТАЕТ: белая краска
     // там закрыла бы то, что лежит ниже, вместо того чтобы открыть его.
-    if (isPaperActive()) {
+    if (isPaperGesture()) {
       g.fillStyle = 'white';
     } else {
       g.globalCompositeOperation = 'destination-out';
@@ -2523,15 +2568,16 @@ function onMove(e) {
     previewCtx.stroke();
     state.lastX = x;
     state.lastY = y;
+    composite();
   } else if (t === 'eraser') {
     // Плавное "стирание" - рисуем белой линией между предыдущей и текущей точкой
-    const g = lctx();
+    const g = gctx();
     g.save();
     g.globalAlpha = 1;
     g.lineWidth = state.size;
     g.lineCap = 'round';
     g.lineJoin = 'round';
-    if (isPaperActive()) {
+    if (isPaperGesture()) {
       g.strokeStyle = 'white';
     } else {
       g.globalCompositeOperation = 'destination-out';
@@ -2548,6 +2594,7 @@ function onMove(e) {
   } else if (SHAPE_TOOLS.includes(t)) {
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     drawShape(previewCtx, t, state.startX, state.startY, x, y);
+    composite();
   } else if (t === 'select' || t === 'crop' || t === 'quad') {
     const sx = Math.min(state.startX, x);
     const sy = Math.min(state.startY, y);
@@ -2664,19 +2711,29 @@ function beginPreviewStroke(tool) {
   previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
   previewCtx.globalAlpha = 1;
   previewCanvas.style.opacity = String(strokeAlphaFor(tool));
+  // Мазок по нижнему слою во время протяжки лежал ПОВЕРХ верхних, а на отпускании нырял
+  // под них: картинка прыгала в момент, когда пользователь уже отвёл руку. Поэтому на
+  // время жеста превью убирается из отдельного холста и подкладывается в сборку ровно
+  // туда, где лежит его слой. В WPF-версии это 1.12.0.
+  state.previewLayerId = gestureLayer().id;
+  state.previewAlpha = strokeAlphaFor(tool);
+  previewCanvas.style.visibility = 'hidden';
+  composite();
 }
 
 // Перенести готовый мазок из буфера на холст. Единственное место, где
 // прозрачность вообще применяется к ctx.
 function mergePreviewStroke(tool) {
-  const g = lctx();
+  const g = gctx();
   g.save();
   g.globalAlpha = strokeAlphaFor(tool);
   g.drawImage(previewCanvas, 0, 0);
   g.restore();
-  composite();
+  state.previewLayerId = null;
   previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
   previewCanvas.style.opacity = '';
+  previewCanvas.style.visibility = '';
+  composite();
 }
 
 function applyStrokeStyle(g) {
@@ -3450,6 +3507,10 @@ function renderFloating() {
   // previewCanvas делят мазок и плавающий объект: без сброса объект унаследовал бы
   // прозрачность недорисованного мазка.
   previewCanvas.style.opacity = '';
+  // А ещё - его подкладку под слой: то, что пользователь держит в руках, обязано быть
+  // видно поверх всего, даже если его слой спрятан или прозрачен (WPF, 1.20.0).
+  state.previewLayerId = null;
+  previewCanvas.style.visibility = '';
   if (!state.floating) {
     floatingFrame.classList.remove('active', 'quad-mode');
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
@@ -3970,7 +4031,7 @@ function commitText() {
     if (bold) fontStr += 'bold ';
     fontStr += fontSize + 'px ' + fontFamily;
 
-    const g = lctx();
+    const g = gctx();
     g.save();
     g.font = fontStr;
     g.fillStyle = state.color;
@@ -4131,7 +4192,7 @@ function cutSelection() {
   if (!copySelection()) return;
   const s = state.selection;
   // Очищаем область - прозрачность
-  eraseRegion(s.x, s.y, s.w, s.h);
+  if (!eraseRegion(s.x, s.y, s.w, s.h)) return;
   hideSelection();
   saveHistory('Вырезание');
 }
@@ -4146,6 +4207,9 @@ function pasteOffset(side) {
 }
 
 function pasteFromClipboard() {
+  // Вставка кладёт пиксели в слой ровно так же, как кисть, и проверка на видимость ей
+  // нужна ровно та же: иначе картинка видна ровно до прижатия (WPF, 1.14.0).
+  if (!canDrawOnActiveLayer()) return false;
   if (!state.clipboard) {
     hint('В буфере пусто: сначала скопируйте область (Ctrl+C) или вырежьте её (Ctrl+X).');
     return false;
@@ -4572,7 +4636,7 @@ document.addEventListener('keydown', (e) => {
       return;
     }
     if (state.selection) {
-      eraseRegion(state.selection.x, state.selection.y, state.selection.w, state.selection.h);
+      if (!eraseRegion(state.selection.x, state.selection.y, state.selection.w, state.selection.h)) return;
       hideSelection();
       // Стирание по нетронутой бумаге ничего не меняет - saveHistory сам такую запись
       // отбросит, а признак несохранённой работы не включится.
