@@ -44,10 +44,11 @@
 - `paint-pro-electron/` — исходная Electron-версия, живёт параллельно и
   поддерживается. Её устройство и грабли: `paint-pro-electron/README.md` и
   `paint-pro-electron/DEV_CONTEXT.md`. Историю обеих версий ведёт общий
-  `CHANGELOG.md`; C#-версия — 1.23.0, Electron-версия — 1.12.1. С 1.12.0 версии
+  `CHANGELOG.md`; C#-версия — 1.23.0, Electron-версия — 1.12.2. С 1.12.0 версии
   сравнялись по возможностям: в Electron построены слои и выключатель правки в ленте.
-  У Electron-версии свои проверки: `paint-pro-electron/tests/` на Playwright, 247 штук,
-  запуск `npm test` в её папке.
+  У Electron-версии свои проверки: `paint-pro-electron/tests/` на Playwright, 262 штуки
+  (`npm test`), плюс 14 по настоящему приложению — main-процесс, запись файлов и
+  клавиатура (`npm run test:app`).
   Страница открывается в Chromium, мышь водит по холсту по-настоящему, утверждения
   читают пиксели — то же, что xUnit делает для C#-стороны.
 

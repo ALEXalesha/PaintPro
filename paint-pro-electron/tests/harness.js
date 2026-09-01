@@ -154,6 +154,64 @@ class App {
   async undo() { await this.page.evaluate(() => undo()); await this.settle(); }
   async redo() { await this.page.evaluate(() => redo()); await this.settle(); }
 
+  /**
+   * Сколько байт операция ПОПРОСИЛА себе, в долях холста.
+   *
+   * Померить аллокатор здесь нечем: холсты слоёв лежат вне кучи JavaScript, и
+   * performance.memory на них показывает почти ноль - та же ловушка, что с
+   * PrivateMemorySize64 в WPF-версии. Поэтому считаем не то, что выдал аллокатор, а то,
+   * что попросили мы сами, и всё крупное в этом приложении идёт через три места:
+   * создание холста, getImageData и toDataURL.
+   *
+   * Число выходит точное и повторяемое, в той же единице, что в C#: «эта операция просит
+   * x2.25 от холста».
+   */
+  async measure(action) {
+    await this.page.evaluate(() => {
+      const w = canvas.width, h = canvas.height;
+      window.__alloc = { canvases: [], imageData: 0, dataUrl: 0, base: w * h * 4 };
+      const create = document.createElement.bind(document);
+      document.createElement = function (tag) {
+        const el = create(tag);
+        if (String(tag).toLowerCase() === 'canvas') window.__alloc.canvases.push(el);
+        return el;
+      };
+      const gid = CanvasRenderingContext2D.prototype.getImageData;
+      CanvasRenderingContext2D.prototype.getImageData = function (x, y, ww, hh) {
+        window.__alloc.imageData += Math.abs(ww * hh) * 4;
+        return gid.apply(this, arguments);
+      };
+      const tdu = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function () {
+        const out = tdu.apply(this, arguments);
+        window.__alloc.dataUrl += out.length;
+        return out;
+      };
+      window.__allocRestore = () => {
+        document.createElement = create;
+        CanvasRenderingContext2D.prototype.getImageData = gid;
+        HTMLCanvasElement.prototype.toDataURL = tdu;
+      };
+    });
+
+    await action();
+    await this.settle();
+
+    return this.page.evaluate(() => {
+      const a = window.__alloc;
+      let canvasBytes = 0;
+      for (const c of a.canvases) canvasBytes += c.width * c.height * 4;
+      window.__allocRestore();
+      return {
+        canvas: canvasBytes / a.base,
+        imageData: a.imageData / a.base,
+        dataUrl: a.dataUrl / a.base,
+        total: (canvasBytes + a.imageData + a.dataUrl) / a.base,
+        canvasCount: a.canvases.length,
+      };
+    });
+  }
+
   /** Текст видимой сейчас подсказки про отказ; пустая строка, если её нет. */
   async hintText() {
     return this.page.evaluate(() => {

@@ -637,7 +637,8 @@
     right: 252px;
     display: flex;
     gap: 4px;
-    background: var(--glass-bg);
+    /* И здесь тоже: на большом холсте эта панель ложится прямо на белое. */
+    background: rgba(20, 20, 30, 0.85);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
     border: 1px solid var(--glass-border);
@@ -940,7 +941,11 @@
     transform: translateX(-50%) translateY(8px);
     padding: 10px 18px;
     max-width: 70vw;
-    background: var(--glass-bg-strong, rgba(40, 30, 65, 0.92));
+    /* Подложка СВОЯ и тёмная, а не стеклянная. Стекло здесь - это белый с прозрачностью
+       0.14 (--glass-bg-strong), и оно рассчитано на тёмный фон приложения. Подсказка же
+       всплывает НАД ХОЛСТОМ, а холст белый: подложка становится белой, светлый текст на
+       ней пропадает начисто. То же самое было с выпадающим меню в WPF-версии. */
+    background: rgba(26, 20, 44, 0.95);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
     border: 1px solid var(--glass-border);
@@ -964,7 +969,8 @@
   /* === Контекстное меню обрезки === */
   .crop-controls {
     position: absolute;
-    background: var(--glass-bg);
+    /* Тёмная подложка по той же причине, что у подсказки: панель всплывает над холстом. */
+    background: rgba(20, 20, 30, 0.85);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
     border: 1px solid var(--glass-border);
@@ -1714,7 +1720,11 @@ let state = {
   // появлением картинки на холсте лежат пиксели прежнего состояния - см. restoreHistory().
   restoring: false,
   selection: null, // {x, y, w, h}
-  selectionData: null, // ImageData для перемещения
+  // Признак «рамка дорисована и годится для перемещения», а НЕ пиксели. Когда-то здесь
+  // лежал ImageData, потом читать его перестали - а снимать не перестали: «Выделить всё»
+  // копировало под этот признак весь холст, обычное выделение - свою область. Замер
+  // расхода это и показал; чтением кода такое почти не видно.
+  selectionReady: false,
   cropping: false,
   cropRect: null,
   clipboard: null,
@@ -2441,7 +2451,7 @@ function onDown(e) {
   if ((t === 'select' || t === 'crop') && state.selection) {
     const s = state.selection;
     if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) {
-      if (t === 'select' && state.selectionData) {
+      if (t === 'select' && state.selectionReady) {
         // Поднимаем выделение в floating (drawImage = композитинг с прозрачностью),
         // чтобы двигалось только нарисованное, без белой подложки.
         const f = promoteSelectionToFloating();
@@ -2700,7 +2710,7 @@ function onUp(e) {
       // Помечаем, что выделение готово к перемещению. Сам подъём пикселей и стирание
       // фона происходят при клике внутрь (promoteSelectionToFloating), а не сейчас —
       // так холст не трогается, пока пользователь не начал двигать.
-      state.selectionData = ctx.getImageData(sel.x, sel.y, sel.w, sel.h);
+      state.selectionReady = true;
     } else {
       // Нижняя граница у рамки есть, и она разумна. Но пока рамка пропадала молча, это
       // выглядело так, будто выделение просто не работает.
@@ -2917,19 +2927,23 @@ function floodFill(x, y, fillHex) {
   // в стек заново - стек растёт бесконечно и приложение зависает.
   // Стек плоский (x, y, x, y, ...), а не массив пар: на заливке во весь экран
   // пар набегают миллионы, и каждая - отдельный объект для сборщика мусора.
+  // Одна карта на два вопроса вместо двух массивов: бит 1 - «смотрели», бит 2 - «закрасили».
+  // Просмотренный пиксель - ещё не залитый: обход помечает и те, что не подошли по цвету,
+  // а класть в слой надо ровно закрашенные. Две отдельные карты стоили по четверти холста
+  // каждая; в WPF-версии ту же карту в 1.22.0 сжали до битов по той же причине.
   const seen = new Uint8Array(w * h);
-  // Просмотренный пиксель - ещё не залитый: обход помечает и те, что не подошли по цвету.
-  // Класть в слой надо ровно закрашенные.
-  const touched = new Uint8Array(w * h);
+  const SEEN = 1, TOUCHED = 2;
   const stack = [x, y];
   let filled = 0;
+  // Габарит закрашенного: заплатка заводится по нему, а не во весь холст.
+  let minX = w, minY = h, maxX = -1, maxY = -1;
   while (stack.length) {
     const cy = stack.pop();
     const cx = stack.pop();
     if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
     const seenIdx = cy * w + cx;
-    if (seen[seenIdx]) continue;
-    seen[seenIdx] = 1;
+    if (seen[seenIdx] & SEEN) continue;
+    seen[seenIdx] |= SEEN;
     const p = getPixel(data, cx, cy, w);
     if (!colorsMatch(p, target)) continue;
     // Смешиваем с учётом прозрачности: new = bg * (1-a) + fill * a
@@ -2937,28 +2951,40 @@ function floodFill(x, y, fillHex) {
     const g = Math.round(p[1] * (1 - alpha) + fillRgb[1] * alpha);
     const b = Math.round(p[2] * (1 - alpha) + fillRgb[2] * alpha);
     setPixel(data, cx, cy, w, [r, g, b]);
-    touched[seenIdx] = 1;
+    seen[seenIdx] |= TOUCHED;
+    if (cx < minX) minX = cx;
+    if (cy < minY) minY = cy;
+    if (cx > maxX) maxX = cx;
+    if (cy > maxY) maxY = cy;
     filled++;
     stack.push(cx + 1, cy, cx - 1, cy, cx, cy + 1, cx, cy - 1);
   }
   if (!filled) return false;
-  // Кладём только залитое: putImageData всей картинкой перенесла бы в активный слой
-  // содержимое всех остальных, расплющив стопку.
-  const patch = makeLayerCanvas(w, h);
+  // Кладём только залитое, и заплатку заводим ПО ГАБАРИТУ закрашенного, а не во весь
+  // холст: заливка внутри рамки трогает малую часть картинки, а холст под заплатку
+  // просился целиком. putImageData тут не годится - она заменила бы и незакрашенные
+  // пиксели внутри габарита, расплющив стопку.
+  const pw = maxX - minX + 1;
+  const ph = maxY - minY + 1;
+  const patch = makeLayerCanvas(pw, ph);
   const pg = patch.getContext('2d');
-  const pid = pg.createImageData(w, h);
+  const pid = pg.createImageData(pw, ph);
   const pd = pid.data;
-  for (let i = 0; i < seen.length; i++) {
-    if (!seen[i] || !touched[i]) continue;
-    const j = i * 4;
-    pd[j] = data[j]; pd[j + 1] = data[j + 1]; pd[j + 2] = data[j + 2]; pd[j + 3] = 255;
+  for (let py = 0; py < ph; py++) {
+    for (let px = 0; px < pw; px++) {
+      const src = (py + minY) * w + (px + minX);
+      if (!(seen[src] & TOUCHED)) continue;
+      const j = src * 4;
+      const k = (py * pw + px) * 4;
+      pd[k] = data[j]; pd[k + 1] = data[j + 1]; pd[k + 2] = data[j + 2]; pd[k + 3] = 255;
+    }
   }
   pg.putImageData(pid, 0, 0);
   const g = lctx();
   g.save();
   g.globalAlpha = 1;
   g.globalCompositeOperation = 'source-over';
-  g.drawImage(patch, 0, 0);
+  g.drawImage(patch, minX, minY);
   g.restore();
   composite();
   return true;
@@ -3022,12 +3048,12 @@ function normalizeSelection() {
 function hideSelection() {
   selOverlay.style.display = 'none';
   state.selection = null;
-  state.selectionData = null;
+  state.selectionReady = false;
   document.getElementById('sel-size').textContent = '—';
 }
 
 function commitSelection() {
-  state.selectionData = null;
+  state.selectionReady = false;
 }
 
 function showCropControls() {
@@ -3181,13 +3207,20 @@ function applyStack(entry) {
       setCanvasSize(entry.w, entry.h);
       updateCanvasInfo();
     }
+    // Холсты слоёв ПЕРЕИСПОЛЬЗУЕМ, когда стопка того же размера: пересоздание просило по
+    // холсту на каждый слой, и на время подмены в памяти жили обе стопки сразу - двойной
+    // пик на каждой отмене. Чистим и рисуем в те же.
+    const reuse = state.layers.length === entry.layers.length
+      && state.layers.every((l) => l.canvas.width === entry.w && l.canvas.height === entry.h);
     state.layers = entry.layers.map((meta, i) => {
-      const l = makeLayer(meta.name, entry.w, entry.h);
+      const l = reuse ? state.layers[i] : makeLayer(meta.name, entry.w, entry.h);
       if (meta.id != null) l.id = meta.id;
       l.name = meta.name;
       l.visible = meta.visible;
       l.opacity = meta.opacity;
-      if (imgs[i]) l.canvas.getContext('2d').drawImage(imgs[i], 0, 0);
+      const g = l.canvas.getContext('2d');
+      g.clearRect(0, 0, entry.w, entry.h);
+      if (imgs[i]) g.drawImage(imgs[i], 0, 0);
       return l;
     });
     // Счётчик не должен выдать номер, который уже занят восстановленным слоем.
@@ -3598,8 +3631,20 @@ function renderHistoryPanel() {
     row.appendChild(div);
     list.appendChild(row);
   }
+  // Прокручиваем ТОЛЬКО сам список, а не страницу. scrollIntoView тащит за собой все
+  // прокручиваемые родители: боковая панель длинная, и каждый штрих уводил её вниз, к
+  // ленте, - панель слоёв уезжала из виду прямо во время рисования. Видно это только
+  // руками, в запущенном приложении.
   const cur = list.querySelector('.hist-item.current');
-  if (cur) cur.scrollIntoView({ block: 'nearest' });
+  if (cur) {
+    // Считаем по фактическим прямоугольникам, а не по offsetTop: тот меряется от
+    // ближайшего позиционированного предка, а им список быть не обязан.
+    const row = cur.parentElement || cur;
+    const r = row.getBoundingClientRect();
+    const lr = list.getBoundingClientRect();
+    if (r.top < lr.top) list.scrollTop -= (lr.top - r.top);
+    else if (r.bottom > lr.bottom) list.scrollTop += (r.bottom - lr.bottom);
+  }
 }
 
 // Свернуть/развернуть панель истории.
@@ -3764,9 +3809,21 @@ function promoteSelectionToFloating(opts) {
   if (eraseBbox) keyOutWhite(pickup);
   // Снимок «до» принадлежит СЛОЮ, с которого подняли, а не сборке: вернуть его на
   // видимый холст значило бы впечатать в активный слой всё, что лежит на остальных.
+  //
+  // И снимается он ПО ГАБАРИТУ выделения, а не со всего слоя: меняется только эта область,
+  // остальное возвращать неоткуда и незачем. Слой целиком стоил размера холста за каждый
+  // подъём. Исключение - многоугольник: его форму можно растянуть ЗА исходный габарит
+  // раньше, чем случится стирание (ensureOriginalQuadErased снимает форму на первом
+  // движении), и тогда габарита не хватило бы. Там берём слой целиком - редкий случай.
   const srcLayer = activeLayer();
   const g = srcLayer.canvas.getContext('2d');
-  const backup = g.getImageData(0, 0, canvas.width, canvas.height);
+  const bx = Math.max(0, Math.floor(s.x));
+  const by = Math.max(0, Math.floor(s.y));
+  const bw = Math.min(canvas.width - bx, Math.ceil(s.w) + 1);
+  const bh = Math.min(canvas.height - by, Math.ceil(s.h) + 1);
+  const backup = eraseBbox
+    ? { data: g.getImageData(bx, by, bw, bh), x: bx, y: by }
+    : { data: g.getImageData(0, 0, canvas.width, canvas.height), x: 0, y: 0 };
   if (eraseBbox) {
     g.save();
     g.globalAlpha = 1;
@@ -4041,7 +4098,8 @@ function commitFloating() {
 function cancelFloating() {
   // Если есть backup (promote из selection) — возвращаем canvas в дополитное состояние
   if (state.floating && state.floating.preCanvas) {
-    layerCtxById(state.floating.srcLayerId).putImageData(state.floating.preCanvas, 0, 0);
+    const b = state.floating.preCanvas;
+    layerCtxById(state.floating.srcLayerId).putImageData(b.data, b.x, b.y);
     composite();
   }
   state.floating = null;
@@ -4197,7 +4255,7 @@ document.querySelectorAll('.resize-handle').forEach(h => {
     // Handle на selection-overlay: сначала promote во floating (без вращения),
     // потом стартуем обычный resize. Это и есть «масштабирование выделения».
     if (h.dataset.on === 'selection' && !state.floating) {
-      if (!state.selection || !state.selectionData) return;
+      if (!state.selection || !state.selectionReady) return;
       const f = promoteSelectionToFloating();
       if (!f) return;
     }
@@ -4228,7 +4286,7 @@ selectionRotateHandle.addEventListener('mousedown', (e) => {
   e.stopPropagation();
   e.preventDefault();
   if (!state.floating) {
-    if (!state.selection || !state.selectionData) return;
+    if (!state.selection || !state.selectionReady) return;
     const f = promoteSelectionToFloating();
     if (!f) return;
   }
@@ -4877,8 +4935,8 @@ function resizeCanvas() {
 
 function rotateCanvas() {
   if (state.floating) commitFloating();
-  // Рамка выделения осталась бы висеть на старом месте, а selectionData
-  // указывал бы на пиксели, которых там уже нет.
+  // Рамка выделения осталась бы висеть на старом месте, а selectionReady
+  // остался бы поднятым для области, которой там уже нет.
   hideSelection();
   const nw = canvas.height, nh = canvas.width;
   const ow = canvas.width, oh = canvas.height;
@@ -4895,8 +4953,8 @@ function rotateCanvas() {
 
 function flipH() {
   if (state.floating) commitFloating();
-  // Рамка выделения осталась бы висеть на старом месте, а selectionData
-  // указывал бы на пиксели, которых там уже нет.
+  // Рамка выделения осталась бы висеть на старом месте, а selectionReady
+  // остался бы поднятым для области, которой там уже нет.
   hideSelection();
   // Снимок текущего холста в офскрин, потом рисуем его зеркально обратно.
   transformLayers(canvas.width, canvas.height, (g, src, w) => {
@@ -4910,8 +4968,8 @@ function flipH() {
 
 function flipV() {
   if (state.floating) commitFloating();
-  // Рамка выделения осталась бы висеть на старом месте, а selectionData
-  // указывал бы на пиксели, которых там уже нет.
+  // Рамка выделения осталась бы висеть на старом месте, а selectionReady
+  // остался бы поднятым для области, которой там уже нет.
   hideSelection();
   transformLayers(canvas.width, canvas.height, (g, src, w, h) => {
     g.translate(0, h);
@@ -4937,7 +4995,7 @@ function selectAll() {
   document.querySelector('[data-tool="select"]').click();
   commitSelection();
   state.selection = { x: 0, y: 0, w: canvas.width, h: canvas.height };
-  state.selectionData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  state.selectionReady = true;
   updateSelectionOverlay();
   document.getElementById('sel-size').textContent = `${canvas.width} × ${canvas.height}`;
 }
@@ -4990,7 +5048,7 @@ document.addEventListener('keydown', (e) => {
   // [ / ] — поворот выделения на ±90° (Shift = ±15°). Если есть selection — поднимаем в floating.
   // Для quad-полигона поворачиваем и f.rotation (для pickup), и 4 точки вокруг центра bbox.
   if (e.key === '[' || e.key === ']') {
-    if (!state.floating && state.selection && state.selectionData) {
+    if (!state.floating && state.selection && state.selectionReady) {
       promoteSelectionToFloating();
     }
     if (state.floating) {
