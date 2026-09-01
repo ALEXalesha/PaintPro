@@ -5,6 +5,7 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests',
+  testIgnore: ['**/tests-app/**'],
   fullyParallel: true,
   workers: 4,
   reporter: [['list']],
