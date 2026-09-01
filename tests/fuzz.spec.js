@@ -190,3 +190,97 @@ test('прогулка по ленте с выключенными запися�
   await app.settle();
   expect(await app.fingerprint(), 'прогулка по ленте изменила документ').toBe(here);
 });
+
+// ─────────── Сильнейший инвариант: позиция курсора однозначно задаёт документ ───────────
+// Каким бы путём до строки ленты ни дошли - сверху отменами или снизу повторами, - на ней
+// обязан быть один и тот же документ, вплоть до свойств слоёв и того, держит ли
+// пользователь что-то в руках. В C#-версии (1.18.0) именно он нашёл самое крупное:
+// второй пикап затирал первый молча. Постоянная проверка идёт по трём seed'ам;
+// тяжёлый разовый прогон делается отдельно и в набор не кладётся.
+
+/** Отпечаток позиции: картинка плюс всё, чего в картинке не видно. */
+async function positionStamp(app) {
+  return app.page.evaluate(() => JSON.stringify({
+    pic: canvas.toDataURL(),
+    size: [canvas.width, canvas.height],
+    layers: state.layers.map((l) => [l.name, l.visible, l.opacity, l.canvas.width, l.canvas.height]),
+    active: state.activeLayer,
+    floating: state.floating
+      ? [Math.round(state.floating.x), Math.round(state.floating.y)]
+      : null,
+  }));
+}
+
+async function anyEdit(app, rnd) {
+  const kinds = ['stroke', 'shape', 'fill', 'erase', 'layer', 'hide', 'opacity', 'flip'];
+  const kind = kinds[Math.floor(rnd() * kinds.length)];
+  const x1 = 60 + Math.floor(rnd() * 600);
+  const y1 = 60 + Math.floor(rnd() * 380);
+  const x2 = 60 + Math.floor(rnd() * 600);
+  const y2 = 60 + Math.floor(rnd() * 380);
+  const color = COLORS[Math.floor(rnd() * COLORS.length)];
+
+  if (kind === 'stroke') {
+    await app.pickTool(['pencil', 'brush', 'marker'][Math.floor(rnd() * 3)]);
+    await app.setColor(color);
+    await app.setSize(5 + Math.floor(rnd() * 25));
+    await app.setOpacity(0.3 + rnd() * 0.7);
+    await app.drag(x1, y1, x2, y2);
+  } else if (kind === 'shape') {
+    await app.pickTool(['rect', 'ellipse', 'line', 'triangle'][Math.floor(rnd() * 4)]);
+    await app.setColor(color);
+    await app.setSize(3 + Math.floor(rnd() * 10));
+    await app.setOpacity(1);
+    await app.drag(x1, y1, x2, y2);
+  } else if (kind === 'fill') {
+    await app.pickTool('fill');
+    await app.setColor(color);
+    await app.setOpacity(1);
+    await app.clickAt(x1, y1);
+  } else if (kind === 'erase') {
+    await app.pickTool('eraser');
+    await app.page.evaluate((sz) => { state.eraserSize = sz; syncSizeForTool(); }, 15 + Math.floor(rnd() * 40));
+    await app.drag(x1, y1, x2, y2);
+  } else if (kind === 'layer') {
+    if (rnd() < 0.6) await app.page.evaluate(() => addLayer());
+    else await app.page.evaluate(() => removeLayer());
+    await app.settle();
+  } else if (kind === 'hide') {
+    await app.page.evaluate((r) => {
+      const i = Math.min(state.layers.length - 1, Math.floor(r * state.layers.length));
+      setLayerVisible(i, !state.layers[i].visible);
+    }, rnd());
+    await app.settle();
+  } else if (kind === 'opacity') {
+    await app.page.evaluate((v) => setLayerOpacity(state.activeLayer, v), Math.round(rnd() * 10) / 10);
+    await app.settle();
+  } else {
+    await app.page.evaluate((v) => (v ? flipH() : flipV()), rnd() < 0.5);
+    await app.settle();
+  }
+}
+
+for (const seed of [11, 22, 33]) {
+  test('позиция курсора однозначно задаёт документ (seed ' + seed + ')', async ({ page }) => {
+    test.setTimeout(600000);
+    const app = await openApp(page);
+    const rnd = rng(seed);
+    for (let i = 0; i < 6; i++) await anyEdit(app, rnd);
+
+    const n = (await app.history()).labels.length;
+    const down = [];
+    await app.page.evaluate(() => jumpHistory(state.history.length - 1));
+    await app.settle();
+    for (let i = n - 1; i >= 0; i--) {
+      await app.page.evaluate((k) => jumpHistory(k), i);
+      await app.settle();
+      down[i] = await positionStamp(app);
+    }
+    for (let i = 0; i < n; i++) {
+      await app.page.evaluate((k) => jumpHistory(k), i);
+      await app.settle();
+      expect(await positionStamp(app),
+        'позиция ' + i + ' сверху и снизу разошлась').toBe(down[i]);
+    }
+  });
+}
