@@ -12,11 +12,15 @@
 - **`main.js`** — создаёт `BrowserWindow`, отключает нативное меню (`Menu.setApplicationMenu(null)` + `setMenuBarVisibility(false)`), обрабатывает `ipcMain.handle('pick-save-path' | 'write-image' | 'clear-save-path' | 'open-file-dialog' | 'read-dropped-file')` и single-instance lock + ассоциации файлов. Сохранение разведено на два вызова специально: renderer должен знать расширение до `toDataURL`, иначе JPEG уезжает в файл PNG-байтами. `clear-save-path` обнуляет `global.lastSavedPath`: без него «Файл → Новый» оставлял документ привязанным к прежней картинке, и Ctrl+S перезаписывал её чистым холстом.
 - **`preload.js`** — `contextBridge.exposeInMainWorld('electronAPI', { pickSavePath, writeImage, clearSavePath, openFileDialog, getFilePath, readDroppedFile, onMenuAction, onOpenFile })`. `contextIsolation:true`, `nodeIntegration:false`.
 - **`package.json` build-конфиг:** `target: ['portable', 'nsis']`, иконки в `build/icon.ico` + `build/icon.png`. NSIS — `oneClick:false, perMachine:false, allowToChangeInstallationDirectory:true`.
+  `productName: 'Paint Pro Electron'` и `appId: 'com.paintpro.electron'` отличаются от
+  C#-версии НАМЕРЕННО: пока оба назывались «Paint Pro», установщики шли в одну папку и
+  затирали друг друга. Трогать `name` в package.json при этом нельзя — из него Electron
+  берёт `%APPDATA%\paint-pro`, где лежит localStorage с выбранной темой.
 
 Команды:
 ```
 npm run build           # PaintPro-<версия>-portable.exe
-npm run build-installer # Paint Pro Setup <версия>.exe
+npm run build-installer # Paint Pro Electron Setup <версия>.exe
 ```
 
 ---

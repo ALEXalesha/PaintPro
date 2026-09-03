@@ -20,8 +20,8 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.paintpro.app",
-    "productName": "Paint Pro",
+    "appId": "com.paintpro.electron",
+    "productName": "Paint Pro Electron",
     "files": [
       "main.js",
       "preload.js",
@@ -91,7 +91,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Paint Pro"
+      "shortcutName": "Paint Pro Electron"
     }
   }
 }
