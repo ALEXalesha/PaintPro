@@ -36,7 +36,9 @@ internal static class WpfRunner
                     var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                     foreach (var uri in new[]
                     {
-                        "pack://application:,,,/PaintPro;component/Resources/Themes.xaml",
+                        // Первым идёт СЛОВАРЬ ТЕМЫ - тот же порядок, что в App.xaml: стили ниже
+                        // ссылаются на его ключи, и переставить нельзя.
+                        "pack://application:,,,/PaintPro;component/Resources/Themes/Glass.xaml",
                         "pack://application:,,,/PaintPro;component/Resources/GlassStyles.xaml",
                         "pack://application:,,,/PaintPro;component/Resources/ToolIcons.xaml",
                     })
@@ -62,4 +64,7 @@ internal static class WpfRunner
 
     /// <summary>Выполнить проверку на WPF-потоке и вернуть её отказ сюда, как есть.</summary>
     public static void Run(Action action) => Dispatcher.Invoke(action);
+
+    /// <summary>То же, но с результатом: ресурсы WPF создаются только на своём потоке.</summary>
+    public static T Invoke<T>(Func<T> func) => Dispatcher.Invoke(func);
 }

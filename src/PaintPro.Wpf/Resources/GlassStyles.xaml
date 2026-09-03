@@ -5,8 +5,8 @@
 
     <!-- Glass panel = translucent rounded rectangle with subtle border and drop shadow. -->
     <Style x:Key="GlassPanel" TargetType="Border">
-        <Setter Property="Background"      Value="{StaticResource GlassBg}"/>
-        <Setter Property="BorderBrush"     Value="{StaticResource GlassBorder}"/>
+        <Setter Property="Background"      Value="{DynamicResource GlassBg}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource GlassBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="CornerRadius"    Value="18"/>
         <Setter Property="Margin"          Value="8"/>
@@ -21,7 +21,7 @@
     <!-- Small ghost button used across toolbars. -->
     <Style x:Key="GhostButton" TargetType="Button">
         <Setter Property="Background"  Value="Transparent"/>
-        <Setter Property="Foreground"  Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Foreground"  Value="{DynamicResource TextPrimary}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="10,6"/>
@@ -41,11 +41,11 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgHover}"/>
-                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource GlassBorder}"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgHover}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource GlassBorder}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.35"/>
@@ -60,7 +60,7 @@
     <Style x:Key="ToolButton" TargetType="ToggleButton">
         <Setter Property="Background"  Value="Transparent"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
-        <Setter Property="Foreground"  Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Foreground"  Value="{DynamicResource TextPrimary}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Width"  Value="44"/>
         <Setter Property="Height" Value="44"/>
@@ -81,12 +81,12 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgHover}"/>
-                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource GlassBorder}"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgHover}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource GlassBorder}"/>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentGrad}"/>
-                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource GlassBorderStrong}"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentGrad}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource GlassBorderStrong}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -100,7 +100,7 @@
         <Setter Property="Height" Value="22"/>
         <Setter Property="Margin" Value="2"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="BorderBrush" Value="{StaticResource GlassBorder}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource GlassBorder}"/>
         <Setter Property="Cursor"      Value="Hand"/>
         <Setter Property="Focusable"   Value="False"/>
         <Setter Property="Template">
@@ -117,23 +117,23 @@
 
     <!-- Slider with thin glass track. -->
     <Style x:Key="GlassSlider" TargetType="Slider">
-        <Setter Property="Foreground" Value="{StaticResource Accent}"/>
-        <Setter Property="Background" Value="{StaticResource GlassBg}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+        <Setter Property="Background" Value="{DynamicResource GlassBg}"/>
         <Setter Property="IsMoveToPointEnabled" Value="True"/>
         <Setter Property="Focusable" Value="False"/>
     </Style>
 
     <Style TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="FontFamily" Value="Segoe UI"/>
     </Style>
     <Style TargetType="Label">
-        <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextDim}"/>
         <Setter Property="FontSize" Value="11"/>
     </Style>
     <Style TargetType="Menu">
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
     </Style>
     <!--
       Меню рисуется своими шаблонами, а не системными.
@@ -153,8 +153,8 @@
             <Popup x:Name="PART_Popup" AllowsTransparency="True" Placement="Bottom"
                    IsOpen="{TemplateBinding IsSubmenuOpen}" Focusable="False"
                    PopupAnimation="Fade" HorizontalOffset="-4">
-                <Border Background="{StaticResource MenuBg}"
-                        BorderBrush="{StaticResource GlassBorder}" BorderThickness="1"
+                <Border Background="{DynamicResource MenuBg}"
+                        BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
                         CornerRadius="10" Padding="4" Margin="0,4,10,10">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
@@ -165,10 +165,10 @@
         </Grid>
         <ControlTemplate.Triggers>
             <Trigger Property="IsHighlighted" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
             </Trigger>
             <Trigger Property="IsSubmenuOpen" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
             </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>
@@ -186,12 +186,61 @@
                 <!-- Подсказка про хоткей: тусклее подписи, но на том же тёмном фоне. -->
                 <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}"
                            Margin="28,0,0,0" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextDim}"/>
+                           Foreground="{DynamicResource TextDim}"/>
             </Grid>
         </Border>
         <ControlTemplate.Triggers>
             <Trigger Property="IsHighlighted" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4"/>
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <!--
+      Третья роль: пункт ВНУТРИ списка, у которого есть свой вложенный список («Вид → Тема»).
+      Ролей у MenuItem три, а шаблона было два - и всплывающее окно вложенного списка
+      рисовала система: светлая панель, на которой наш светлый текст пропадал начисто.
+      Ровно тот же дефект, что был у выпадающих меню в 1.23.0, и по той же причине -
+      перечислили не всех, к кому правило относится. Пока вложенных подменю в программе не
+      было ни одного, дыра не показывалась.
+    -->
+    <ControlTemplate x:Key="MenuSubHeaderTemplate" TargetType="MenuItem">
+        <Border x:Name="bd" Background="Transparent" CornerRadius="6"
+                Padding="12,6" Margin="0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ContentPresenter Grid.Column="0" ContentSource="Header"
+                                  RecognizesAccessKey="True" VerticalAlignment="Center"/>
+                <!-- Стрелка вправо: без неё не видно, что у пункта есть продолжение. -->
+                <TextBlock Grid.Column="1" Text="›" Margin="24,0,0,0"
+                           VerticalAlignment="Center" FontSize="14"
+                           Foreground="{DynamicResource TextDim}"/>
+                <Popup x:Name="PART_Popup" AllowsTransparency="True" Placement="Right"
+                       IsOpen="{TemplateBinding IsSubmenuOpen}" Focusable="False"
+                       PopupAnimation="Fade" HorizontalOffset="-2" VerticalOffset="-6">
+                    <Border Background="{DynamicResource MenuBg}"
+                            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                            CornerRadius="10" Padding="4" Margin="0,4,10,10">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
+                        </Border.Effect>
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                    </Border>
+                </Popup>
+            </Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+            </Trigger>
+            <Trigger Property="IsSubmenuOpen" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Opacity" Value="0.4"/>
@@ -200,15 +249,22 @@
     </ControlTemplate>
 
     <Style TargetType="MenuItem">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Style.Triggers>
-            <!-- Роль - единственное, что отличает заголовок в строке меню от пункта внутри списка. -->
+            <!--
+              Роль - единственное, что отличает заголовок в строке меню от пункта внутри
+              списка. Ролей ТРИ, и шаблон нужен каждой: у той, что осталась без своего,
+              всплывающее окно рисует система.
+            -->
             <Trigger Property="Role" Value="TopLevelHeader">
-                <Setter Property="Template" Value="{StaticResource MenuTopLevelTemplate}"/>
+                <Setter Property="Template" Value="{DynamicResource MenuTopLevelTemplate}"/>
             </Trigger>
             <Trigger Property="Role" Value="SubmenuItem">
-                <Setter Property="Template" Value="{StaticResource MenuSubItemTemplate}"/>
+                <Setter Property="Template" Value="{DynamicResource MenuSubItemTemplate}"/>
+            </Trigger>
+            <Trigger Property="Role" Value="SubmenuHeader">
+                <Setter Property="Template" Value="{DynamicResource MenuSubHeaderTemplate}"/>
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -221,9 +277,9 @@
       себе - тогда и фон, и текст наши.
     -->
     <Style TargetType="ToolTip">
-        <Setter Property="Background" Value="{StaticResource MenuBg}"/>
-        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource GlassBorder}"/>
+        <Setter Property="Background" Value="{DynamicResource MenuBg}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource GlassBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="10,6"/>
         <Setter Property="MaxWidth" Value="360"/>
@@ -242,7 +298,7 @@
                             <ContentPresenter.Resources>
                                 <!-- Длинные объяснения переносятся, а не уезжают за край. -->
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
                                     <Setter Property="FontFamily" Value="Segoe UI"/>
                                     <Setter Property="TextWrapping" Value="Wrap"/>
                                 </Style>
@@ -258,6 +314,6 @@
     <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
         <Setter Property="Height" Value="1"/>
         <Setter Property="Margin" Value="10,5"/>
-        <Setter Property="Background" Value="{StaticResource GlassBorder}"/>
+        <Setter Property="Background" Value="{DynamicResource GlassBorder}"/>
     </Style>
 </ResourceDictionary>

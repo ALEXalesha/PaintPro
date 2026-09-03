@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        BuildThemeMenu();
         Loaded += OnLoaded;
         // Drag-and-drop file open.
         AllowDrop = true;
@@ -94,6 +95,39 @@ public partial class MainWindow : Window
         => Vm.PickCustomColorCommand.Execute(null);
 
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// Наполнить подменю тем. Список берётся из ThemeService: одно место на меню и на
+    /// проверки, и добавить тему - значит добавить строку туда.
+    /// </summary>
+    private void BuildThemeMenu()
+    {
+        if (ThemeMenu is null) return;
+        ThemeMenu.Items.Clear();
+        foreach (var theme in Services.ThemeService.All)
+        {
+            var item = new MenuItem
+            {
+                Header = theme.Name,
+                ToolTip = theme.Note,
+                Tag = theme.Id,
+                IsCheckable = true,
+                IsChecked = theme.Id == Services.ThemeService.Current,
+            };
+            item.Click += OnThemeClick;
+            ThemeMenu.Items.Add(item);
+        }
+    }
+
+    private void OnThemeClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem item || item.Tag is not string id) return;
+        var applied = Services.ThemeService.Apply(id);
+        Services.ThemeService.Save(applied);
+        // Галочка ставится по факту применённого, а не по нажатому: неизвестное имя
+        // откатывается к исходной теме, и меню обязано показать правду.
+        BuildThemeMenu();
+    }
 
     private void OnAboutClick(object sender, RoutedEventArgs e)
         => MessageBox.Show($"Paint Pro {MainViewModel.AppVersion} — C# + WPF + SkiaSharp.\nLiquid Glass build.",

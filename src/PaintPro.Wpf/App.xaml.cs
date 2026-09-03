@@ -8,6 +8,9 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Тема ставится ДО первого окна: иначе оно моргнёт исходным оформлением и только
+        // потом перекрасится.
+        Services.ThemeService.ApplySaved();
         // Without this any unhandled exception closes the window and takes the unsaved
         // drawing with it. A paint app has nothing to gain from dying silently: report it
         // and keep running, so the user can still save.

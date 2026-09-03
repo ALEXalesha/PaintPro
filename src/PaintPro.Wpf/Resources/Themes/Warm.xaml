@@ -1,0 +1,66 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      «Тёплая» - тёмная, но не синяя: охра и кофе. Глазам легче в долгую работу.
+
+      Тема - это НАБОР ТЕХ ЖЕ КЛЮЧЕЙ. Всё оформление ходит через них, поэтому смена темы
+      сводится к подмене этого словаря; ключи обязаны совпадать во всех темах до одного,
+      иначе на смене приложение останется без кисти и упадёт при первой же отрисовке.
+
+      Обращаться к ним надо через DynamicResource: StaticResource разрешается один раз
+      при загрузке и подмену словаря не заметит.
+
+      Отдельно стоят Overlay* - подложка того, что всплывает НАД ХОЛСТОМ (подсказки,
+      выпадающие списки). Холст белый в любой теме, поэтому такая подложка в любой теме
+      тёмная. Стеклянные кисти сюда не годятся: над белым они белеют, и светлый текст на
+      них пропадает начисто - это уже случалось с выпадающим меню (1.23.0).
+    -->
+
+    <SolidColorBrush x:Key="Accent"            Color="#D08A3C"/>
+    <SolidColorBrush x:Key="Accent2"           Color="#B4562F"/>
+
+    <LinearGradientBrush x:Key="AccentGrad" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#D08A3C"/>
+        <GradientStop Offset="1" Color="#B4562F"/>
+    </LinearGradientBrush>
+
+    <SolidColorBrush x:Key="TextPrimary"       Color="#F5EAD9"/>
+    <SolidColorBrush x:Key="TextDim"           Color="#B0A08C"/>
+    <SolidColorBrush x:Key="MenuBg"            Color="#2A1E13"/>
+
+    <!-- Подложка над холстом и её текст: темам не подчиняются по смыслу, см. оговорку выше. -->
+    <SolidColorBrush x:Key="OverlayBg"         Color="#F21A142C"/>
+    <SolidColorBrush x:Key="OverlayText"       Color="#F4F4F8"/>
+
+    <!-- Опорный цвет фона: сплошной, под градиентом. По нему меряется контраст текста. -->
+    <SolidColorBrush x:Key="AppBase"           Color="#1D1610"/>
+
+    <SolidColorBrush x:Key="GlassBg"           Color="#12FFECD2"/>
+    <SolidColorBrush x:Key="GlassBgStrong"     Color="#21FFECD2"/>
+    <SolidColorBrush x:Key="GlassBgHover"      Color="#1AFFECD2"/>
+    <SolidColorBrush x:Key="GlassBorder"       Color="#29FFE2BE"/>
+    <SolidColorBrush x:Key="GlassBorderStrong" Color="#47FFE2BE"/>
+
+    <RadialGradientBrush x:Key="Blob1">
+        <GradientStop Offset="0" Color="#BE6E28"/>
+        <GradientStop Offset="1" Color="#00BE6E28"/>
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="Blob2">
+        <GradientStop Offset="0" Color="#963C28"/>
+        <GradientStop Offset="1" Color="#00963C28"/>
+    </RadialGradientBrush>
+    <!-- В этой теме цветных пятен нет: кисть прозрачная, эллипсы остаются
+         на месте и ничего не рисуют. -->
+    <SolidColorBrush x:Key="Blob3" Color="Transparent"/>
+    <!-- В этой теме цветных пятен нет: кисть прозрачная, эллипсы остаются
+         на месте и ничего не рисуют. -->
+    <SolidColorBrush x:Key="Blob4" Color="Transparent"/>
+
+    <LinearGradientBrush x:Key="WindowBg" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#17110B"/>
+        <GradientStop Offset="0.55" Color="#241A10"/>
+        <GradientStop Offset="1" Color="#140F0A"/>
+    </LinearGradientBrush>
+</ResourceDictionary>

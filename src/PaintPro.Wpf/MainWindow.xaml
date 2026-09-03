@@ -1,4 +1,4 @@
-<Window x:Class="PaintPro.MainWindow"
+﻿<Window x:Class="PaintPro.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:PaintPro.ViewModels"
@@ -8,8 +8,8 @@
         Title="Paint Pro"
         Width="1380" Height="860"
         MinWidth="900" MinHeight="600"
-        Background="{StaticResource WindowBg}"
-        Foreground="{StaticResource TextPrimary}"
+        Background="{DynamicResource WindowBg}"
+        Foreground="{DynamicResource TextPrimary}"
         FontFamily="Segoe UI"
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
@@ -81,14 +81,8 @@
             <Canvas.Resources>
                 <!-- Reusable storyboard maker would be nicer; inlining for readability. -->
             </Canvas.Resources>
-            <Ellipse Width="1100" Height="700" Canvas.Left="-180" Canvas.Top="-220" Opacity="0.55" RenderTransformOrigin="0.5,0.5">
+            <Ellipse Width="1100" Height="700" Canvas.Left="-180" Canvas.Top="-220" Opacity="0.55" RenderTransformOrigin="0.5,0.5" Fill="{DynamicResource Blob1}">
                 <Ellipse.RenderTransform><TranslateTransform x:Name="Blob1Move"/></Ellipse.RenderTransform>
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Offset="0"   Color="#9D5BFF"/>
-                        <GradientStop Offset="1"   Color="#009D5BFF"/>
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
                 <Ellipse.Triggers>
                     <EventTrigger RoutedEvent="Loaded">
                         <BeginStoryboard>
@@ -106,14 +100,8 @@
                     </EventTrigger>
                 </Ellipse.Triggers>
             </Ellipse>
-            <Ellipse Width="900" Height="600" Canvas.Right="-100" Canvas.Top="50" Opacity="0.40" RenderTransformOrigin="0.5,0.5">
+            <Ellipse Width="900" Height="600" Canvas.Right="-100" Canvas.Top="50" Opacity="0.40" RenderTransformOrigin="0.5,0.5" Fill="{DynamicResource Blob2}">
                 <Ellipse.RenderTransform><TranslateTransform x:Name="Blob2Move"/></Ellipse.RenderTransform>
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Offset="0" Color="#FF64B4"/>
-                        <GradientStop Offset="1" Color="#00FF64B4"/>
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
                 <Ellipse.Triggers>
                     <EventTrigger RoutedEvent="Loaded">
                         <BeginStoryboard>
@@ -131,14 +119,8 @@
                     </EventTrigger>
                 </Ellipse.Triggers>
             </Ellipse>
-            <Ellipse Width="800" Height="800" Canvas.Right="-200" Canvas.Bottom="-200" Opacity="0.40" RenderTransformOrigin="0.5,0.5">
+            <Ellipse Width="800" Height="800" Canvas.Right="-200" Canvas.Bottom="-200" Opacity="0.40" RenderTransformOrigin="0.5,0.5" Fill="{DynamicResource Blob3}">
                 <Ellipse.RenderTransform><TranslateTransform x:Name="Blob3Move"/></Ellipse.RenderTransform>
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Offset="0" Color="#3CC8FF"/>
-                        <GradientStop Offset="1" Color="#003CC8FF"/>
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
                 <Ellipse.Triggers>
                     <EventTrigger RoutedEvent="Loaded">
                         <BeginStoryboard>
@@ -156,14 +138,8 @@
                     </EventTrigger>
                 </Ellipse.Triggers>
             </Ellipse>
-            <Ellipse Width="700" Height="600" Canvas.Left="-100" Canvas.Bottom="-150" Opacity="0.30" RenderTransformOrigin="0.5,0.5">
+            <Ellipse Width="700" Height="600" Canvas.Left="-100" Canvas.Bottom="-150" Opacity="0.30" RenderTransformOrigin="0.5,0.5" Fill="{DynamicResource Blob4}">
                 <Ellipse.RenderTransform><TranslateTransform x:Name="Blob4Move"/></Ellipse.RenderTransform>
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Offset="0" Color="#64FFB4"/>
-                        <GradientStop Offset="1" Color="#0064FFB4"/>
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
                 <Ellipse.Triggers>
                     <EventTrigger RoutedEvent="Loaded">
                         <BeginStoryboard>
@@ -207,6 +183,10 @@
                     <MenuItem Header="Снять выделение" InputGestureText="Ctrl+D" Command="{Binding DeselectCommand}"/>
                 </MenuItem>
                 <MenuItem Header="_Вид">
+                    <!-- Список тем собирается кодом: он один на меню и на проверки,
+                         и добавить тему - значит добавить строку в ThemeService.All. -->
+                    <MenuItem Header="Тема" x:Name="ThemeMenu"/>
+                    <Separator/>
                     <MenuItem Header="Увеличить"  InputGestureText="Ctrl+=" Command="{Binding ZoomInCommand}"/>
                     <MenuItem Header="Уменьшить" InputGestureText="Ctrl+-" Command="{Binding ZoomOutCommand}"/>
                     <MenuItem Header="Сбросить масштаб" InputGestureText="Ctrl+0" Command="{Binding ZoomResetCommand}"/>
@@ -224,7 +204,7 @@
             </Menu>
 
             <!-- ───── Status bar (bottom) ───── -->
-            <Border DockPanel.Dock="Bottom" Style="{StaticResource GlassPanel}" Margin="8,4,8,8" Padding="14,6">
+            <Border DockPanel.Dock="Bottom" Style="{DynamicResource GlassPanel}" Margin="8,4,8,8" Padding="14,6">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -233,11 +213,11 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
-                        <TextBlock x:Name="StatusPos" Text="—" Foreground="{StaticResource TextDim}"/>
+                        <TextBlock x:Name="StatusPos" Text="—" Foreground="{DynamicResource TextDim}"/>
                         <!-- Объяснение, почему жест ничего не сделал: скрытый слой и подобное.
                              Пустая строка прячет всю строку целиком. -->
                         <TextBlock Text="{Binding StatusHint}" Margin="16,0,0,0"
-                                   Foreground="{StaticResource Accent}"
+                                   Foreground="{DynamicResource Accent}"
                                    TextTrimming="CharacterEllipsis">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
@@ -253,134 +233,134 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="12,0">
                         <Border Width="14" Height="14" CornerRadius="3"
-                                BorderBrush="{StaticResource GlassBorder}" BorderThickness="1"
+                                BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
                                 Background="{Binding PrimaryColorBrush}"/>
-                        <TextBlock x:Name="StatusHex" Text=" #000000" Margin="6,0,0,0" Foreground="{StaticResource TextDim}"/>
+                        <TextBlock x:Name="StatusHex" Text=" #000000" Margin="6,0,0,0" Foreground="{DynamicResource TextDim}"/>
                     </StackPanel>
                     <TextBlock Grid.Column="2" Margin="12,0"
                                Text="{Binding Zoom, StringFormat={}{0:P0}}"
-                               Foreground="{StaticResource TextDim}"/>
+                               Foreground="{DynamicResource TextDim}"/>
                     <TextBlock Grid.Column="3" Margin="12,0"
                                Text="{Binding VersionLabel}"
-                               Foreground="{StaticResource TextDim}"/>
+                               Foreground="{DynamicResource TextDim}"/>
                 </Grid>
             </Border>
 
             <!-- ───── Left toolbar ───── -->
-            <Border DockPanel.Dock="Left" Style="{StaticResource GlassPanel}" Padding="8" Width="74">
+            <Border DockPanel.Dock="Left" Style="{DynamicResource GlassPanel}" Padding="8" Width="74">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <!-- Drawing tools -->
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Карандаш (P)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Карандаш (P)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Pencil, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Pencil">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Pencil}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Pencil}"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Кисть (B)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Кисть (B)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Brush, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Brush">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Brush}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Brush}"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Маркер (M)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Маркер (M)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Marker, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Marker">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Marker}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Marker}"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Ластик (E)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Ластик (E)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Eraser, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Eraser">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Eraser}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Eraser}"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Заливка (G)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Заливка (G)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Fill, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Fill">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Fill}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Fill}"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Пипетка (I)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Пипетка (I)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Picker, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Picker">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Picker}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Picker}"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Текст (T)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Текст (T)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Text, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Text">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Text}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Text}"/>
                         </ToggleButton>
 
-                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="6,8" />
+                        <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="6,8" />
 
                         <!-- Shape tools -->
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Линия (L)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Линия (L)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Line, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Line">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Line}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Line}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Прямоугольник (R)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Прямоугольник (R)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Rect, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Rect">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Rect}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Rect}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Эллипс (O)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Эллипс (O)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Ellipse, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Ellipse">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Ellipse}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Ellipse}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Треугольник"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Треугольник"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Triangle, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Triangle">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Triangle}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Triangle}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Звезда"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Звезда"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Star, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Star">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Star}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Star}"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Стрелка"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Стрелка"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Arrow, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Arrow">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Arrow}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Arrow}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Сердце"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Сердце"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Heart, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Heart">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Heart}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Heart}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
 
-                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="6,8"/>
+                        <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="6,8"/>
 
                         <!-- Selection / navigation -->
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Прямоугольное выделение (S)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Прямоугольное выделение (S)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Select, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Select">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Select}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Select}"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Полигон-выделение (Q)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Полигон-выделение (Q)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Quad, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Quad">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Quad}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Quad}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Кадрирование (C)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Кадрирование (C)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Crop, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Crop">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Crop}" Fill="Transparent" Stroke="{StaticResource TextPrimary}" StrokeThickness="2"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Crop}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
-                        <ToggleButton Style="{StaticResource ToolButton}" ToolTip="Рука / панорама (H)"
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Рука / панорама (H)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Hand, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Hand">
-                            <Path Style="{StaticResource ToolGlyph}" Data="{StaticResource Icon.Hand}"/>
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Hand}"/>
                         </ToggleButton>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
             <!-- ───── Right side panel: color, size, opacity, layers, quick actions ───── -->
-            <Border DockPanel.Dock="Right" Style="{StaticResource GlassPanel}" Width="280" Padding="14">
+            <Border DockPanel.Dock="Right" Style="{DynamicResource GlassPanel}" Width="280" Padding="14">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <!-- Active colour preview + custom picker -->
                         <TextBlock Text="ЦВЕТ" FontSize="11" Opacity="0.6" Margin="0,0,0,6"/>
                         <Border CornerRadius="10" Height="40"
-                                BorderBrush="{StaticResource GlassBorder}" BorderThickness="1"
+                                BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
                                 Background="{Binding PrimaryColorBrush}"
                                 MouseLeftButtonDown="OnPickCustomColorClick"
                                 Cursor="Hand"
@@ -395,7 +375,7 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Style="{StaticResource ColorSwatch}"
+                                    <Button Style="{DynamicResource ColorSwatch}"
                                             Background="{Binding Brush}"
                                             Click="OnPaletteClick" Tag="{Binding}"/>
                                 </DataTemplate>
@@ -411,32 +391,32 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Style="{StaticResource ColorSwatch}"
+                                    <Button Style="{DynamicResource ColorSwatch}"
                                             Background="{Binding Brush}"
                                             Click="OnPaletteClick" Tag="{Binding}"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+                        <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
                         <TextBlock Text="РАЗМЕР" FontSize="11" Opacity="0.6"/>
-                        <Slider Style="{StaticResource GlassSlider}" Minimum="1" Maximum="100"
+                        <Slider Style="{DynamicResource GlassSlider}" Minimum="1" Maximum="100"
                                 Value="{Binding ToolSize}" TickFrequency="1"/>
                         <TextBlock Text="{Binding ToolSize, StringFormat={}{0} px}" Opacity="0.8"/>
 
                         <TextBlock Text="ПРОЗРАЧНОСТЬ" FontSize="11" Opacity="0.6" Margin="0,8,0,0"/>
-                        <Slider Style="{StaticResource GlassSlider}" Minimum="0" Maximum="1"
+                        <Slider Style="{DynamicResource GlassSlider}" Minimum="0" Maximum="1"
                                 Value="{Binding Opacity}" SmallChange="0.05" LargeChange="0.1"/>
                         <TextBlock Text="{Binding Opacity, StringFormat={}{0:P0}}" Opacity="0.8"/>
 
                         <CheckBox Margin="0,10,0,0"
                                   IsChecked="{Binding ShapeFill, Mode=TwoWay}"
-                                  Foreground="{StaticResource TextPrimary}"
+                                  Foreground="{DynamicResource TextPrimary}"
                                   Content="Заливать фигуры"
                                   ToolTip="Прямоугольник, эллипс, треугольник, звезда, сердце"/>
 
-                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+                        <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
                         <TextBlock Text="ХОЛСТ" FontSize="11" Opacity="0.6"/>
                         <Grid Margin="0,4,0,0">
@@ -447,20 +427,20 @@
                             <TextBlock Grid.Column="0" Text="{Binding Document.CanvasWidth, StringFormat='W={0}'}"/>
                             <TextBlock Grid.Column="1" Text="{Binding Document.CanvasHeight, StringFormat='H={0}'}"/>
                         </Grid>
-                        <Button Style="{StaticResource GhostButton}" Margin="0,6,0,0"
+                        <Button Style="{DynamicResource GhostButton}" Margin="0,6,0,0"
                                 Content="Изменить размер…" Command="{Binding ResizeCanvasCommand}"/>
 
-                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+                        <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
                         <TextBlock Text="БЫСТРЫЕ ДЕЙСТВИЯ" FontSize="11" Opacity="0.6"/>
                         <UniformGrid Columns="2" Margin="0,4,0,0">
-                            <Button Style="{StaticResource GhostButton}" Content="↻ 90°"   Command="{Binding Rotate90Command}"/>
-                            <Button Style="{StaticResource GhostButton}" Content="↺ 90°" Command="{Binding RotateMinus90Command}"/>
-                            <Button Style="{StaticResource GhostButton}" Content="↔ Flip"  Command="{Binding FlipHorizontalCommand}"/>
-                            <Button Style="{StaticResource GhostButton}" Content="↕ Flip"  Command="{Binding FlipVerticalCommand}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="↻ 90°"   Command="{Binding Rotate90Command}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="↺ 90°" Command="{Binding RotateMinus90Command}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="↔ Flip"  Command="{Binding FlipHorizontalCommand}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="↕ Flip"  Command="{Binding FlipVerticalCommand}"/>
                         </UniformGrid>
 
-                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+                        <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
                         <!-- Layer panel -->
                         <Grid Margin="0,0,0,4">
@@ -469,7 +449,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="СЛОИ" FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Style="{StaticResource GhostButton}"
+                            <Button Grid.Column="1" Style="{DynamicResource GhostButton}"
                                     Content="+ слой" Padding="6,2" FontSize="11"
                                     Command="{Binding AddLayerCommand}"/>
                         </Grid>
@@ -477,14 +457,14 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Margin="0,2" Padding="6" CornerRadius="8"
-                                            BorderThickness="1" BorderBrush="{StaticResource GlassBorder}">
+                                            BorderThickness="1" BorderBrush="{DynamicResource GlassBorder}">
                                         <Border.Style>
                                             <Style TargetType="Border">
-                                                <Setter Property="Background" Value="{StaticResource GlassBg}"/>
+                                                <Setter Property="Background" Value="{DynamicResource GlassBg}"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                        <Setter Property="Background" Value="{StaticResource GlassBgStrong}"/>
-                                                        <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                                        <Setter Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -498,15 +478,15 @@
                                             <CheckBox Grid.Column="0"
                                                       IsChecked="{Binding Visible, Mode=TwoWay}"
                                                       VerticalAlignment="Center" Margin="0,0,8,0"
-                                                      Foreground="{StaticResource TextPrimary}"
+                                                      Foreground="{DynamicResource TextPrimary}"
                                                       ToolTip="Видимость"/>
                                             <StackPanel Grid.Column="1">
-                                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextPrimary}"
+                                                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}"
                                                            MouseLeftButtonDown="OnLayerNameClick" Cursor="Hand"/>
                                                 <Slider Minimum="0" Maximum="1" Value="{Binding Opacity, Mode=TwoWay}"
-                                                        Style="{StaticResource GlassSlider}" Height="16"/>
+                                                        Style="{DynamicResource GlassSlider}" Height="16"/>
                                             </StackPanel>
-                                            <Button Grid.Column="2" Style="{StaticResource GhostButton}"
+                                            <Button Grid.Column="2" Style="{DynamicResource GhostButton}"
                                                     Content="×" FontSize="14" Padding="4,0"
                                                     Click="OnLayerDeleteClick" Tag="{Binding}"
                                                     ToolTip="Удалить слой"/>
@@ -516,16 +496,16 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+                        <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
                         <!-- Expandable change history: click any row to roll back/forward to it -->
-                        <Expander IsExpanded="True" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,4">
+                        <Expander IsExpanded="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,4">
                             <Expander.Header>
                                 <TextBlock Text="ИСТОРИЯ ИЗМЕНЕНИЙ" FontSize="11" Opacity="0.6"/>
                             </Expander.Header>
                             <Border Margin="0,6,0,0" CornerRadius="8" Padding="2"
-                                    Background="{StaticResource GlassBg}"
-                                    BorderBrush="{StaticResource GlassBorder}" BorderThickness="1">
+                                    Background="{DynamicResource GlassBg}"
+                                    BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1">
                                 <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
                                     <ItemsControl ItemsSource="{Binding HistoryItems}">
                                         <ItemsControl.ItemTemplate>
@@ -551,7 +531,7 @@
                                                 <CheckBox Grid.Column="0" VerticalAlignment="Center"
                                                           Margin="4,0,0,0" Focusable="False"
                                                           IsChecked="{Binding Enabled, Mode=OneWay}"
-                                                          Foreground="{StaticResource TextPrimary}"
+                                                          Foreground="{DynamicResource TextPrimary}"
                                                           Command="{Binding DataContext.ToggleHistoryEntryCommand,
                                                                     RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                           CommandParameter="{Binding}">
@@ -570,7 +550,7 @@
                                                         HorizontalContentAlignment="Left"
                                                         Padding="8,4" Margin="0,1" Cursor="Hand"
                                                         BorderThickness="0" FontSize="12"
-                                                        Foreground="{StaticResource TextPrimary}"
+                                                        Foreground="{DynamicResource TextPrimary}"
                                                         Command="{Binding DataContext.JumpToHistoryCommand,
                                                                   RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                         CommandParameter="{Binding}">
@@ -583,10 +563,10 @@
                                                             </Border>
                                                             <ControlTemplate.Triggers>
                                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource GlassBgStrong}"/>
+                                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
                                                                 </Trigger>
                                                                 <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource Accent}"/>
+                                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Accent}"/>
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding IsFuture}" Value="True">
                                                                     <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
@@ -618,19 +598,19 @@
                             </Border>
                         </Expander>
 
-                        <Rectangle Height="1" Fill="{StaticResource GlassBorder}" Margin="0,14"/>
+                        <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
                         <UniformGrid Columns="3">
-                            <Button Style="{StaticResource GhostButton}" Content="−" Command="{Binding ZoomOutCommand}"/>
-                            <Button Style="{StaticResource GhostButton}" Content="1:1" Command="{Binding ZoomResetCommand}"/>
-                            <Button Style="{StaticResource GhostButton}" Content="+" Command="{Binding ZoomInCommand}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="−" Command="{Binding ZoomOutCommand}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="1:1" Command="{Binding ZoomResetCommand}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="+" Command="{Binding ZoomInCommand}"/>
                         </UniformGrid>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
             <!-- ───── Centre canvas ───── -->
-            <Border Style="{StaticResource GlassPanel}" Padding="0">
+            <Border Style="{DynamicResource GlassPanel}" Padding="0">
                 <views:CanvasView x:Name="Canvas" />
             </Border>
         </DockPanel>

@@ -39,6 +39,143 @@
     --bg-4: rgba(255,255,255,0.16);
     --border: rgba(255,255,255,0.18);
     --border-light: rgba(255,255,255,0.32);
+
+    /* Фон окна целиком. Вынесен в токен, чтобы тема меняла его одной строкой. */
+    --app-bg:
+      radial-gradient(1100px 700px at 12% -10%, rgba(120, 90, 255, 0.55), transparent 60%),
+      radial-gradient(900px 600px at 95% 8%, rgba(255, 100, 180, 0.40), transparent 55%),
+      radial-gradient(800px 800px at 85% 110%, rgba(60, 200, 255, 0.40), transparent 60%),
+      radial-gradient(700px 600px at 5% 105%, rgba(100, 255, 180, 0.30), transparent 60%),
+      linear-gradient(135deg, #0e0c1a 0%, #1a1330 50%, #0c1024 100%);
+
+    /*
+      Подложка того, что всплывает НАД ХОЛСТОМ: подсказка, панель обрезки, кнопки
+      масштаба. Холст белый в любой теме - значит и подложка над ним в любой теме должна
+      быть тёмной и непрозрачной. Стеклянные токены сюда не годятся: они рассчитаны на
+      фон окна, а над белым белеют, и светлый текст на них пропадает.
+    */
+    /* Опорный цвет фона: сплошной, под градиентом. Нужен и сам по себе - окно не
+       мигает белым, пока градиент не нарисован, - и как мера контраста в проверках. */
+    --app-base: #12101f;
+    --overlay-bg: rgba(26, 20, 44, 0.95);
+    --overlay-text: #f4f4f8;
+  }
+
+  /* ═══════════════ Темы оформления ═══════════════
+     Тема - это набор тех же токенов. Всё оформление ходит через них, поэтому смена темы
+     сводится к атрибуту data-theme на <html>: ничего пересобирать не нужно.
+     Подложки над холстом (--overlay-*) темы НЕ трогают - см. оговорку выше. */
+
+  /* «Строгая»: без цветных пятен, приглушённый синий, ровный тёмный фон. */
+  :root[data-theme="formal"] {
+    --glass-bg: rgba(255, 255, 255, 0.055);
+    --glass-bg-strong: rgba(255, 255, 255, 0.10);
+    --glass-bg-soft: rgba(255, 255, 255, 0.035);
+    --glass-border: rgba(255, 255, 255, 0.11);
+    --glass-border-strong: rgba(255, 255, 255, 0.20);
+    --glass-highlight: rgba(255, 255, 255, 0.22);
+    --glass-shadow: 0 6px 20px rgba(0, 0, 0, 0.32);
+    --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    --blur: blur(20px) saturate(120%);
+    --blur-strong: blur(28px) saturate(130%);
+    --text: #e6e8ec;
+    --text-dim: rgba(230, 232, 236, 0.55);
+    --accent: #4a7ab8;
+    --accent-2: #5c7fa6;
+    --accent-grad: linear-gradient(135deg, #4a7ab8 0%, #5c7fa6 100%);
+    --accent-glow: 0 0 12px rgba(74, 122, 184, 0.30);
+    --bg-2: rgba(255,255,255,0.05);
+    --bg-3: rgba(255,255,255,0.08);
+    --bg-4: rgba(255,255,255,0.13);
+    --border: rgba(255,255,255,0.12);
+    --border-light: rgba(255,255,255,0.22);
+    --app-base: #1f242e;
+    --app-bg: linear-gradient(160deg, #1b1f27 0%, #232833 55%, #191d25 100%);
+  }
+
+  /* «Светлая»: тёмный текст на светлом. Стекло переворачивается - оно становится
+     тёмным с малой прозрачностью, иначе на светлом фоне его не видно вовсе. */
+  :root[data-theme="light"] {
+    --glass-bg: rgba(22, 26, 38, 0.045);
+    --glass-bg-strong: rgba(22, 26, 38, 0.10);
+    --glass-bg-soft: rgba(22, 26, 38, 0.03);
+    --glass-border: rgba(22, 26, 38, 0.14);
+    --glass-border-strong: rgba(22, 26, 38, 0.26);
+    --glass-highlight: rgba(255, 255, 255, 0.85);
+    --glass-shadow: 0 6px 20px rgba(30, 40, 70, 0.14);
+    --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    --blur: blur(18px) saturate(130%);
+    --blur-strong: blur(26px) saturate(140%);
+    --text: #1b2030;
+    --text-dim: rgba(27, 32, 48, 0.58);
+    --accent: #3a6fd8;
+    --accent-2: #7a52d0;
+    --accent-grad: linear-gradient(135deg, #3a6fd8 0%, #7a52d0 100%);
+    --accent-glow: 0 0 14px rgba(58, 111, 216, 0.28);
+    --bg-2: rgba(22,26,38,0.04);
+    --bg-3: rgba(22,26,38,0.07);
+    --bg-4: rgba(22,26,38,0.12);
+    --border: rgba(22,26,38,0.14);
+    --border-light: rgba(22,26,38,0.26);
+    --app-base: #e8ecf3;
+    --app-bg: linear-gradient(160deg, #eff2f7 0%, #e3e8f0 55%, #dde3ed 100%);
+  }
+
+  /* «Ночная»: почти чёрный фон и приглушённое всё. Для тёмной комнаты. */
+  :root[data-theme="night"] {
+    --glass-bg: rgba(255, 255, 255, 0.045);
+    --glass-bg-strong: rgba(255, 255, 255, 0.085);
+    --glass-bg-soft: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.09);
+    --glass-border-strong: rgba(255, 255, 255, 0.17);
+    --glass-highlight: rgba(255, 255, 255, 0.18);
+    --glass-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+    --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    --blur: blur(18px) saturate(110%);
+    --blur-strong: blur(26px) saturate(120%);
+    --text: #dcdde3;
+    --text-dim: rgba(220, 221, 227, 0.48);
+    --accent: #4668a8;
+    --accent-2: #6a5aa0;
+    --accent-grad: linear-gradient(135deg, #4668a8 0%, #6a5aa0 100%);
+    --accent-glow: 0 0 10px rgba(70, 104, 168, 0.28);
+    --bg-2: rgba(255,255,255,0.04);
+    --bg-3: rgba(255,255,255,0.07);
+    --bg-4: rgba(255,255,255,0.11);
+    --border: rgba(255,255,255,0.10);
+    --border-light: rgba(255,255,255,0.18);
+    --app-base: #08090e;
+    --app-bg: linear-gradient(160deg, #06070b 0%, #0b0d13 55%, #05060a 100%);
+  }
+
+  /* «Тёплая»: тёмная, но не синяя - охра и кофе. Глазам легче в долгую работу. */
+  :root[data-theme="warm"] {
+    --glass-bg: rgba(255, 236, 210, 0.07);
+    --glass-bg-strong: rgba(255, 236, 210, 0.13);
+    --glass-bg-soft: rgba(255, 236, 210, 0.045);
+    --glass-border: rgba(255, 226, 190, 0.16);
+    --glass-border-strong: rgba(255, 226, 190, 0.28);
+    --glass-highlight: rgba(255, 240, 215, 0.35);
+    --glass-shadow: 0 8px 26px rgba(30, 16, 6, 0.45);
+    --glass-inset: inset 0 1px 0 rgba(255, 240, 215, 0.25);
+    --blur: blur(22px) saturate(150%);
+    --blur-strong: blur(32px) saturate(170%);
+    --text: #f5ead9;
+    --text-dim: rgba(245, 234, 217, 0.58);
+    --accent: #d08a3c;
+    --accent-2: #b4562f;
+    --accent-grad: linear-gradient(135deg, #d08a3c 0%, #b4562f 100%);
+    --accent-glow: 0 0 18px rgba(208, 138, 60, 0.40);
+    --bg-2: rgba(255,236,210,0.055);
+    --bg-3: rgba(255,236,210,0.09);
+    --bg-4: rgba(255,236,210,0.14);
+    --border: rgba(255,226,190,0.16);
+    --border-light: rgba(255,226,190,0.28);
+    --app-base: #1d1610;
+    --app-bg:
+      radial-gradient(900px 600px at 10% -8%, rgba(190, 110, 40, 0.35), transparent 60%),
+      radial-gradient(800px 560px at 96% 10%, rgba(150, 60, 40, 0.28), transparent 58%),
+      linear-gradient(150deg, #17110b 0%, #241a10 55%, #140f0a 100%);
   }
 
   /* Колоритный фон-«обои» — нужен, чтобы blur панелей было что подхватывать */
@@ -54,12 +191,8 @@
     display: flex;
     flex-direction: column;
     user-select: none;
-    background:
-      radial-gradient(1100px 700px at 12% -10%, rgba(120, 90, 255, 0.55), transparent 60%),
-      radial-gradient(900px 600px at 95% 8%, rgba(255, 100, 180, 0.40), transparent 55%),
-      radial-gradient(800px 800px at 85% 110%, rgba(60, 200, 255, 0.40), transparent 60%),
-      radial-gradient(700px 600px at 5% 105%, rgba(100, 255, 180, 0.30), transparent 60%),
-      linear-gradient(135deg, #0e0c1a 0%, #1a1330 50%, #0c1024 100%);
+    background-color: var(--app-base);
+    background-image: var(--app-bg);
     background-attachment: fixed;
     position: relative;
   }
@@ -131,7 +264,7 @@
   .mb-apple:hover { background: rgba(255,255,255,0.18); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
 
   .mb-app {
-    color: white;
+    color: var(--text);
     font-weight: 700;
     padding: 0 10px 0 4px;
     letter-spacing: 0.2px;
@@ -146,7 +279,7 @@
   .mb-item {
     background: transparent;
     border: none;
-    color: rgba(255,255,255,0.92);
+    color: var(--text);
     padding: 0 11px;
     height: 100%;
     cursor: pointer;
@@ -165,7 +298,7 @@
   }
   .mb-menu.open .mb-item {
     background: var(--accent);
-    color: white;
+    color: var(--text);
     text-shadow: none;
   }
 
@@ -177,7 +310,7 @@
     min-width: 240px;
     padding: 6px;
     border-radius: 14px;
-    background: rgba(40, 40, 55, 0.55);
+    background: var(--overlay-bg);
     backdrop-filter: var(--blur-strong);
     -webkit-backdrop-filter: var(--blur-strong);
     border: 1px solid var(--glass-border);
@@ -206,7 +339,7 @@
     padding: 7px 12px;
     background: transparent;
     border: none;
-    color: var(--text);
+    color: var(--overlay-text);
     font-size: 13px;
     text-align: left;
     border-radius: 8px;
@@ -216,15 +349,18 @@
   }
   .mb-dd-item:hover {
     background: var(--accent-grad);
-    color: white;
+    color: var(--overlay-text);
   }
   .mb-dd-item .kb {
-    color: var(--text-dim);
+    /* Внутри выпадающего списка - его собственный цвет, приглушённый прозрачностью:
+       общий --text-dim в светлой теме тёмный, а подложка тут тёмная в любой. */
+    color: var(--overlay-text);
+    opacity: 0.55;
     font-size: 12px;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.3px;
   }
-  .mb-dd-item:hover .kb { color: rgba(255,255,255,0.9); }
+  .mb-dd-item:hover .kb { color: var(--overlay-text); }
 
   .mb-sep {
     height: 1px;
@@ -233,7 +369,7 @@
   }
 
   .mb-right {
-    color: rgba(255,255,255,0.85);
+    color: var(--text-dim);
     font-size: 12px;
     text-shadow: 0 1px 2px rgba(0,0,0,0.5);
     padding-right: 4px;
@@ -581,11 +717,11 @@
 
   .resize-tooltip {
     position: absolute;
-    background: rgba(20, 20, 30, 0.85);
+    background: var(--overlay-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
-    color: var(--text);
+    color: var(--overlay-text);
     padding: 6px 10px;
     border-radius: 9px;
     font-size: 12px;
@@ -638,7 +774,10 @@
     display: flex;
     gap: 4px;
     /* И здесь тоже: на большом холсте эта панель ложится прямо на белое. */
-    background: rgba(20, 20, 30, 0.85);
+    background: var(--overlay-bg);
+    /* Цвет текста тоже свой: в светлой теме общий --text тёмный, а подложка тут
+       тёмная в любой теме - вышло бы тёмное по тёмному. */
+    color: var(--overlay-text);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
     border: 1px solid var(--glass-border);
@@ -653,7 +792,7 @@
     height: 30px;
     border: 1px solid transparent;
     background: transparent;
-    color: var(--text);
+    color: var(--overlay-text);
     border-radius: 9px;
     cursor: pointer;
     display: flex;
@@ -676,7 +815,7 @@
     align-items: center;
     justify-content: center;
     font-size: 12px;
-    color: var(--text);
+    color: var(--overlay-text);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
   }
@@ -715,6 +854,21 @@
     color: var(--text-dim);
     margin-bottom: 12px;
     font-weight: 600;
+  }
+
+  /* Заголовок группы внутри выпадающего меню и отметка выбранного пункта. */
+  .mb-group-title {
+    padding: 4px 14px 2px;
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--overlay-text);
+    opacity: 0.55;
+  }
+  .mb-dd-item .theme-mark {
+    width: 14px;
+    display: inline-block;
+    color: var(--accent);
   }
 
   /* === Панель слоёв === */
@@ -941,17 +1095,17 @@
     transform: translateX(-50%) translateY(8px);
     padding: 10px 18px;
     max-width: 70vw;
-    /* Подложка СВОЯ и тёмная, а не стеклянная. Стекло здесь - это белый с прозрачностью
-       0.14 (--glass-bg-strong), и оно рассчитано на тёмный фон приложения. Подсказка же
-       всплывает НАД ХОЛСТОМ, а холст белый: подложка становится белой, светлый текст на
-       ней пропадает начисто. То же самое было с выпадающим меню в WPF-версии. */
-    background: rgba(26, 20, 44, 0.95);
+    /* Подложка СВОЯ и тёмная, а не стеклянная. Стекло здесь рассчитано на фон окна, а
+       подсказка всплывает НАД ХОЛСТОМ, и холст белый в любой теме: стеклянная подложка
+       над ним белеет, светлый текст пропадает начисто. То же было с выпадающим меню в
+       WPF-версии. Поэтому свой токен, который темы не трогают. */
+    background: var(--overlay-bg);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
     box-shadow: var(--glass-shadow), var(--glass-inset);
-    color: var(--text);
+    color: var(--overlay-text);
     font-size: 12px;
     line-height: 1.4;
     text-align: center;
@@ -970,7 +1124,10 @@
   .crop-controls {
     position: absolute;
     /* Тёмная подложка по той же причине, что у подсказки: панель всплывает над холстом. */
-    background: rgba(20, 20, 30, 0.85);
+    background: var(--overlay-bg);
+    /* Цвет текста тоже свой: в светлой теме общий --text тёмный, а подложка тут
+       тёмная в любой теме - вышло бы тёмное по тёмному. */
+    color: var(--overlay-text);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
     border: 1px solid var(--glass-border);
@@ -986,7 +1143,7 @@
     padding: 7px 14px;
     background: transparent;
     border: 1px solid transparent;
-    color: var(--text);
+    color: var(--overlay-text);
     border-radius: 9px;
     cursor: pointer;
     font-size: 12px;
@@ -1230,11 +1387,13 @@
   /* === Плавающая панель настройки текста === */
   .text-toolbar {
     position: absolute;
-    background: rgba(20, 20, 30, 0.72);
+    background: var(--overlay-bg);
     backdrop-filter: var(--blur-strong);
     -webkit-backdrop-filter: var(--blur-strong);
     border: 1px solid var(--glass-border);
     border-radius: 14px;
+    /* Панель всплывает над холстом: её содержимое красится своим токеном. */
+    color: var(--overlay-text);
     padding: 6px;
     display: none;
     gap: 6px;
@@ -1254,7 +1413,7 @@
     font-size: 12px;
     outline: none;
   }
-  .text-toolbar select option { background: #1a1a26; color: var(--text); }
+  .text-toolbar select option { background: #1a1a26; color: var(--overlay-text); }
 
   .text-toolbar select { min-width: 120px; }
   .text-toolbar input[type="number"] { width: 60px; }
@@ -1262,7 +1421,7 @@
   .text-toolbar button {
     background: rgba(255,255,255,0.08);
     border: 1px solid var(--glass-border);
-    color: var(--text);
+    color: var(--overlay-text);
     padding: 6px 10px;
     border-radius: 9px;
     cursor: pointer;
@@ -1335,6 +1494,9 @@
         <button class="mb-dd-item" onclick="zoomIn()"><span>Увеличить</span><span class="kb">Ctrl +</span></button>
         <button class="mb-dd-item" onclick="zoomOut()"><span>Уменьшить</span><span class="kb">Ctrl −</span></button>
         <button class="mb-dd-item" onclick="zoomReset()"><span>Реальный размер</span><span class="kb">Ctrl 0</span></button>
+        <div class="mb-sep"></div>
+        <div class="mb-group-title">Тема</div>
+        <div id="theme-menu"></div>
       </div>
     </div>
 
@@ -2238,6 +2400,73 @@ window.addEventListener('DOMContentLoaded', () => {
   const sw = document.getElementById('pixel-swatch');
   if (sw) sw.addEventListener('click', () => setColor(pixelPreviewCurrentHex));
 });
+
+// ============ ТЕМЫ ОФОРМЛЕНИЯ ============
+// Тема - это набор тех же CSS-переменных (см. блок :root[data-theme=...] в стилях).
+// Всё оформление ходит через них, поэтому смена сводится к атрибуту на <html>.
+// Холст и то, что всплывает НАД ним, темам не подчиняются: бумага белая всегда, и
+// подложка над ней обязана быть тёмной в любой теме.
+const THEMES = [
+  { id: 'glass',  name: 'Стеклянная', note: 'Как было: цветной градиент и стекло' },
+  { id: 'formal', name: 'Строгая',    note: 'Ровный тёмный фон, приглушённый синий' },
+  { id: 'light',  name: 'Светлая',    note: 'Тёмный текст на светлом' },
+  { id: 'night',  name: 'Ночная',     note: 'Почти чёрный фон для тёмной комнаты' },
+  { id: 'warm',   name: 'Тёплая',     note: 'Охра и кофе вместо синевы' }
+];
+
+const THEME_KEY = 'paint-pro-theme';
+
+function currentTheme() {
+  const id = document.documentElement.getAttribute('data-theme') || 'glass';
+  return THEMES.some((t) => t.id === id) ? id : 'glass';
+}
+
+/**
+ * Поставить тему. Неизвестное имя откатывает к исходной: файл настроек могли поправить
+ * руками, а приложение без оформления - это не приложение.
+ */
+function setTheme(id) {
+  const theme = THEMES.find((t) => t.id === id) || THEMES[0];
+  if (theme.id === 'glass') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', theme.id);
+  try { localStorage.setItem(THEME_KEY, theme.id); } catch (_) { /* приватный режим - не беда */ }
+  renderThemeMenu();
+  return theme.id;
+}
+
+function renderThemeMenu() {
+  const box = document.getElementById('theme-menu');
+  if (!box) return;
+  const active = currentTheme();
+  box.innerHTML = '';
+  for (const t of THEMES) {
+    const b = document.createElement('button');
+    b.className = 'mb-dd-item';
+    b.dataset.theme = t.id;
+    b.title = t.note;
+    const mark = document.createElement('span');
+    mark.className = 'theme-mark';
+    mark.textContent = t.id === active ? '✓' : '';
+    const label = document.createElement('span');
+    label.textContent = t.name;
+    const left = document.createElement('span');
+    left.appendChild(mark);
+    left.appendChild(label);
+    b.appendChild(left);
+    b.onclick = () => setTheme(t.id);
+    box.appendChild(b);
+  }
+}
+
+// Выбор переживает перезапуск. Меню тем рисуется ЗДЕСЬ, а не в блоке запуска выше:
+// функции всплывают наверх, а `const THEMES` - нет, и вызов оттуда находил бы функцию,
+// но не находил данные. Скрипт страницы падал бы целиком.
+(function restoreTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem(THEME_KEY); } catch (_) { /* нет хранилища */ }
+  if (saved) setTheme(saved);
+  else renderThemeMenu();
+})();
 
 // ============ ПОДСКАЗКИ ============
 // Отказ без слов - худший вид отказа: пользователь нажал, ничего не произошло, и понять
@@ -4701,8 +4930,21 @@ document.addEventListener('paste', (e) => {
 // места отстали на шесть релизов. В браузере без Electron версии просто нет.
 let appVersion = '';
 
+// Номер версии для работы в браузере. Пустой в исходнике; сборщик отдельного файла
+// подставляет сюда номер из package.json - см. tools/build-web.js.
+const WEB_VERSION = '';
+
 async function loadAppVersion() {
-  if (!window.electronAPI || !window.electronAPI.getVersion) return;
+  if (!window.electronAPI || !window.electronAPI.getVersion) {
+    // В браузере спросить не у кого: номер подставляет сборщик отдельного файла
+    // (npm run build:web). Открыт исходник напрямую - остаётся просто имя.
+    const el = document.getElementById('app-version');
+    if (el && WEB_VERSION) {
+      appVersion = WEB_VERSION;
+      el.textContent = 'Paint Pro ' + WEB_VERSION;
+    }
+    return;
+  }
   appVersion = await window.electronAPI.getVersion();
   const el = document.getElementById('app-version');
   if (el) el.textContent = 'Paint Pro ' + appVersion;
@@ -4884,6 +5126,16 @@ function isDirty() {
       // открывает пустой редактор, и сам по себе он ничего не меняет.
       || (textEditor.style.display === 'block' && textEditor.innerText.trim() !== '');
 }
+
+// В браузере окно закрывает не main-процесс, а сам пользователь - вкладкой. Спросить
+// можно только так: браузер показывает своё окно, если обработчик отменит событие.
+// Текст задать нельзя, его выбирает браузер; наше дело - подать знак.
+window.addEventListener('beforeunload', (e) => {
+  if (window.electronAPI) return;      // в Electron спрашивает main, см. ниже
+  if (!isDirty()) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 // Ответ на запрос закрытия от main-процесса.
 async function handleCloseRequest() {
@@ -5444,33 +5696,67 @@ if (window.electronAPI) {
     }
   });
 
-  // Открытие через диалог. Ошибку чтения раньше не показывал никто: main-процесс читал
-  // файл без try/catch, invoke отклонялся, а оба вызывающих места ждали результат без
-  // catch. Файл удалили после показа диалога, нет прав, отвалился сетевой диск - окно
-  // закрывалось, и дальше не происходило ровно ничего.
-  async function openViaDialog() {
-    try {
-      const data = await window.electronAPI.openFileDialog();
-      if (!data) return;                       // диалог отменили
-      if (data.error) { alert('Не удалось открыть файл: ' + data.error); return; }
-      openImageAsDocument(data.dataUrl, data.fileName);
-    } catch (err) {
-      alert('Не удалось открыть файл: ' + (err && err.message ? err.message : err));
-    }
-  }
-
-  // Убираем обычное поведение Ctrl+O (браузерный диалог) - заменяем на Electron
-  document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
-      e.preventDefault();
-      openViaDialog();
-    }
-  });
-
-  // Перекрываем пункт «Открыть…» в меню «Файл»
-  const openBtn = document.querySelector('.mb-dd-item[onclick*="file-input"]');
-  if (openBtn) openBtn.onclick = openViaDialog;
 }
+
+// Открытие через диалог. Ошибку чтения раньше не показывал никто: main-процесс читал
+// файл без try/catch, invoke отклонялся, а оба вызывающих места ждали результат без
+// catch. Файл удалили после показа диалога, нет прав, отвалился сетевой диск - окно
+// закрывалось, и дальше не происходило ровно ничего.
+async function openViaDialog() {
+  // Без Electron нативного диалога нет - берём обычное поле выбора файла. Страница
+  // работает в браузере целиком: это тот же файл, просто открытый двойным щелчком.
+  if (!window.electronAPI || !window.electronAPI.openFileDialog) {
+    openViaFileInput();
+    return;
+  }
+  try {
+    const data = await window.electronAPI.openFileDialog();
+    if (!data) return;                       // диалог отменили
+    if (data.error) { alert('Не удалось открыть файл: ' + data.error); return; }
+    openImageAsDocument(data.dataUrl, data.fileName);
+  } catch (err) {
+    alert('Не удалось открыть файл: ' + (err && err.message ? err.message : err));
+  }
+}
+
+/** Открытие через обычное поле выбора файла: путь для браузера. */
+function openViaFileInput() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  // Поле должно быть В ДОКУМЕНТЕ: по оторванному от дерева браузер диалог открывать не
+  // обязан, и Ctrl+O молча не делал бы ничего. Прячем и убираем сразу после выбора.
+  input.style.position = 'fixed';
+  input.style.left = '-10000px';
+  document.body.appendChild(input);
+  const cleanup = () => { if (input.parentNode) input.parentNode.removeChild(input); };
+  input.onchange = () => {
+    const file = input.files && input.files[0];
+    cleanup();
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onerror = () => alert('Не удалось прочитать файл.');
+    reader.onload = () => openImageAsDocument(String(reader.result), file.name);
+    reader.readAsDataURL(file);
+  };
+  // Диалог могли закрыть без выбора - тогда onchange не придёт вовсе.
+  input.oncancel = cleanup;
+  input.click();
+}
+
+// Ctrl+O и пункт «Открыть…» живут ВНЕ блока «только для Electron»: в браузере они
+// нужны ровно так же, а раньше лежали внутри - и открытие файла там не работало
+// вовсе, молча. Сам openViaDialog разбирается, есть мост или нет.
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+    e.preventDefault();
+    openViaDialog();
+  }
+});
+
+// Перекрываем пункт «Открыть…» в меню «Файл»
+const openBtn = document.querySelector('.mb-dd-item[onclick*="file-input"]');
+if (openBtn) openBtn.onclick = openViaDialog;
 
 setColor('#000000');
 applyZoom();
