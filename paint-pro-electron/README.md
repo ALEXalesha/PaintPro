@@ -43,7 +43,7 @@ npm run build:web
 # Сборка portable .exe (результат в папке dist/)
 npm run build
 
-# Сборка установщика NSIS
+# Сборка установщика NSIS -> «Paint Pro Electron Setup <версия>.exe»
 npm run build-installer
 
 # И portable, и установщик
