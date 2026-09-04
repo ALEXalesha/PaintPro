@@ -675,32 +675,42 @@
     box-shadow: var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.4);
   }
 
-  .canvas-resize-handle.right {
+  /* Боковые - полоски посреди стороны, угловые - квадратики. Восемь штук, как у
+     выделения: тянуть холст можно за любую сторону и любой угол. */
+  .canvas-resize-handle.w,
+  .canvas-resize-handle.e {
     width: 8px;
     height: 40px;
-    right: -14px;
     top: 50%;
     transform: translateY(-50%);
     cursor: ew-resize;
   }
+  .canvas-resize-handle.w { left: -14px; }
+  .canvas-resize-handle.e { right: -14px; }
 
-  .canvas-resize-handle.bottom {
+  .canvas-resize-handle.n,
+  .canvas-resize-handle.s {
     width: 40px;
     height: 8px;
-    bottom: -14px;
     left: 50%;
     transform: translateX(-50%);
     cursor: ns-resize;
   }
+  .canvas-resize-handle.n { top: -14px; }
+  .canvas-resize-handle.s { bottom: -14px; }
 
-  .canvas-resize-handle.corner {
+  .canvas-resize-handle.nw,
+  .canvas-resize-handle.ne,
+  .canvas-resize-handle.sw,
+  .canvas-resize-handle.se {
     width: 14px;
     height: 14px;
-    right: -17px;
-    bottom: -17px;
-    cursor: nwse-resize;
     border-radius: 2px;
   }
+  .canvas-resize-handle.nw { left: -17px;  top: -17px;    cursor: nwse-resize; }
+  .canvas-resize-handle.ne { right: -17px; top: -17px;    cursor: nesw-resize; }
+  .canvas-resize-handle.sw { left: -17px;  bottom: -17px; cursor: nesw-resize; }
+  .canvas-resize-handle.se { right: -17px; bottom: -17px; cursor: nwse-resize; }
 
   /* Превью нового размера холста при drag */
   .resize-preview {
@@ -1675,9 +1685,14 @@
       <div class="resize-preview" id="resize-preview"></div>
 
       <!-- Ручки изменения размера холста -->
-      <div class="canvas-resize-handle right" id="canvas-handle-right" title="Изменить ширину"></div>
-      <div class="canvas-resize-handle bottom" id="canvas-handle-bottom" title="Изменить высоту"></div>
-      <div class="canvas-resize-handle corner" id="canvas-handle-corner" title="Изменить размер"></div>
+      <div class="canvas-resize-handle nw" id="canvas-handle-nw" title="Изменить размер"></div>
+      <div class="canvas-resize-handle n"  id="canvas-handle-n"  title="Изменить высоту сверху"></div>
+      <div class="canvas-resize-handle ne" id="canvas-handle-ne" title="Изменить размер"></div>
+      <div class="canvas-resize-handle w"  id="canvas-handle-w"  title="Изменить ширину слева"></div>
+      <div class="canvas-resize-handle e"  id="canvas-handle-e"  title="Изменить ширину справа"></div>
+      <div class="canvas-resize-handle sw" id="canvas-handle-sw" title="Изменить размер"></div>
+      <div class="canvas-resize-handle s"  id="canvas-handle-s"  title="Изменить высоту снизу"></div>
+      <div class="canvas-resize-handle se" id="canvas-handle-se" title="Изменить размер"></div>
 
       <!-- Рамка плавающего объекта с ручками -->
       <div class="floating-frame" id="floating-frame">
@@ -2284,11 +2299,18 @@ function transformLayers(w, h, paint) {
 }
 
 /**
- * Подогнать все слои под новый размер, сохранив содержимое в левом верхнем углу.
+ * Подогнать все слои под новый размер.
+ *
  * Новое место на бумаге заливается белым, на слоях выше остаётся пустым: белая заплатка
  * там закрыла бы бумагу вместо того, чтобы показать её.
+ *
+ * offX/offY - куда в НОВОМ холсте попадает левый верхний угол прежнего. Ноль означает
+ * прежнее поведение: содержимое остаётся в левом верхнем углу, а холст растёт вправо и
+ * вниз. Тянут за левую или верхнюю сторону - холст растёт в другую сторону, и рисунок
+ * обязан сдвинуться вместе с ней, иначе «растянул влево» выглядело бы как «рисунок
+ * прыгнул вправо». При сжатии смещение отрицательное: лишнее просто срезается.
  */
-function growLayers(w, h) {
+function growLayers(w, h, offX = 0, offY = 0) {
   for (let i = 0; i < state.layers.length; i++) {
     const l = state.layers[i];
     const old = l.canvas;
@@ -2298,7 +2320,7 @@ function growLayers(w, h) {
       g.fillStyle = 'white';
       g.fillRect(0, 0, w, h);
     }
-    g.drawImage(old, 0, 0);
+    g.drawImage(old, offX, offY);
     l.canvas = next;
   }
 }
@@ -2588,28 +2610,45 @@ document.querySelectorAll('[data-tool]').forEach(btn => {
 const BRUSH_GROUP = ['pencil','brush','marker','line','rect','ellipse','triangle','star','arrow','heart'];
 
 const sizeInput = document.getElementById('size-input');
-sizeInput.addEventListener('input', (e) => {
-  state.size = parseInt(e.target.value);
-  if (state.tool === 'eraser') state.eraserSize = state.size;
-  else if (BRUSH_GROUP.includes(state.tool)) state.brushSize = state.size;
-  document.getElementById('size-display').textContent = state.size;
-  document.getElementById('info-size').textContent = state.size + ' px';
-  updateBrushCursor();
-});
 
-function syncSizeForTool() {
-  let v;
-  if (state.tool === 'eraser') v = state.eraserSize;
-  else if (BRUSH_GROUP.includes(state.tool)) v = state.brushSize;
-  else {
-    updateBrushCursor();
-    return;
-  }
+const MIN_TOOL_SIZE = parseInt(sizeInput.min);
+const MAX_TOOL_SIZE = parseInt(sizeInput.max);
+
+/** Есть ли у текущего инструмента размер вообще. У заливки, пипетки и текста - нет. */
+function toolHasSize() {
+  return state.tool === 'eraser' || BRUSH_GROUP.includes(state.tool);
+}
+
+/**
+ * ЕДИНСТВЕННАЯ точка смены размера инструмента.
+ *
+ * Размер живёт в пяти местах сразу: state.size, отдельная память кисти или ластика,
+ * две подписи и рисованный курсор. Пока путей было два (ползунок и вызов из кода),
+ * любой новый способ - колесо мыши - обязан был повторить всю пятёрку, и забытое
+ * звено выглядело бы как «размер сменился, а кружок курсора прежний».
+ *
+ * Возвращает установленный размер: вызывающему важно знать, упёрлись ли в предел.
+ */
+function setToolSize(v) {
+  v = Math.round(v);
+  v = Math.min(Math.max(v, MIN_TOOL_SIZE), MAX_TOOL_SIZE);
   state.size = v;
+  if (state.tool === 'eraser') state.eraserSize = v;
+  else if (BRUSH_GROUP.includes(state.tool)) state.brushSize = v;
   sizeInput.value = v;
   document.getElementById('size-display').textContent = v;
   document.getElementById('info-size').textContent = v + ' px';
   updateBrushCursor();
+  return v;
+}
+
+sizeInput.addEventListener('input', (e) => setToolSize(parseInt(e.target.value)));
+
+function syncSizeForTool() {
+  // У инструмента без размера показывать нечего - только курсор перерисовать.
+  if (!toolHasSize()) { updateBrushCursor(); return; }
+  // Достаём отложенный размер этого инструмента и проводим его через общую точку.
+  setToolSize(state.tool === 'eraser' ? state.eraserSize : state.brushSize);
 }
 
 // Прозрачность
@@ -5374,8 +5413,54 @@ document.getElementById('canvas-area').addEventListener('scroll', updateOverlays
 window.addEventListener('resize', updateOverlays);
 
 // ============ МАСШТАБИРОВАНИЕ ХОЛСТА (RESIZE) ============
-// Перетаскивание правой/нижней/угловой ручки меняет размер холста визуально.
+// Восемь ручек по краям холста, как у выделения: четыре стороны и четыре угла.
 // Контент сохраняется, пустое добавленное пространство заливается белым.
+//
+// Стороны делятся на две породы. Правая и нижняя двигают только край: рисунок стоит
+// на месте. Левая и верхняя двигают НАЧАЛО холста, поэтому рисунок обязан сдвинуться
+// вместе с ним - иначе «потянул влево» выглядит как «рисунок прыгнул вправо». Всю эту
+// разницу несёт одно число - смещение, которое уходит в growLayers.
+
+/** Куда смотрит каждая ручка. Буквы складываются: 'nw' - и влево, и вверх. */
+const CANVAS_HANDLES = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
+
+const CANVAS_HANDLE_CURSOR = {
+  n: 'ns-resize', s: 'ns-resize', w: 'ew-resize', e: 'ew-resize',
+  nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
+};
+
+/**
+ * Новый размер холста и смещение рисунка для одной ручки.
+ *
+ * Вынесено отдельно, потому что это единственное место, где легко ошибиться знаком, и
+ * единственное, что можно проверить, не двигая мышь.
+ */
+function canvasResizeGeometry(dir, startW, startH, dm, dn, keepRatio) {
+  let w = dir.includes('e') ? startW + dm : dir.includes('w') ? startW - dm : startW;
+  let h = dir.includes('s') ? startH + dn : dir.includes('n') ? startH - dn : startH;
+  w = Math.max(50, Math.round(w));
+  h = Math.max(50, Math.round(h));
+
+  // Shift на углу держит пропорции. На стороне держать нечего: сторона одна.
+  if (keepRatio && dir.length === 2) {
+    const ratio = startW / startH;
+    if (w / h > ratio) w = Math.round(h * ratio);
+    else h = Math.round(w / ratio);
+    w = Math.max(50, w);
+    h = Math.max(50, h);
+  }
+
+  ({ w, h } = clampCanvasSize(w, h));
+
+  // Куда попадёт прежний левый верхний угол. Считается ПОСЛЕ всех ограничений: упрись
+  // размер в потолок - смещение обязано упереться вместе с ним, иначе рисунок уедет
+  // дальше, чем выросла бумага.
+  return {
+    w, h,
+    offX: dir.includes('w') ? w - startW : 0,
+    offY: dir.includes('n') ? h - startH : 0,
+  };
+}
 
 const resizePreview = document.getElementById('resize-preview');
 const resizeTooltip = document.getElementById('resize-tooltip');
@@ -5396,7 +5481,9 @@ function startCanvasResize(direction, e) {
     startW: canvas.width,
     startH: canvas.height,
     curW: canvas.width,
-    curH: canvas.height
+    curH: canvas.height,
+    offX: 0,
+    offY: 0
   };
 
   // Показываем превью - размер текущего холста
@@ -5408,8 +5495,9 @@ function startCanvasResize(direction, e) {
   resizeTooltip.style.display = 'block';
   updateResizeTooltip(e, canvas.width, canvas.height);
 
-  document.body.style.cursor = direction === 'right' ? 'ew-resize' :
-                                direction === 'bottom' ? 'ns-resize' : 'nwse-resize';
+  resizePreview.style.left = '0px';
+  resizePreview.style.top = '0px';
+  document.body.style.cursor = CANVAS_HANDLE_CURSOR[direction] || 'nwse-resize';
 }
 
 function onCanvasResizeMove(e) {
@@ -5421,33 +5509,25 @@ function onCanvasResizeMove(e) {
   // Учитываем текущий zoom - тянем в "экранных" пикселях, но меняем реальный размер холста
   const scale = state.zoom || 1;
 
-  let newW = canvasResizeState.startW;
-  let newH = canvasResizeState.startH;
+  const g = canvasResizeGeometry(
+    canvasResizeState.direction,
+    canvasResizeState.startW, canvasResizeState.startH,
+    Math.round(dx / scale), Math.round(dy / scale),
+    e.shiftKey);
 
-  if (canvasResizeState.direction === 'right' || canvasResizeState.direction === 'corner') {
-    newW = Math.max(50, Math.round(canvasResizeState.startW + dx / scale));
-  }
-  if (canvasResizeState.direction === 'bottom' || canvasResizeState.direction === 'corner') {
-    newH = Math.max(50, Math.round(canvasResizeState.startH + dy / scale));
-  }
+  canvasResizeState.curW = g.w;
+  canvasResizeState.curH = g.h;
+  canvasResizeState.offX = g.offX;
+  canvasResizeState.offY = g.offY;
 
-  // Shift = пропорции
-  if (e.shiftKey && canvasResizeState.direction === 'corner') {
-    const ratio = canvasResizeState.startW / canvasResizeState.startH;
-    if (newW / newH > ratio) newW = Math.round(newH * ratio);
-    else newH = Math.round(newW / ratio);
-  }
+  // Превью-рамка в экранных пикселях. Начало координат тут - прежний левый верхний угол
+  // холста, а новый холст стоит от него на -offX: тянут влево - рамка уходит влево.
+  resizePreview.style.left = (-g.offX * scale) + 'px';
+  resizePreview.style.top = (-g.offY * scale) + 'px';
+  resizePreview.style.width = (g.w * scale) + 'px';
+  resizePreview.style.height = (g.h * scale) + 'px';
 
-  ({ w: newW, h: newH } = clampCanvasSize(newW, newH));
-
-  canvasResizeState.curW = newW;
-  canvasResizeState.curH = newH;
-
-  // Обновляем превью-рамку (в экранных пикселях)
-  resizePreview.style.width = (newW * scale) + 'px';
-  resizePreview.style.height = (newH * scale) + 'px';
-
-  updateResizeTooltip(e, newW, newH);
+  updateResizeTooltip(e, g.w, g.h);
 }
 
 function updateResizeTooltip(e, w, h) {
@@ -5464,8 +5544,8 @@ function finishCanvasResize() {
   const oldH = canvasResizeState.startH;
 
   if (newW !== oldW || newH !== oldH) {
-    // Сохраняем текущий контент
-    growLayers(newW, newH);
+    // Сохраняем текущий контент, сдвинув его вслед за сдвинувшимся началом холста
+    growLayers(newW, newH, canvasResizeState.offX, canvasResizeState.offY);
     setCanvasSize(newW, newH);
     composite();
     updateCanvasInfo();
@@ -5479,8 +5559,8 @@ function finishCanvasResize() {
   applyZoom();
 }
 
-// Навешиваем обработчики на три ручки
-['right', 'bottom', 'corner'].forEach(dir => {
+// Навешиваем обработчики на все восемь ручек
+CANVAS_HANDLES.forEach(dir => {
   const el = document.getElementById('canvas-handle-' + dir);
   el.addEventListener('mousedown', (e) => startCanvasResize(dir, e));
 });
@@ -5599,12 +5679,47 @@ function zoomReset() {
   applyZoom();
 }
 
-// Ctrl + колёсико мыши = зум
+/**
+ * Шаг размера за одну засечку колеса.
+ *
+ * Ровно один пиксель означал бы 99 засечек на весь ползунок - колесо было бы
+ * бесполезно. Шаг растёт вместе с размером: у тонкого карандаша важен каждый
+ * пиксель, у стопиксельной кисти - уже нет.
+ */
+function toolSizeStep(size) {
+  return Math.max(1, Math.round(size / 10));
+}
+
+/** Курсор над самим холстом, а не над полем вокруг него. */
+function pointerOverCanvas(e) {
+  const r = canvas.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right &&
+         e.clientY >= r.top  && e.clientY <= r.bottom;
+}
+
+// Колёсико над холстом.
+//
+// С Ctrl - масштаб, как было. Без Ctrl и над самим холстом - размер кисти или
+// ластика, смотря что выбрано: у них своя память размера, и меняется тот, что
+// сейчас в руке. Над серым полем вокруг холста колесо не трогаем: там .canvas-area
+// прокручивается, и отнять прокрутку значило бы запереть увеличенный холст.
 document.getElementById('canvas-area').addEventListener('wheel', (e) => {
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault();
     if (e.deltaY < 0) zoomIn();
     else zoomOut();
+    return;
+  }
+  if (!pointerOverCanvas(e) || !toolHasSize()) return;
+
+  e.preventDefault();
+  const up = e.deltaY < 0;
+  const before = state.size;
+  const after = setToolSize(before + (up ? toolSizeStep(before) : -toolSizeStep(before)));
+  // Молчаливый отказ читается как поломка: у предела надо сказать, что это предел.
+  if (after === before) {
+    hint(up ? `Больше некуда: ${MAX_TOOL_SIZE} px - предел размера.`
+            : `Меньше некуда: ${MIN_TOOL_SIZE} px - предел размера.`);
   }
 }, { passive: false });
 
