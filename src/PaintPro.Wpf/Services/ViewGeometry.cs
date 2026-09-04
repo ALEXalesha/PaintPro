@@ -25,6 +25,97 @@ public static class ViewGeometry
     /// <summary>Наименьший масштаб, на который вообще можно делить.</summary>
     public const double MinZoom = 0.01;
 
+    /// <summary>Меньше этого холст не сжимается ручкой: за край надо чем-то ухватиться.</summary>
+    public const int MinCanvasSide = 50;
+
+    /// <summary>
+    /// Новый размер холста и смещение рисунка при перетаскивании одной ручки.
+    ///
+    /// Стороны делятся на две породы. Правая и нижняя двигают только край: рисунок стоит
+    /// на месте, смещение ноль. Левая и верхняя двигают НАЧАЛО холста, и рисунок обязан
+    /// поехать вместе с ним - иначе «потянул влево» на экране выглядит как «рисунок
+    /// прыгнул вправо», то есть жест сделал не то, что показывал. Вся разница между
+    /// породами - в одном числе, которое здесь и считается.
+    ///
+    /// dm/dn - сдвиг мыши в пикселях ДОКУМЕНТА (экранный, делённый на масштаб).
+    /// Возвращаемое смещение - куда в НОВОМ холсте попадёт прежний левый верхний угол;
+    /// при сжатии оно отрицательное, и лишнее просто срезается.
+    /// </summary>
+    public static (int W, int H, int OffX, int OffY) CanvasResize(
+        ResizeHandle edge, int startW, int startH, int dm, int dn, bool keepRatio)
+    {
+        bool west  = edge is ResizeHandle.W or ResizeHandle.NW or ResizeHandle.SW;
+        bool east  = edge is ResizeHandle.E or ResizeHandle.NE or ResizeHandle.SE;
+        bool north = edge is ResizeHandle.N or ResizeHandle.NW or ResizeHandle.NE;
+        bool south = edge is ResizeHandle.S or ResizeHandle.SW or ResizeHandle.SE;
+        bool corner = (west || east) && (north || south);
+
+        int w = east ? startW + dm : west ? startW - dm : startW;
+        int h = south ? startH + dn : north ? startH - dn : startH;
+        w = Math.Max(MinCanvasSide, w);
+        h = Math.Max(MinCanvasSide, h);
+
+        // Shift на углу держит пропорции. На стороне держать нечего: сторона одна.
+        if (keepRatio && corner && startH > 0)
+        {
+            double ratio = (double)startW / startH;
+            if ((double)w / h > ratio) w = (int)Math.Round(h * ratio);
+            else h = (int)Math.Round(w / ratio);
+            w = Math.Max(MinCanvasSide, w);
+            h = Math.Max(MinCanvasSide, h);
+        }
+
+        (w, h) = ClampCanvasSize(w, h);
+
+        // Смещение считается ПОСЛЕ всех ограничений: упрись размер в потолок - смещение
+        // обязано упереться вместе с ним, иначе рисунок уедет дальше, чем выросла бумага,
+        // и часть его окажется за краем холста, потерянной без единого слова.
+        return (w, h, west ? w - startW : 0, north ? h - startH : 0);
+    }
+
+    /// <summary>
+    /// Ужать размер до того, что команда смены размера вообще разрешает. Пределы берутся
+    /// у неё же: разойдись они - ручка предлагала бы размер, который потом не применится.
+    /// </summary>
+    public static (int W, int H) ClampCanvasSize(int w, int h)
+    {
+        int max = Commands.ResizeCanvasCommand.MaxDimension;
+        w = Math.Clamp(w, MinCanvasSide, max);
+        h = Math.Clamp(h, MinCanvasSide, max);
+        long pixels = (long)w * h;
+        if (pixels > Commands.ResizeCanvasCommand.MaxPixels)
+        {
+            double k = Math.Sqrt((double)Commands.ResizeCanvasCommand.MaxPixels / pixels);
+            w = Math.Max(MinCanvasSide, (int)(w * k));
+            h = Math.Max(MinCanvasSide, (int)(h * k));
+        }
+        return (w, h);
+    }
+
+    /// <summary>
+    /// Место ручки холста в координатах наложения, в ЭКРАННЫХ пикселях.
+    ///
+    /// Ручки стоят ЗА краем холста, а не поперёк него: половина поперёк накрывала бы
+    /// крайние пиксели рисунка и глотала бы клики, адресованные инструменту. Места
+    /// хватает - вокруг поверхности лежит поле <see cref="CanvasMargin"/>.
+    /// </summary>
+    public static (double Left, double Top, double Width, double Height) CanvasHandleBox(
+        ResizeHandle edge, double surfaceW, double surfaceH, double thickness, double length, double gap)
+    {
+        bool west  = edge is ResizeHandle.W or ResizeHandle.NW or ResizeHandle.SW;
+        bool east  = edge is ResizeHandle.E or ResizeHandle.NE or ResizeHandle.SE;
+        bool north = edge is ResizeHandle.N or ResizeHandle.NW or ResizeHandle.NE;
+        bool south = edge is ResizeHandle.S or ResizeHandle.SW or ResizeHandle.SE;
+        bool corner = (west || east) && (north || south);
+
+        double w = corner ? thickness * 1.7 : (west || east) ? thickness : length;
+        double h = corner ? thickness * 1.7 : (west || east) ? length : thickness;
+
+        double left = west ? -(w + gap) : east ? surfaceW + gap : (surfaceW - w) / 2;
+        double top  = north ? -(h + gap) : south ? surfaceH + gap : (surfaceH - h) / 2;
+        return (left, top, w, h);
+    }
+
     /// <summary>
     /// Потолок на площадь ЭКРАННОЙ поверхности холста, в пикселях.
     ///

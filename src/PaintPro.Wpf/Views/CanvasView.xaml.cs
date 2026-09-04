@@ -186,6 +186,15 @@ public partial class CanvasView : UserControl
         double s = _vm.Zoom;
         bool busy = _vm.ToolContext.IsDrawing;
 
+        // Восемь ручек по краям САМОГО холста: четыре стороны и четыре угла. Прячем их
+        // на время рисования - иначе они мигают под курсором посреди штриха.
+        //
+        // Рамка будущего размера рисуется ОТДЕЛЬНО и как раз тогда, когда ручки спрятаны:
+        // за ручку тянут с поднятым IsDrawing, и рисуй её вместе с ними - показывать было
+        // бы нечего ровно в тот момент, ради которого она нужна.
+        if (!busy) DrawCanvasHandles(s);
+        if (_canvasResize is not null) DrawCanvasResizePreview(s);
+
         // Render rect selection with marching ants.
         if (_vm.Document.Selection is RectSelection rs)
         {
@@ -256,6 +265,138 @@ public partial class CanvasView : UserControl
                 foreach (var c in quad)
                     AddQuadCornerDot(fp.Rotation == 0f ? c : GeometryMath.Rotate(c, fp.Center, fp.Rotation), s);
         }
+    }
+
+    // ───────── Ручки самого холста ─────────
+    // Метка живёт в Services рядом с ResizeHandle: её читают и проверки накладки.
+    private const double CanvasHandleThickness = 8;
+    private const double CanvasHandleLength = 40;
+    private const double CanvasHandleGap = 6;
+
+    private static readonly ResizeHandle[] CanvasEdges =
+    {
+        ResizeHandle.NW, ResizeHandle.N, ResizeHandle.NE, ResizeHandle.W,
+        ResizeHandle.E, ResizeHandle.SW, ResizeHandle.S, ResizeHandle.SE,
+    };
+
+    private static Cursor CursorFor(ResizeHandle edge) => edge switch
+    {
+        ResizeHandle.N or ResizeHandle.S => Cursors.SizeNS,
+        ResizeHandle.W or ResizeHandle.E => Cursors.SizeWE,
+        ResizeHandle.NE or ResizeHandle.SW => Cursors.SizeNESW,
+        _ => Cursors.SizeNWSE,
+    };
+
+    private void DrawCanvasHandles(double zoom)
+    {
+        if (_vm is null) return;
+        var (surfaceW, surfaceH) = ViewGeometry.SurfaceSize(
+            _vm.Document.CanvasWidth, _vm.Document.CanvasHeight, zoom);
+
+        foreach (var edge in CanvasEdges)
+        {
+            var (left, top, w, h) = ViewGeometry.CanvasHandleBox(
+                edge, surfaceW, surfaceH,
+                CanvasHandleThickness, CanvasHandleLength, CanvasHandleGap);
+
+            var r = new Rectangle
+            {
+                Width = w, Height = h,
+                Fill = new SolidColorBrush(Color.FromArgb(0xD9, 0xF4, 0xF4, 0xF8)),
+                Stroke = new SolidColorBrush(Color.FromRgb(0x5B, 0x8D, 0xEF)),
+                StrokeThickness = 1.2,
+                RadiusX = 3, RadiusY = 3,
+                Cursor = CursorFor(edge),
+                ToolTip = "Растянуть холст",
+                Tag = new CanvasEdgeTag(edge),
+            };
+            Canvas.SetLeft(r, left);
+            Canvas.SetTop(r, top);
+            r.MouseLeftButtonDown += OnHandleMouseDown;
+            Overlay.Children.Add(r);
+        }
+
+    }
+
+    /// <summary>
+    /// Рамка будущего размера холста и подпись с числами.
+    ///
+    /// Рисуется в общем потоке накладки, а не живёт отдельным элементом: наложение
+    /// пересоздаётся целиком на каждый кадр, и долгоживущая рамка завела бы второй
+    /// порядок жизни для одной картинки.
+    /// </summary>
+    private void DrawCanvasResizePreview(double zoom)
+    {
+        if (_canvasResize is { } cr)
+        {
+            var preview = new Rectangle
+            {
+                Width = Math.Max(1, cr.Width * zoom),
+                Height = Math.Max(1, cr.Height * zoom),
+                Stroke = new SolidColorBrush(Color.FromRgb(0x5B, 0x8D, 0xEF)),
+                StrokeThickness = 2,
+                StrokeDashArray = new DoubleCollection { 6, 4 },
+                Fill = new SolidColorBrush(Color.FromArgb(0x18, 0x5B, 0x8D, 0xEF)),
+                IsHitTestVisible = false,
+            };
+            // Начало координат тут - прежний левый верхний угол холста, а новый холст
+            // стоит от него на -offset: тянут влево - рамка уходит влево.
+            Canvas.SetLeft(preview, -cr.OffsetX * zoom);
+            Canvas.SetTop(preview, -cr.OffsetY * zoom);
+            Overlay.Children.Add(preview);
+
+            var label = new TextBlock
+            {
+                Text = $"{cr.Width} × {cr.Height} px",
+                Foreground = new SolidColorBrush(Color.FromRgb(0xF4, 0xF4, 0xF8)),
+                Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x1A, 0x14, 0x2C)),
+                Padding = new Thickness(6, 3, 6, 3),
+                FontSize = 12,
+                IsHitTestVisible = false,
+            };
+            Canvas.SetLeft(label, -cr.OffsetX * zoom);
+            Canvas.SetTop(label, -cr.OffsetY * zoom - 24);
+            Overlay.Children.Add(label);
+        }
+    }
+
+    /// <summary>Что сейчас показывает рамка будущего размера холста.</summary>
+    private CanvasResizeState? _canvasResize;
+
+    private sealed record CanvasResizeState(
+        ResizeHandle Edge, int StartW, int StartH,
+        System.Windows.Point StartMouse, int Width, int Height, int OffsetX, int OffsetY);
+
+    private void StartCanvasResize(ResizeHandle edge, MouseButtonEventArgs e)
+    {
+        if (_vm is null) return;
+        int w = _vm.Document.CanvasWidth, h = _vm.Document.CanvasHeight;
+        _canvasResize = new CanvasResizeState(edge, w, h, e.GetPosition(Overlay), w, h, 0, 0);
+    }
+
+    private void MoveCanvasResize(MouseEventArgs e)
+    {
+        if (_vm is null || _canvasResize is not { } cr) return;
+        var p = e.GetPosition(Overlay);
+        double zoom = Math.Max(_vm.Zoom, ViewGeometry.MinZoom);
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
+        var g = ViewGeometry.CanvasResize(
+            cr.Edge, cr.StartW, cr.StartH,
+            (int)Math.Round((p.X - cr.StartMouse.X) / zoom),
+            (int)Math.Round((p.Y - cr.StartMouse.Y) / zoom),
+            shift);
+
+        _canvasResize = cr with { Width = g.W, Height = g.H, OffsetX = g.OffX, OffsetY = g.OffY };
+        Refresh();
+    }
+
+    /// <summary>Применить растягивание. Ничего не тянули - ничего и не пишем в историю.</summary>
+    private void FinishCanvasResize()
+    {
+        if (_canvasResize is not { } cr) { return; }
+        _canvasResize = null;
+        _vm?.ResizeCanvasTo(cr.Width, cr.Height, cr.OffsetX, cr.OffsetY);
     }
 
     /// <summary>Small marker on a quad corner. Not hit-testable: the tool owns corner drags.</summary>
@@ -385,6 +526,17 @@ public partial class CanvasView : UserControl
     {
         if (_vm is null || sender is not FrameworkElement el) return;
         _draggingHandle = el.Tag;
+        if (el.Tag is CanvasEdgeTag ct)
+        {
+            // Ручка холста ничего не поднимает и не стирает: до отпускания меняется
+            // только рамка. IsDrawing всё равно поднимаем - он прячет ручки объекта,
+            // чтобы они не мелькали поверх растягиваемого холста.
+            StartCanvasResize(ct.Edge, e);
+            _vm.ToolContext.IsDrawing = true;
+            Overlay.CaptureMouse();
+            e.Handled = true;
+            return;
+        }
         // Стирание исходной области - при первом реальном движении, как у инструментов, а
         // не по нажатию: нажатие на ручку без перетаскивания стирало пиксели и делало
         // документ изменённым, хотя пользователь ничего не сдвинул.
@@ -399,8 +551,16 @@ public partial class CanvasView : UserControl
     private void OnHandleMouseMove(object sender, MouseEventArgs e)
     {
         if (_vm is null || _draggingHandle is null) return;
-        if (_vm.Document.FloatingPickup is not { } fp) return;
         if (e.LeftButton != MouseButtonState.Pressed) return;
+
+        if (_draggingHandle is CanvasEdgeTag)
+        {
+            MoveCanvasResize(e);
+            e.Handled = true;
+            return;
+        }
+
+        if (_vm.Document.FloatingPickup is not { } fp) return;
 
         var p = e.GetPosition(Overlay);
         var docPos = ViewGeometry.ToDocument(p.X, p.Y, _vm.Zoom);
@@ -444,6 +604,9 @@ public partial class CanvasView : UserControl
     private void EndHandleDrag()
     {
         if (_draggingHandle is null) return;
+        // Сначала применяем растягивание, потом снимаем метку: применение зовёт Refresh,
+        // а тот перерисовывает наложение по уже новому размеру.
+        if (_draggingHandle is CanvasEdgeTag) FinishCanvasResize();
         _draggingHandle = null;
         if (_vm is not null) _vm.ToolContext.IsDrawing = false;
         Refresh();
@@ -550,10 +713,28 @@ public partial class CanvasView : UserControl
     }
 
     // ───────── Ctrl+wheel zoom centred on the cursor ─────────
+    /// <summary>Курсор над самим холстом, а не над полем вокруг него.</summary>
+    private bool PointerOverCanvas(MouseWheelEventArgs e)
+    {
+        var p = e.GetPosition(Skia);
+        return p.X >= 0 && p.Y >= 0 && p.X <= Skia.ActualWidth && p.Y <= Skia.ActualHeight;
+    }
+
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (_vm is null) return;
-        if ((Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control) return;
+
+        // Без Ctrl колесо над САМИМ холстом меняет размер того, что сейчас в руке:
+        // кисти, ластика, фигуры. Над полем вокруг холста колесо не трогаем - там
+        // ScrollViewer прокручивается, и отнять прокрутку значило бы запереть
+        // увеличенный холст без возможности доехать до его нижнего края.
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
+        {
+            if (!PointerOverCanvas(e) || !_vm.ActiveToolHasSize) return;
+            _vm.AdjustToolSize(e.Delta > 0);
+            e.Handled = true;
+            return;
+        }
 
         // Document-space coords under the cursor BEFORE zoom (these stay constant).
         var inSkia = e.GetPosition(Skia);

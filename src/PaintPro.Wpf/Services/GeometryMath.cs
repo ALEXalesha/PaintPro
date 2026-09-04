@@ -1,4 +1,4 @@
-using SkiaSharp;
+﻿using SkiaSharp;
 
 namespace PaintPro.Services;
 
@@ -11,6 +11,15 @@ public enum ResizeHandle
 {
     NW, N, NE, E, SE, S, SW, W,
 }
+
+/// <summary>
+/// Метка ручки САМОГО холста в накладке.
+///
+/// Отличать её от ручки поднятого объекта надо по ТИПУ метки, а не по значению: и там и
+/// там <see cref="ResizeHandle"/>, и общий обработчик перепутал бы одно с другим, приняв
+/// растягивание холста за масштабирование картинки.
+/// </summary>
+public sealed record CanvasEdgeTag(ResizeHandle Edge);
 
 /// <summary>
 /// Pure-math helpers for canvas geometry. No I/O, no WPF, no Skia state — everything

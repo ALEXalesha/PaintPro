@@ -293,6 +293,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnActiveToolChanged(ToolKind value)
     {
+        OnPropertyChanged(nameof(ActiveToolHasSize));
         // Инструмент сбрасывает своё состояние жеста, но поднятый объект не трогает.
         ActiveToolInstance?.OnDeactivate(ToolContext);
 
@@ -328,6 +329,67 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private int _toolSize = 4;
     partial void OnToolSizeChanged(int value) => ToolContext.ToolSize = Math.Max(1, value);
+
+    // ───────── Размер инструмента: границы, шаг, колесо ─────────
+
+    /// <summary>Границы размера. Ползунок в разметке берёт их отсюда, а не из своих чисел:
+    /// разойдись они - колесо и ползунок стали бы упираться в разные пределы.</summary>
+    public const int MinToolSize = 1;
+    public const int MaxToolSize = 100;
+
+    public int ToolSizeMin => MinToolSize;
+    public int ToolSizeMax => MaxToolSize;
+
+    /// <summary>
+    /// Влияет ли размер на этот инструмент.
+    ///
+    /// Правило одно: колесо меняет ровно то, что меняет ползунок. У заливки, пипетки,
+    /// выделения, кадрирования и руки размера нет вовсе. Текст в этот список входит -
+    /// в этой версии ползунок задаёт именно кегль (см. TextTool), и делать колесо
+    /// исключением значило бы оставить необъяснимую дырку.
+    /// </summary>
+    public static bool HasToolSize(ToolKind tool) => tool switch
+    {
+        ToolKind.Fill or ToolKind.Picker or ToolKind.Select or
+        ToolKind.Quad or ToolKind.Crop or ToolKind.Hand => false,
+        _ => true,
+    };
+
+    public bool ActiveToolHasSize => HasToolSize(ActiveTool);
+
+    /// <summary>
+    /// Шаг размера за одну засечку колеса.
+    ///
+    /// Ровно один пиксель означал бы сотню засечек на весь ползунок - колесо было бы
+    /// бесполезно. Шаг растёт вместе с размером: у тонкого карандаша важен каждый
+    /// пиксель, у стопиксельной кисти - уже нет.
+    /// </summary>
+    public static int ToolSizeStep(int size) => Math.Max(1, (int)Math.Round(size / 10.0));
+
+    /// <summary>
+    /// Шагнуть размером вверх или вниз - то, что делает колесо над холстом.
+    /// Возвращает false, если размер не изменился; про упор в предел говорит сама.
+    /// </summary>
+    public bool AdjustToolSize(bool up)
+    {
+        if (!ActiveToolHasSize) return false;
+
+        var before = Math.Clamp(ToolSize, MinToolSize, MaxToolSize);
+        var step = ToolSizeStep(before);
+        var after = Math.Clamp(up ? before + step : before - step, MinToolSize, MaxToolSize);
+        if (after == before)
+        {
+            // Молчаливый отказ читается как поломка: у предела надо сказать, что это предел.
+            ShowHint(up
+                ? $"Больше некуда: {MaxToolSize} px - предел размера."
+                : $"Меньше некуда: {MinToolSize} px - предел размера.");
+            ToolSize = after;
+            return false;
+        }
+
+        ToolSize = after;
+        return true;
+    }
 
     [ObservableProperty] private double _opacity = 1.0;
     partial void OnOpacityChanged(double value)
@@ -1066,6 +1128,26 @@ public partial class MainViewModel : ObservableObject
         Document.CommitFloating();
         Document.History.ExecuteAndPush(DocumentTransform.Flip(Document, horizontal), Document);
         InvalidateCanvas?.Invoke();
+    }
+
+    /// <summary>
+    /// Применить растягивание холста ручкой. Возвращает false, если применять нечего.
+    ///
+    /// Отдельно от диалога: там размер вводят числами и промах надо объяснять словами, а
+    /// здесь размер уже ограничен самой ручкой - предложить недопустимое она не может.
+    /// </summary>
+    public bool ResizeCanvasTo(int newWidth, int newHeight, int offsetX, int offsetY)
+    {
+        if (newWidth == Document.CanvasWidth && newHeight == Document.CanvasHeight) return false;
+        if (!Commands.ResizeCanvasCommand.IsAllowed(newWidth, newHeight)) return false;
+
+        // Поднятый объект прижимаем до смены размера: пересборка слоёв заменяет их
+        // объекты, и объект остался бы ссылаться на выброшенный битмап.
+        Document.CommitFloating();
+        Document.History.ExecuteAndPush(
+            DocumentTransform.ResizeCanvas(Document, newWidth, newHeight, offsetX, offsetY), Document);
+        InvalidateCanvas?.Invoke();
+        return true;
     }
 
     [RelayCommand] private void ResizeCanvas()

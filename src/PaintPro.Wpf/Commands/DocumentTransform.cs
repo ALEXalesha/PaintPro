@@ -1,4 +1,4 @@
-using PaintPro.Models;
+﻿using PaintPro.Models;
 using SkiaSharp;
 
 namespace PaintPro.Commands;
@@ -40,6 +40,18 @@ public static class DocumentTransform
             else            { canvas.Translate(0, h); canvas.Scale(1, -1); }
         });
     }
+
+    /// <summary>
+    /// Смена размера холста, у которой начало координат может съехать.
+    ///
+    /// offX/offY - куда в НОВОМ холсте попадёт прежний левый верхний угол. Ноль - прежнее
+    /// поведение <see cref="ResizeCanvasCommand"/>: рисунок остаётся в левом верхнем углу.
+    /// Тянут за левую или верхнюю сторону - холст растёт в другую сторону, и рисунок обязан
+    /// сдвинуться вместе с началом. Всем слоям одно и то же смещение: разъедься они хоть на
+    /// пиксель, рисунок расслоится, и заметить это можно будет только глазами.
+    /// </summary>
+    public static ReplaceAllLayersCommand ResizeCanvas(Document doc, int newW, int newH, int offX, int offY)
+        => Build(doc, "Resize canvas", newW, newH, (canvas, _) => canvas.Translate(offX, offY));
 
     public static ReplaceAllLayersCommand Crop(Document doc, SKRectI region)
         => Build(doc, "Crop", region.Width, region.Height,

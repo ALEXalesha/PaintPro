@@ -401,7 +401,9 @@
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
                         <TextBlock Text="РАЗМЕР" FontSize="11" Opacity="0.6"/>
-                        <Slider Style="{DynamicResource GlassSlider}" Minimum="1" Maximum="100"
+                        <Slider Style="{DynamicResource GlassSlider}"
+                                Minimum="{Binding ToolSizeMin, Mode=OneTime}"
+                                Maximum="{Binding ToolSizeMax, Mode=OneTime}"
                                 Value="{Binding ToolSize}" TickFrequency="1"/>
                         <TextBlock Text="{Binding ToolSize, StringFormat={}{0} px}" Opacity="0.8"/>
 
