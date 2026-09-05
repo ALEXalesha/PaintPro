@@ -16,6 +16,32 @@ const { openApp, isWhite } = require('./harness');
 
 const IDS = ['glass', 'formal', 'light', 'night', 'warm'];
 
+/**
+ * Сменить тему и дождаться её ОКОНЧАТЕЛЬНЫХ цветов.
+ *
+ * Переходы в разметке длятся до 0.18 s, и getComputedStyle посреди перехода отдаёт
+ * промежуточный цвет - тот, которого пользователь не увидит. Раньше здесь стояло
+ * фиксированное ожидание в 250 мс, и на загруженной машине (четыре проверки идут
+ * параллельно, кадры страницы приходят реже) проверки читаемости падали на цвете из
+ * середины анимации. Ждать «пока устоится» тоже мало: замерять пришлось бы ровно те
+ * элементы, которые прочтёт проверка, а их у каждой свои.
+ *
+ * Поэтому переходы на время проверок просто выключаются: они про плавность, а проверки
+ * здесь - про конечные цвета.
+ */
+async function setThemeSettled(app, id) {
+  await app.page.evaluate((x) => {
+    if (!document.getElementById('__no-transitions')) {
+      const st = document.createElement('style');
+      st.id = '__no-transitions';
+      st.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }';
+      document.head.appendChild(st);
+    }
+    setTheme(x);
+  }, id);
+  await app.page.evaluate(() => new Promise(requestAnimationFrame));
+}
+
 /** Яркость цвета из строки вида rgb()/rgba()/#rrggbb. */
 function luminance(css) {
   let r, g, b;
@@ -143,10 +169,7 @@ test('строка меню читается в каждой теме', async ({
   const app = await openApp(page);
   const bad = [];
   for (const id of IDS) {
-    await app.page.evaluate((x) => setTheme(x), id);
-    // У пунктов меню плавный переход цвета: сразу после смены темы getComputedStyle
-    // отдаёт промежуточное значение анимации, а не конечное.
-    await app.page.waitForTimeout(250);
+    await setThemeSettled(app, id);
     const t = await tokens(app);
     const c = await app.page.evaluate(() =>
       getComputedStyle(document.querySelector('.mb-item')).color);
@@ -160,8 +183,7 @@ test('выпадающее меню читается в каждой теме', 
   const app = await openApp(page);
   const bad = [];
   for (const id of IDS) {
-    await app.page.evaluate((x) => setTheme(x), id);
-    await app.page.waitForTimeout(250);
+    await setThemeSettled(app, id);
     const r = await app.page.evaluate(() => ({
       bg: getComputedStyle(document.querySelector('.mb-dropdown')).backgroundColor,
       fg: getComputedStyle(document.querySelector('.mb-dd-item')).color,
@@ -242,8 +264,7 @@ test('во всех темах панели читаются, а не тольк
   const app = await openApp(page);
   const bad = [];
   for (const id of IDS) {
-    await app.page.evaluate((x) => setTheme(x), id);
-    await app.page.waitForTimeout(250);
+    await setThemeSettled(app, id);
     const rows = await app.page.evaluate(() => {
       const sels = ['.sidebar-title', '.info-row', '.layer-name', '.hist-item',
                     '.tool', '.mb-app', '.mb-right', '.statusbar'];
@@ -281,8 +302,7 @@ test('обводка активного слоя видна в каждой те
   const app = await openApp(page);
   const bad = [];
   for (const id of IDS) {
-    await app.page.evaluate((x) => setTheme(x), id);
-    await app.page.waitForTimeout(250);
+    await setThemeSettled(app, id);
     const same = await app.page.evaluate(() => {
       const row = document.querySelector('.layer-row.active');
       if (!row) return null;
