@@ -174,6 +174,33 @@ public class CanvasGestureTests
     }
 
     [Fact]
+    // уход курсора с холста НЕ закрывает штрих: кнопка ещё зажата, захват держится
+    public void leaving_the_canvas_does_not_close_the_stroke()
+    {
+        WpfRunner.Run(() =>
+        {
+            var vm = Painted();
+            vm.ActiveTool = ToolKind.Brush;
+            vm.PrimaryColor = SKColors.Blue;
+            vm.ToolSize = 20;
+            var (_, skia, _) = Show(vm);
+
+            Press(skia);
+            Leave(skia);
+
+            // В Electron-версии этот же уход курсора обрывал мазок на краю холста:
+            // там onUp висел прямо на mouseleave. Здесь мышь на время жеста
+            // захвачена, и жест кончается только кнопкой - версии обязаны совпадать.
+            Assert.True(vm.ToolContext.IsDrawing, "уход курсора оборвал жест");
+            Assert.Empty(vm.Document.History.Commands);
+
+            Release(skia);
+            Assert.False(vm.ToolContext.IsDrawing);
+            Assert.Single(vm.Document.History.Commands);
+        });
+    }
+
+    [Fact]
     // потеря захвата ручкой снимает признак жеста, иначе ручки прячутся навсегда
     public void handle_drag_survives_lost_capture()
     {

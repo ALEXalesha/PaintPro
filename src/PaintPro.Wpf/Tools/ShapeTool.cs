@@ -199,6 +199,27 @@ public sealed class TriangleShapeTool : ShapeTool
     }
 }
 
+/// <summary>
+/// Прямоугольный треугольник. Прямой угол ставится по направлению жеста: катеты выходят
+/// из точки старта, гипотенуза ложится ровно на линию, которую ведёт мышь. Габарит здесь
+/// намеренно не нормализуется - в отличие от равнобедренного треугольника, которому
+/// направление безразлично, здесь оно и решает, куда смотрит угол.
+/// </summary>
+public sealed class RightTriangleShapeTool : ShapeTool
+{
+    public override string Name => "RightTriangle";
+    protected override void DrawShape(SKCanvas c, SKPoint p1, SKPoint p2, SKPaint stroke, SKPaint? fill)
+    {
+        using var path = new SKPath();
+        path.MoveTo(p1.X, p1.Y);
+        path.LineTo(p1.X, p2.Y);
+        path.LineTo(p2.X, p2.Y);
+        path.Close();
+        if (fill is not null) c.DrawPath(path, fill);
+        c.DrawPath(path, stroke);
+    }
+}
+
 public sealed class StarShapeTool : ShapeTool
 {
     public override string Name => "Star";

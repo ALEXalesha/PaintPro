@@ -69,7 +69,8 @@ public class ToolSizeWheelTests
 
         var with = new[] { ToolKind.Pencil, ToolKind.Brush, ToolKind.Marker, ToolKind.Eraser,
                            ToolKind.Line, ToolKind.Rect, ToolKind.Ellipse, ToolKind.Triangle,
-                           ToolKind.Star, ToolKind.Arrow, ToolKind.Heart, ToolKind.Text };
+                           ToolKind.RightTriangle, ToolKind.Star, ToolKind.Arrow, ToolKind.Heart,
+                           ToolKind.Text };
         foreach (var t in with) Assert.True(MainViewModel.HasToolSize(t), t.ToString());
 
         // Список обязан покрывать ВЕСЬ enum: новый инструмент не должен молча попасть

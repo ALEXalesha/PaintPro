@@ -310,6 +310,11 @@
                                 Click="OnToolClick" Tag="Triangle">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Triangle}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
+                        <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Прямоугольный треугольник"
+                                IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=RightTriangle, Mode=OneWay}"
+                                Click="OnToolClick" Tag="RightTriangle">
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.RightTriangle}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
+                        </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Звезда"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Star, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Star">

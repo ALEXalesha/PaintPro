@@ -14,6 +14,7 @@ public enum ToolKind
     Rect,
     Ellipse,
     Triangle,
+    RightTriangle,
     Star,
     Arrow,
     Heart,
@@ -31,12 +32,14 @@ public static class ToolKindExtensions
     {
         ToolKind.Pencil or ToolKind.Brush or ToolKind.Marker or ToolKind.Eraser
             or ToolKind.Fill or ToolKind.Line or ToolKind.Rect or ToolKind.Ellipse
-            or ToolKind.Triangle or ToolKind.Star or ToolKind.Arrow or ToolKind.Heart => true,
+            or ToolKind.Triangle or ToolKind.RightTriangle or ToolKind.Star
+            or ToolKind.Arrow or ToolKind.Heart => true,
         _ => false,
     };
 
-    /// <summary>True for shape tools (Line, Rect, Ellipse, Triangle, Star, Arrow, Heart).</summary>
+    /// <summary>True for shape tools (Line, Rect, Ellipse, Triangle, RightTriangle, Star, Arrow, Heart).</summary>
     public static bool IsShapeTool(this ToolKind k) => k is
         ToolKind.Line or ToolKind.Rect or ToolKind.Ellipse
-        or ToolKind.Triangle or ToolKind.Star or ToolKind.Arrow or ToolKind.Heart;
+        or ToolKind.Triangle or ToolKind.RightTriangle or ToolKind.Star
+        or ToolKind.Arrow or ToolKind.Heart;
 }

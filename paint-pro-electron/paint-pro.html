@@ -1583,6 +1583,9 @@
     <button class="tool" data-tool="triangle" data-tip="Треугольник">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12,4 22,20 2,20"/></svg>
     </button>
+    <button class="tool" data-tool="right-triangle" data-tip="Прямоугольный треугольник">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="4,4 4,20 20,20"/></svg>
+    </button>
     <button class="tool" data-tool="star" data-tip="Звезда">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
     </button>
@@ -2530,12 +2533,13 @@ const toolNames = {
   pencil: 'Карандаш', brush: 'Кисть', marker: 'Маркер', eraser: 'Ластик',
   fill: 'Заливка', picker: 'Пипетка', text: 'Текст',
   line: 'Линия', rect: 'Прямоугольник', ellipse: 'Эллипс',
-  triangle: 'Треугольник', star: 'Звезда', arrow: 'Стрелка', heart: 'Сердце',
+  triangle: 'Треугольник', 'right-triangle': 'Прямоугольный треугольник',
+  star: 'Звезда', arrow: 'Стрелка', heart: 'Сердце',
   select: 'Выделение', quad: 'Полигон 4 точками', crop: 'Обрезка'
 };
 
 // Список фигур был скопирован инлайном в трёх местах. Один список на все ветки.
-const SHAPE_TOOLS = ['line','rect','ellipse','triangle','star','arrow','heart'];
+const SHAPE_TOOLS = ['line','rect','ellipse','triangle','right-triangle','star','arrow','heart'];
 const DRAWING_TOOLS = ['pencil','brush','marker','eraser', ...SHAPE_TOOLS];
 
 // Фактическая толщина мазка в пикселях холста. Заданный размер - не то же самое,
@@ -2607,7 +2611,7 @@ document.querySelectorAll('[data-tool]').forEach(btn => {
 // brushSize - общий размер для рисующих/фигурных инструментов, чтобы при
 // переключении ластик -> фигура не "залипал" размер ластика. Ластик хранит
 // свой размер отдельно (eraserSize).
-const BRUSH_GROUP = ['pencil','brush','marker','line','rect','ellipse','triangle','star','arrow','heart'];
+const BRUSH_GROUP = ['pencil','brush','marker', ...SHAPE_TOOLS];
 
 const sizeInput = document.getElementById('size-input');
 
@@ -2681,7 +2685,44 @@ function getPos(e) {
 canvas.addEventListener('mousedown', onDown);
 canvas.addEventListener('mousemove', onMove);
 canvas.addEventListener('mouseup', onUp);
-canvas.addEventListener('mouseleave', onUp);
+// Жест заканчивается ОТПУСКАНИЕМ кнопки, а не уходом курсора с холста.
+//
+// Раньше здесь висел `canvas.addEventListener('mouseleave', onUp)`, и он врал дважды.
+// Во-первых, рамка выделения и её ручки лежат поверх холста отдельными элементами: пока
+// тянешь ручку, курсор то и дело оказывается над ней, и для canvas это тот же mouseleave.
+// Ресайз срывался, стоило отклониться от линии на пару пикселей, - вести мышь приходилось
+// идеально по траектории. Во-вторых, мазок обрывался на краю холста и не продолжался,
+// когда курсор возвращался обратно, хотя кнопка всё это время оставалась зажатой; в
+// WPF-версии мышь на время жеста захватывается (Skia.CaptureMouse), и там ничего не
+// обрывалось - расхождение между версиями.
+//
+// Отпускание за пределами холста ловит документ: до него событие с canvas доходит
+// всплытием, поэтому проверка state.drawing отсекает второй вызов на том же жесте.
+document.addEventListener('mouseup', (e) => {
+  if (state.drawing) onUp(e);
+});
+
+// Кнопку могли отпустить там, где нас не слышно: за краем окна или под чужим окном,
+// вышедшим вперёд. mouseup тогда не придёт совсем, и жест остался бы висеть открытым -
+// превью тянулось бы за курсором до следующего щелчка, а рамка выделения продолжала бы
+// растягиваться сама по себе. Ловим это двумя способами: первым же движением с уже
+// отпущенной кнопкой (buttons === 0) и потерей фокуса окном. В WPF-версии ровно этот
+// случай ловит Skia.LostMouseCapture - см. CanvasGestureTests.
+let lastMousePoint = { clientX: 0, clientY: 0 };
+document.addEventListener('mousemove', (e) => {
+  lastMousePoint = { clientX: e.clientX, clientY: e.clientY };
+  if (e.buttons === 0) endStrandedGesture(e);
+}, true);
+window.addEventListener('blur', () => endStrandedGesture(lastMousePoint));
+
+/** Закрыть жест, отпускания которого мы не увидели. Точка нужна только фигурам. */
+function endStrandedGesture(point) {
+  if (state.resizingFloating) { state.resizingFloating = false; state.resizeHandle = null; }
+  if (state.rotatingFloating) { state.rotatingFloating = false; state.rotationStart = null; }
+  if (state.warpingQuad) { state.warpingQuad = false; state.warpCornerIdx = null; }
+  state.draggingFloating = false;
+  if (state.drawing) onUp(point);
+}
 canvas.addEventListener('mouseleave', () => {
   clearPixelPreview();
   document.getElementById('pos').textContent = '—';
@@ -3117,6 +3158,17 @@ function drawShape(context, type, x1, y1, x2, y2) {
     context.moveTo(x + w / 2, y);
     context.lineTo(x, y + h);
     context.lineTo(x + w, y + h);
+    context.closePath();
+    if (doFill) context.fill();
+    if (doStroke) context.stroke();
+  } else if (type === 'right-triangle') {
+    // Прямой угол ставится по направлению жеста: катеты выходят из точки старта,
+    // а гипотенуза ложится ровно на линию, которую ведёт мышь. Габарит здесь
+    // намеренно не нормализуется - в отличие от равнобедренного треугольника,
+    // которому направление безразлично, здесь оно и решает, куда смотрит угол.
+    context.moveTo(x1, y1);
+    context.lineTo(x1, y2);
+    context.lineTo(x2, y2);
     context.closePath();
     if (doFill) context.fill();
     if (doStroke) context.stroke();

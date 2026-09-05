@@ -61,6 +61,7 @@ public partial class MainViewModel : ObservableObject
             [ToolKind.Rect]    = new RectShapeTool(),
             [ToolKind.Ellipse] = new EllipseShapeTool(),
             [ToolKind.Triangle]= new TriangleShapeTool(),
+            [ToolKind.RightTriangle] = new RightTriangleShapeTool(),
             [ToolKind.Star]    = new StarShapeTool(),
             [ToolKind.Arrow]   = new ArrowShapeTool(),
             [ToolKind.Heart]   = new HeartShapeTool(),

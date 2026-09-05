@@ -15,6 +15,7 @@
     <Geometry x:Key="Icon.Rect">M3 5h18v14H3z</Geometry>
     <Geometry x:Key="Icon.Ellipse">M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z</Geometry>
     <Geometry x:Key="Icon.Triangle">M12 3 22 21H2z</Geometry>
+    <Geometry x:Key="Icon.RightTriangle">M4 3v18h16z</Geometry>
     <Geometry x:Key="Icon.Star">M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01z</Geometry>
     <Geometry x:Key="Icon.Arrow">M4 12h12m-4-6 6 6-6 6</Geometry>
     <Geometry x:Key="Icon.Heart">M12 21s-7-4.5-9.5-9C1 8.5 3 5 6.5 5q2.5 0 4 2 1.5-2 4-2C18 5 20 8.5 18.5 12 16 16.5 12 21 12 21z</Geometry>
