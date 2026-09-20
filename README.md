@@ -1,389 +1,152 @@
-﻿# Paint Pro - Electron приложение
+<div align="center">
 
-Нативное Windows-приложение на базе HTML-редактора Paint Pro.
+<img src="docs/brand/avatar.png" width="96" alt="">
 
-## Что уже настроено
+# Paint Pro
 
-- ✅ Нативное меню "Файл / Правка / Вид / Справка" на русском
-- ✅ Drag & drop изображений прямо в окно
-- ✅ Ассоциация файлов: .png, .jpg, .jpeg, .bmp, .gif, .webp
-- ✅ Нативный диалог сохранения (Ctrl+S, Ctrl+Shift+S "Сохранить как")
-- ✅ Нативный диалог открытия (Ctrl+O)
-- ✅ Сборка в один portable .exe без установщика
-- ✅ Иконка приложения (7 размеров в .ico)
-- ✅ Single-instance режим - двойной клик на .png откроет в уже запущенной копии
-- ✅ Горячие клавиши для всего меню
-- ✅ Вопрос про несохранённый рисунок при закрытии окна, при «Создать» и при «Открыть»
-- ✅ Копирование в системный буфер обмена (вставляется в другие приложения)
+**A raster image editor for Windows. The whole application is one HTML file; Electron only gives it a window, a menu and the native file dialogs.**
 
-## Требования
+[**Try it in your browser →**](https://alexalesha.github.io/PaintPro/) &nbsp;·&nbsp; [Download for Windows](https://github.com/ALEXalesha/PaintPro/releases/latest) &nbsp;·&nbsp; [Русская версия этого файла](README.ru.md)
 
-- Node.js 18+ ([скачать](https://nodejs.org/))
-- Интернет для первой установки (Electron ~150 MB)
-- Windows 10/11 x64
+[![CI](https://github.com/ALEXalesha/PaintPro/actions/workflows/ci.yml/badge.svg)](https://github.com/ALEXalesha/PaintPro/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ALEXalesha/PaintPro?color=6c5ce7)](https://github.com/ALEXalesha/PaintPro/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/ALEXalesha/PaintPro/total?color=22a7e0)](https://github.com/ALEXalesha/PaintPro/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-## Сборка
+<img src="docs/screenshots/hero.png" width="900" alt="Paint Pro main window">
+
+</div>
+
+> **The interface is in Russian only.** There is no localisation layer and no plans for one - the strings are written into the markup. Everything below describes the program honestly; if you cannot read the menus, the browser demo is still the fastest way to see whether the thing is any good.
+
+## What this actually is
+
+One file, `paint-pro.html`, 280 KB, holds the entire editor: markup, styles and code, nothing fetched from the network. Three things are built from it and they are the same program:
+
+| Build | What it is | Size |
+| --- | --- | --- |
+| Installer | NSIS, installs as *Paint Pro Electron*, own folder, file associations | 74.6 MB |
+| Portable | single `.exe`, nothing to install | 74.4 MB |
+| Browser | single `.html`, open it by double click, works offline | 274 KB |
+
+The desktop builds carry a whole Chromium, which is why they weigh 74 MB and the same program in a browser weighs 274 KB. That is the honest trade for native menus, real Save dialogs and file associations.
+
+Electron adds exactly four things: the window, the native menu, save/open dialogs and drag & drop of image files. Everything else - drawing, history, layers, selection - is plain canvas code that runs unchanged in a browser tab. The `window.electronAPI` bridge is checked before every native call, so the file degrades instead of breaking.
+
+## Download
+
+Latest builds are on the [releases page](https://github.com/ALEXalesha/PaintPro/releases/latest): installer, portable and the single-file browser build.
+
+Windows 10 or 11, x64. The binaries are not code-signed, so SmartScreen will warn you on first run; that is a signature question, not a virus one.
+
+## What it can do
+
+Nineteen tools, five themes, layers, a history you can edit.
+
+| Group | Tools |
+| --- | --- |
+| Freehand | pencil, brush, marker, eraser |
+| Colour | bucket fill, eyedropper |
+| Text | text with font and size |
+| Shapes | line, rectangle, ellipse, triangle, right triangle, star, arrow, heart |
+| Selection | rectangular select, 4-point polygon, crop |
+| View | hand (pan), zoom 10-800 % |
+
+Beyond the tool list:
+
+- **Layers.** Add, remove, reorder, hide, per-layer opacity. Drawing goes to the active layer; the composite is assembled from the stack, and the same assembly function feeds both the screen and the saved file.
+- **A history you can switch off entry by entry.** Not just undo and redo: any single edit in the middle of the tape can be disabled, and the document is rebuilt without it while everything after it stays. Turning it back on restores the document to the pixel.
+- **A floating object.** Select a region, click inside, and the pixels lift off the paper: drag them, resize by eight handles, rotate with `[` and `]`. `Enter` applies, `Escape` puts them back.
+- **Five themes** under *Вид → Тема*, remembered between runs. The canvas never follows the theme - paper stays white, because a theme that repaints your drawing is not a theme.
+- **Refusals that talk.** Every action that legitimately does nothing says so in the status bar instead of swallowing the click.
+
+### Themes
+
+| | |
+| --- | --- |
+| <img src="docs/screenshots/theme-glass.png" width="430" alt="Glass theme"> | <img src="docs/screenshots/theme-formal.png" width="430" alt="Formal theme"> |
+| Стеклянная - gradient and glass, the default | Строгая - flat dark, muted blue |
+| <img src="docs/screenshots/theme-light.png" width="430" alt="Light theme"> | <img src="docs/screenshots/theme-night.png" width="430" alt="Night theme"> |
+| Светлая - dark text on light | Ночная - near-black for a dark room |
+| <img src="docs/screenshots/theme-warm.png" width="430" alt="Warm theme"> | |
+| Тёплая - ochre and coffee instead of blue | |
+
+### Selection and layers
+
+| | |
+| --- | --- |
+| <img src="docs/screenshots/selection.png" width="430" alt="Selection with handles"> | <img src="docs/screenshots/layers.png" width="430" alt="Layer panel"> |
+| A selection with its eight handles; the status bar carries its size | Three layers, the top one at 55 % opacity |
+
+## Keyboard
+
+| Key | Action | | Key | Action |
+| --- | --- | --- | --- | --- |
+| `Ctrl+Z` | undo | | `P` | pencil |
+| `Ctrl+Y`, `Ctrl+Shift+Z` | redo | | `B` | brush |
+| `Ctrl+N` | new document | | `M` | marker |
+| `Ctrl+O` | open | | `E` | eraser |
+| `Ctrl+S` | save | | `G` | bucket fill |
+| `Ctrl+Shift+S` | save as | | `I` | eyedropper |
+| `Ctrl+C` / `Ctrl+X` | copy / cut | | `T` | text |
+| `Ctrl+A` / `Ctrl+D` | select all / deselect | | `S` | select |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | zoom in / out / 100 % | | `Q` | 4-point polygon |
+| `Delete` | delete selection or floating object | | `H` | hand |
+| `Enter` / `Escape` | apply / cancel the floating object | | `[` `]` | rotate ±90° (`Shift`: ±15°) |
+
+The mouse wheel over the canvas changes the size of the current tool, and says so when it hits the limit. With `Ctrl` held it zooms instead. Off the canvas, or with a tool that has no size, it scrolls the view as usual.
+
+## Building and running
+
+Node.js 18 or newer. The first `npm install` pulls Electron, about 150 MB.
 
 ```bash
-# Установка зависимостей (первый раз, ~3-5 минут)
 npm install
-
-# Запуск в режиме разработки
-npm start
-
-# Проверки (Playwright, ~2 минуты)
-npm test
-
-# Проверки настоящего приложения: main-процесс, файлы, клавиатура (~40 секунд)
-npm run test:app
-
-# Один файл для работы в браузере (кладётся в dist/)
-npm run build:web
-
-# Сборка portable .exe (результат в папке dist/)
-npm run build
-
-# Сборка установщика NSIS -> «Paint Pro Electron Setup <версия>.exe»
-npm run build-installer
-
-# И portable, и установщик
-npm run build-all
+npm start                 # run in development
+npm test                  # 335 checks in Chromium, ~2 minutes
+npm run test:app          # 14 checks against the real app, ~40 seconds
+npm run build:web         # single-file browser build into dist/
+npm run build             # portable .exe
+npm run build-installer   # NSIS installer
+npm run screenshots       # redraw every picture in this README
 ```
 
-После `npm run build` в папке `dist/` появится файл:
-**`PaintPro-<версия>-portable.exe`** — один самодостаточный файл, ничего не надо
-устанавливать. Версию в имени подставляет `artifactName` из `package.json`, так
-что менять её достаточно в одном месте — в поле `version`.
+`npm test` needs a browser once: `npx playwright install chromium`.
 
-## Проверки
+The version number lives in exactly one place, the `version` field of `package.json`. The window, the About box, the built file names and the browser build all read it from there.
 
-`tests/` — 335 проверок на Playwright. Страница открывается в Chromium по файловому
-адресу, мышь водит по холсту по-настоящему, утверждения читают пиксели через
-`getImageData` и сравнивают целые кадры через `toDataURL`. Настоящий Electron для этого
-не нужен: подменяется только мост в него (`tests/harness.js`), всё остальное - то же
-приложение, что видит пользователь.
+## About the tests
 
-- `basics.spec.js` — рисование, отмена, признак несохранённой работы
-- `history.spec.js` — лента: что в неё попадает, ходьба по ней, потолки, метка сохранения
-- `tools.spec.js` — инструменты, фигуры, заливка, текст, горячие клавиши
-- `canvas.spec.js` — размер, повороты, обрезка, открытие файла, масштаб и панорама
-- `selection.spec.js` — выделение, буфер, плавающий объект, сохранение и закрытие
-- `hints.spec.js` — все места, где действие законно не делает ничего и обязано сказать
-  об этом; и обратная сторона: удавшееся действие молчит
-- `parity.spec.js` — правила, добытые в C#-версии: каждая проверка названа выпуском,
-  в котором правило появилось там
-- `layers.spec.js` — стопка слоёв: устройство, видимость и прозрачность, рисование по
-  слоям, порядок, потолок, панель
-- `toggle.spec.js` — выключатель правки в ленте: что выключаемо, что делает выключение,
-  как это видно в панели
-- `fuzz.spec.js` — случайные последовательности правок и инварианты поверх них, включая
-  сильнейший: позиция курсора однозначно задаёт документ
-- `integration.spec.js` — стыки: слои, лента, буфер, файл и поднятый объект вместе
-- `memory.spec.js` — сколько каждая операция просит себе, в долях холста, с потолками
-- `appearance.spec.js` — внешний вид: прокрутка панели и читаемость того, что всплывает
-  над холстом
-- `theme.spec.js` — пять тем: набор ключей, читаемость в каждой, память выбора
-- `wheel.spec.js` — колесо над холстом: размер инструмента, Ctrl под масштаб, прокрутка
-- `canvas-handles.spec.js` — восемь ручек холста: смещение рисунка, пределы, отмена
-- `web.spec.js` — собранный файл для браузера: работает сам по себе и ничего не тянет из сети
-- `gesture.spec.js` — чем жест мышью продолжается и чем кончается: ресайз за направлением
-  мыши, мазок через край холста, подбор жеста, отпускания которого никто не видел
-- `right-triangle.spec.js` — прямоугольный треугольник: прямой угол по направлению жеста
+335 Playwright checks plus 14 against the packaged application. They are not unit tests around the functions; the page is opened in Chromium, the mouse really moves across the canvas, and the assertions read pixels back with `getImageData` or compare whole frames through `toDataURL`. Only the Electron bridge is stubbed. The 14 slow ones launch the real Electron binary and run code inside the main process, replacing native dialogs, because file writing and the close-without-saving question live there and nothing else reaches them.
 
-Отдельно `tests-app/` — проверки НАСТОЯЩЕГО приложения (`npm run test:app`): Playwright
-запускает Electron и выполняет код в main-процессе, подменяя нативные диалоги. Там
-проверяются запись файлов, вопрос при закрытии, открытие через диалог и клавиатура в той
-оболочке, где она живёт. Медленные, поэтому отдельной командой.
+Two of the files are fuzzers rather than examples. `fuzz.spec.js` generates random sequences of edits from a seed and checks four invariants of the history tape over them; the strongest is that *the cursor position alone determines the document, whatever path led there*. That one law covers more ground than any list of hand-written undo cases.
 
-Первый запуск требует браузера: `npx playwright install chromium`.
+This approach is not a matter of taste. It is where the defects actually came from:
 
-## Один файл для браузера
+| Release | Found by | What it was |
+| --- | --- | --- |
+| 1.11.2 | the very first test run | three broken behaviours nobody had noticed |
+| 1.11.3 | sweeping every dead-end action | 11 places that refused silently; they say why now |
+| 1.11.5 | comparing the two code paths | paste had two routes, and the offset was fixed in one of them |
+| 1.12.1 | a sweep over the new layer code | seven defects in one pass |
+| 1.15.0 | asking what ends a mouse gesture | resizing a selection broke if the mouse strayed two pixels off the path |
 
-`npm run build:web` кладёт в `dist/` файл `paint-pro-<версия>-web.html`. Это всё
-приложение целиком: стили и код внутри, снаружи не подгружается ничего. Его можно
-переслать, положить на флешку или открыть двойным щелчком на любом устройстве с
-браузером — ни установки, ни интернета не нужно.
+The last one is the clearest example of why reading the code does not find these. The selection frame and its eight handles are overlay elements, not part of the canvas, so the cursor crossing a handle raises the same "pointer left" event as leaving the canvas entirely - and end-of-gesture hung on that event. Drawing perfectly along the path kept the handle under the cursor and hid the bug. Now a gesture ends when the button is released, and a stroke that runs off the edge of the canvas continues when you come back.
 
-Чего в браузере нет по сравнению с установленной версией: нативных диалогов. Открытие
-идёт через обычное поле выбора файла, сохранение — скачиванием в папку загрузок, а вопрос
-про несохранённую работу задаёт сам браузер своими словами.
+## Documentation
 
-## Структура проекта
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - how the thing is put together and the rules that hold it: the two-step IPC save, why transparency is one composite per stroke, the history ceilings, the floating object, what may touch the canvas directly. In Russian.
+- [`docs/DEV_CONTEXT.md`](docs/DEV_CONTEXT.md) - the visual language: tokens, glass materials, the anti-patterns. In Russian.
+- [`CHANGELOG.md`](CHANGELOG.md) - every release with the reasoning, not a list of commit subjects.
 
-```
-paint-pro-electron/
-├── main.js              # Главный процесс Electron (меню, IPC, файлы)
-├── preload.js           # Мост безопасности между main и renderer
-├── paint-pro.html       # UI приложения (ваш HTML + Electron хуки)
-├── package.json         # Зависимости и настройки сборки
-└── build/
-    ├── icon.ico         # Иконка Windows (7 размеров)
-    ├── icon.png         # PNG 512×512 для Linux/Mac
-    └── make-icon.py     # Скрипт генерации иконки (Python+PIL)
-```
+## Screenshots are generated, not taken
 
-## Что изменено в paint-pro.html
+`npm run screenshots` launches the real application through Playwright, draws the picture you see above with actual mouse movements, walks through all five themes and saves every image in `docs/screenshots/`. Documentation pictures rot faster than documentation text, and nobody notices; this way they are one command away from being correct again. The script lives in [`tools/make-screenshots.js`](tools/make-screenshots.js).
 
-Добавлен блок `if (window.electronAPI)` в конце script:
-- Переопределён `saveCanvas()` - использует нативный диалог вместо скачивания
-- Переопределена кнопка "Открыть" - открывает нативный диалог, картинка заменяет документ
-- Добавлен обработчик drag & drop файлов
-- Добавлен приём действий из меню (new, save, copy, paste, undo, zoom и т.д.)
-- Добавлен приём файла через ассоциацию (двойной клик на .png в проводнике)
+## Where this comes from
 
-Всё обёрнуто в проверку `window.electronAPI` - HTML продолжает работать в обычном браузере без изменений.
+Paint Pro has a twin: the same editor rewritten in C# 12 on WPF and SkiaSharp. The two are developed side by side, and most of the rules in this codebase were found on one side and carried to the other - `tests/parity.spec.js` is named after exactly that, each check labelled with the release that discovered the rule elsewhere. The C# version is not published here.
 
-## Сохранение: два шага IPC
+## License
 
-`saveCanvas()` не может закодировать картинку до того, как узнает расширение —
-иначе «Сохранить как JPEG» пишет PNG-байты в файл с именем `.jpg`. Поэтому путь
-и запись разведены:
-
-1. `pickSavePath(defaultName, saveAs)` → `{ filePath, changed }` или `{ canceled: true }`.
-   Main-процесс показывает диалог (или переиспользует `global.lastSavedPath`) и
-   нормализует расширение. Контейнеры, которые `canvas.toDataURL` не кодирует
-   (`.bmp`, `.gif`), заменяются на `.png` и возвращаются с `changed: true`.
-2. Renderer выбирает MIME по расширению (`encoderFor`), кодирует и зовёт
-   `writeImage(filePath, dataUrl)`.
-
-Открытый файл по-прежнему становится целью для Ctrl+S. Если это был `.gif`,
-сохранение уйдёт в `.png` рядом, а пользователь увидит предупреждение.
-
-Третий вызов, `clearSavePath()`, обнуляет `global.lastSavedPath`. Он нужен
-«Файлу → Новый»: без него Ctrl+S на новом холсте молча перезаписывал бы ранее
-открытую картинку чистым листом, потому что `pickSavePath` без `saveAs` берёт
-запомненный путь не спрашивая.
-
-## Прозрачность: одно наложение на мазок
-
-`ctx.globalAlpha` — состояние контекста, а не операции: присвоил и забыл, а оно
-осталось. Инструмент, который писал туда `state.opacity` и не возвращал обратно,
-портил всё, что дальше пишется на холст напрямую — отмену, «Очистить холст»,
-поворот, отражение, смену размера, открытие файла. Один Ctrl+Z после мазка с
-прозрачностью 40% делал весь лист прозрачным на 60%.
-
-Поэтому альфы в процессе рисования нет вовсе:
-
-1. `beginPreviewStroke(tool)` — чистит `previewCanvas` и вешает на него CSS
-   `opacity`. Это то, что пользователь видит, пока тянет мышь.
-2. Инструмент рисует в `previewCtx` **непрозрачно** (`applyStrokeStyle`,
-   `drawShape`).
-3. `mergePreviewStroke(tool)` — переносит буфер на холст одним `drawImage` с
-   нужной альфой и возвращает `ctx.globalAlpha` обратно в 1.
-
-Так работают карандаш, кисть, маркер и все фигуры. Ластик рисует прямо на холсте,
-но он всегда непрозрачный. Инвариант, который стоит проверять при любой правке:
-**`ctx.globalAlpha` равен 1 вне пар `save`/`restore`**.
-
-Вторая выгода — та, ради которой через буфер изначально пустили маркер: перекрытия
-`round`-cap в стыках сегментов не складываются, и мазок при прозрачности меньше
-100% не превращается в цепочку тёмных пятен. У фигуры в режиме «контур + заливка»
-по той же причине перестала темнеть граница.
-
-## Открытие файла заменяет документ
-
-Открытая картинка приходит на холст целиком: размер холста под неё, содержимое -
-она сама, запись «Открытие» в истории и метка сохранения на этой записи. Отдельного
-режима «вставить файл поверх» нет.
-
-Раньше файл приходил плавающим объектом на текущий рисунок, а его путь при этом уже
-становился целью Ctrl+S: `pick-save-path` без `saveAs` отдаёт `lastSavedPath` не
-спрашивая. Первое же сохранение переписывало фотографию пользователя композитом из
-неё и старых штрихов снизу. Плюс объект ставился в (20, 20), и у картинки крупнее
-холста правые и нижние 20 пикселей уезжали за край.
-
-Путь один на все источники - `openImageAsDocument`: нативный диалог, ассоциация
-файлов, drag & drop и `<input type=file>` в браузере. Он же спрашивает про
-несохранённую работу (`confirmDiscard`), потому что после замены документа метка
-сохранения уже сдвинута и при закрытии окна вопроса не будет.
-
-## Сохранение фиксирует всё незакоммиченное
-
-Плавающий объект живёт на `previewCanvas` **над** холстом, текст — в
-`contenteditable` над обоими. `canvas.toDataURL()` не видит ни того, ни другого.
-Поэтому `saveCanvas` начинается с `commitText()` и `commitFloating()`.
-
-Без этого Ctrl+S сразу после «Открыть» записывал в открытый файл белый лист:
-картинка приходит плавающим объектом, а `pickSavePath` без `saveAs` берёт путь
-открытого файла не спрашивая. То же самое было со вставкой из буфера.
-
-## Закрытие окна: кто кого спрашивает
-
-Признак несохранённой работы (`isDirty()`) знает только renderer — это позиция в
-истории против той, что была на момент последнего сохранения, плюс **сдвинутый**
-floating или открытый редактор текста с набранным текстом. Диалог при этом умеет показывать только main.
-Отсюда порядок:
-
-1. main по `close` делает `preventDefault()` и шлёт renderer `request-close`.
-2. renderer, если сохранять нечего, сразу зовёт `confirmClose()`.
-3. Иначе просит `askUnsaved()` — main показывает диалог на три кнопки и
-   возвращает индекс нажатой. «Отмена» и «не сохранять» — разные ответы, поэтому
-   не `confirm()`.
-4. По «Сохранить» renderer зовёт `saveCanvas(false)` и отпускает окно, только
-   если та вернула `true`. Отменённый диалог сохранения оставляет окно открытым.
-
-На случай, если renderer не ответит вообще (ошибка в скрипте), в main стоит
-пятисекундная страховка — иначе приложение стало бы невыключаемым. Снимает её
-первый же ответ, и первый ответ - это `close-ack` в начале `handleCloseRequest`:
-renderer, задумавшийся дольше пяти секунд на большом холсте, иначе выглядел бы
-сломанным, и окно закрывалось бы вместе с работой.
-
-## Ошибка в main возвращается значением, а не отклонением
-
-`ipcRenderer.invoke` отклоняется, если обработчик в main бросил исключение. В
-renderer результат почти везде ждут без `catch`, поэтому такое отклонение выглядит
-как «нажал Открыть, выбрал файл, ничего не произошло» — ни картинки, ни сообщения,
-только запись в консоли, которую никто не смотрит.
-
-Поэтому обработчики, трогающие файловую систему, ловят ошибку сами и возвращают
-`{ error }`: так делают `open-file-dialog`, `read-dropped-file` и `write-image`.
-Вызывающая сторона проверяет поле и показывает `alert`. `lastSavedPath` при этом
-ставится только после удачного чтения — иначе Ctrl+S нацелился бы на файл, который
-так и не открылся.
-
-## Копия уходит в оба буфера
-
-`copySelection` наполняет `state.clipboard` (внутренний canvas, из него работает
-вставка) и системный буфер через `ClipboardItem`. Внутренний нужен потому, что
-системный не хранит плавающий объект в том виде, в каком он на экране; системный -
-чтобы скопированное вставлялось в другие приложения. Отказ системного буфера
-глотается молча: внутренняя копия к этому моменту уже сделана.
-
-## Действие, не изменившее ни пикселя, не пишется в историю
-
-Запись в истории — не просто строка в списке: `isDirty()` считается по позиции в
-ней, и лишняя запись заставляет приложение спрашивать про сохранение после того,
-что ничего не сделало. Поэтому признак берётся из результата операции, а не из
-факта вызова обработчика:
-
-- `floodFill` возвращает, изменился ли хоть один пиксель (клик по области, уже
-  залитой этим цветом, и клик за краем холста дают `false`);
-- `floatingMoved` сравнивает геометрию пикапа со снимком на момент подъёма, так
-  что клик внутрь выделения и сразу мимо не пишет «Перемещение»;
-- `deleteFloating` возвращает, осталась ли после него дыра.
-
-`floatingMoved` при этом отвечает не только истории, но и `isDirty()`: клик внутрь
-выделения поднимает пиксели, но холст остаётся прежним до пикселя, и спрашивать про
-сохранение после такого клика не о чем.
-
-## История: потолок и по глубине, и по памяти
-
-`MAX_HISTORY` — 150 шагов, но одной глубины мало. Снимки хранятся как PNG в
-base64, и для холста 4000×3000 это единицы мегабайт на кадр: полтораста таких
-кладут вкладку задолго до счётчика шагов. Поэтому есть и `MAX_HISTORY_BYTES`
-(512 МБ). Самый свежий кадр не выбрасывается никогда — потерять отмену только
-что сделанной правки хуже, чем занять память.
-
-При вытеснении старых записей вместе с индексами едет `state.savedHistoryIndex`,
-иначе после переполнения сохранённый файл начинал считаться изменённым.
-
-Новая правка после отмены срезает хвост повтора, и курсор встаёт на то же число, где
-могла стоять метка сохранения: «нарисовали, сохранили, Ctrl+Z, нарисовали заново»
-давало чистый документ при другом содержимом файла. Метка, попавшая в срезаемый
-хвост, поэтому уходит в -1 - позицию, которой курсор не достигает никогда.
-
-## Кадр истории едет асинхронно
-
-`restoreHistory` кладёт снимок обратно через `img.onload`, то есть не сразу: между
-Ctrl+Z и появлением картинки на холсте лежит состояние ДО отмены. Синхронный код,
-который в это окно попадёт, увидит не то, что пользователь уже считает отменённым.
-
-Поэтому восстановление запирает холст: `state.restoring` не даёт `onDown` начать
-жест (штрих всё равно затёрло бы приходящим кадром), а `saveCanvas` ждёт
-`restorePending` — без этого Ctrl+S сразу после Ctrl+Z записал бы в файл отменённое.
-Флаг снимает только самый свежий запрос: несколько быстрых Ctrl+Z дают несколько
-загрузок, и обогнанный кадр не должен открывать холст посреди следующего.
-`img.onerror` разбирает флаг так же, как `onload`: повиснуть на битом кадре значило
-бы запереть холст до перезапуска.
-
-## Размер холста ограничен сверху
-
-`setCanvasSize` принимает что дают, а `<canvas>` на невозможный размер не ругается:
-`canvas.width` после присваивания честно вернёт 99999, только буфер выделен не будет
-и каждый пиксель прочитается как прозрачный. Рисунок при этом уже потерян, а
-следующее сохранение запишет пустоту.
-
-Поэтому размер проверяется до присваивания — `canvasSizeAllowed(w, h)`,
-`MAX_CANVAS_SIDE` = 20000, `MAX_CANVAS_PIXELS` = 120 млн, те же значения, что в
-WPF-версии. Поле «Размер холста» отказывает с объяснением и возвращает в поля
-реальный размер. Нижняя граница (`MIN_CANVAS_SIDE` = 10) отказывает так же: раньше
-слишком маленький размер выходил из `resizeCanvas` молча и без `updateCanvasInfo`,
-и в поле оставалось отвергнутое число при неизменившемся холсте. Перетаскивание
-ручки холста вместо отказа зажимается по пропорции (`clampCanvasSize`):
-останавливать жест на полпути диалогом некуда.
-
-## Оверлеи поверх холста: только через updateOverlays()
-
-Рамка выделения, рамка плавающего объекта, кнопки обрезки и редактор текста с
-тулбаром живут в экранных пикселях, а привязаны к координатам холста. Пересчёт у
-всех одинаковый — от `canvas.getBoundingClientRect()`, — и звать их надо одним
-вызовом `updateOverlays()` из каждого места, где меняется зум, панорама, прокрутка
-или размер окна.
-
-Пока список был скопирован по вызывающим местам, два из них отставали: обработчик
-`resize` окна не двигал редактор текста, а про кнопки обрезки не знал никто — их
-позиция считалась один раз, при показе, и при первом зуме «Применить / Отмена»
-уезжали от рамки.
-
-## Размер холста: только через setCanvasSize()
-
-У `<canvas>` два независимых размера — буферный (`canvas.width`, пиксели
-картинки) и экранный (`canvas.style.width`). Присвоение `width` сбрасывает
-буфер, но CSS-размер остаётся прежним, и картинка оказывается растянутой в
-старую рамку. Зум здесь же: `applyZoom()` выставляет CSS-размер как
-`canvas.width * state.zoom`.
-
-Поэтому буферный размер меняется ровно в одном месте — `setCanvasSize(w, h)`.
-Она трогает оба канваса (основной и `previewCanvas`, они обязаны совпадать) и
-сама зовёт `applyZoom()`. Прямых присваиваний `canvas.width` в коде быть не
-должно: именно из-за них обрезка, поворот, смена размера и открытие файла
-показывали растянутый холст.
-
-## Плавающий объект: cancel против delete
-
-Три способа убрать `state.floating`, и путать их нельзя:
-
-- `commitFloating()` — впечатать в холст. Пишет историю.
-- `cancelFloating()` — откатить подъём: возвращает `preCanvas`, то есть холст
-  до того, как из-под объекта вырезали пиксели.
-- `deleteFloating()` — снять объект, оставив стёртое стёртым. Возвращает
-  `true`, если холст изменился и нужна запись в историю (у только что
-  вставленной картинки `preCanvas` нет, стирать было нечего).
-
-Ctrl+X, Delete и очистка холста хотят именно `deleteFloating`. Пока там стоял
-`cancelFloating`, вырезание возвращало объект на место вместо удаления.
-
-С клавиатуры: **Enter применяет, Escape отменяет** — как в WPF-версии. Раньше
-Escape тоже применял, и отказаться от подъёма было нечем, хотя `cancelFloating`
-ровно для этого и написан.
-
-`commitFloating` при этом умеет ничего не делать. Подъём стирает bbox сразу, так
-что «клик внутрь выделения, клик мимо» проходил через полный цикл стирания и
-обратной отрисовки и писал в историю запись «Перемещение», ничего не изменив.
-Теперь `floatingMoved()` сравнивает геометрию пикапа с той, что запомнил
-`rememberFloatingOrigin()` при подъёме, и если ничего не двигали — commit
-сводится к `cancelFloating()`, то есть холст возвращается прежним до пикселя.
-Сравнение геометрии, а не флаг «пользователь потащил» в пяти обработчиках
-drag'а: забытый флаг означает молча потерянную запись в истории.
-
-Рисуется floating всегда через `drawFloatingOnto(ctx)` — он один знает про
-поворот и quad-клип. Пока эти ветки были скопированы по коду, о повороте
-забывали то в пипетке, то в копировании.
-
-## Версия — одна, из package.json
-
-Renderer не может прочитать `package.json` сам: `contextIsolation` на месте, Node в
-странице нет. Поэтому `app.getVersion()` отдаётся через IPC `app-version`, и подпись
-в статусбаре с «О программе» берутся оттуда. В обычном браузере версии просто нет —
-страница показывает «Paint Pro» без номера.
-
-Так сделано после того, как «Paint Pro v1.0», вписанное руками в двух местах,
-доехало до релиза 1.6.0 неизменным.
-
-## Настройка в package.json
-
-Все настройки сборки в поле `"build"`:
-- `"win.target"` - portable (без установки) или nsis (установщик)
-- `"win.fileAssociations"` - какие расширения ассоциируются
-- `"portable.artifactName"` - имя итогового файла
-- `"nsis"` - настройки установщика (ярлык на рабочий стол, меню Пуск, и т.д.)
+MIT. See [LICENSE](LICENSE).
