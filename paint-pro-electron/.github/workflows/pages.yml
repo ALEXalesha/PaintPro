@@ -1,0 +1,56 @@
+# Живое демо на GitHub Pages.
+#
+# Приложение и так умеет жить одним HTML-файлом, поэтому «сайт» здесь - это ровно тот же
+# файл, что лежит в релизе, переименованный в index.html. Ни сборщика, ни зависимостей:
+# tools/build-web.js обходится голым node, так что npm install тут не нужен.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Выкладка одна на репозиторий: параллельные пуши иначе дерутся за неё.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Выложить демо
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Собрать один файл
+        run: node tools/build-web.js
+
+      - name: Разложить сайт
+        run: |
+          mkdir -p _site
+          cp dist/paint-pro-*-web.html _site/index.html
+          # Jekyll на Pages по умолчанию выкидывает файлы и папки на подчёркивание.
+          # Здесь их нет, но пусть обработчик не запускается вовсе - он тут не нужен.
+          touch _site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

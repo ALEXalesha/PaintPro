@@ -42,8 +42,11 @@
 - `tools/generate-icon.ps1` — генератор многоразрешённого `.ico` (16/32/48/64/128/256)
 - `dist/PaintPro.exe` — финальный self-contained single-file билд (~78 МБ)
 - `paint-pro-electron/` — исходная Electron-версия, живёт параллельно и
-  поддерживается. Её устройство и грабли: `paint-pro-electron/README.md` и
-  `paint-pro-electron/DEV_CONTEXT.md`. Историю обеих версий ведёт общий
+  поддерживается. Опубликована на GitHub отдельным репозиторием
+  (<https://github.com/ALEXalesha/PaintPro>): туда её содержимое поднимается в корень
+  через `git subtree split -P paint-pro-electron`, поэтому источник правды остаётся
+  здесь. Её устройство и грабли: `paint-pro-electron/docs/ARCHITECTURE.md` и
+  `paint-pro-electron/docs/DEV_CONTEXT.md`. Историю обеих версий ведёт общий
   `CHANGELOG.md`; C#-версия — 1.26.0, Electron-версия — 1.15.0. С 1.12.0 версии
   сравнялись по возможностям: в Electron построены слои и выключатель правки в ленте.
   У обеих по пять тем оформления («Вид → Тема»), колесо мыши над холстом меняет размер

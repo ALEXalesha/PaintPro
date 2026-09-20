@@ -1,0 +1,49 @@
+# Релиз по тегу: v1.15.0 -> собранные установщик, portable и файл для браузера.
+#
+# Собирается на раннере, а не выкладывается со своей машины: тогда у каждой сборки есть
+# журнал, по которому видно, из какого коммита она получилась. Подписи у сборок нет, и
+# electron-builder не должен уходить искать сертификат - отсюда CSC_IDENTITY_AUTO_DISCOVERY.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Собрать и выложить
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci
+
+      - name: Portable и установщик
+        run: npm run build-all
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Один файл для браузера
+        run: npm run build:web
+
+      - name: Релиз
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist/Paint Pro Electron Setup *.exe
+            dist/PaintPro-*-portable.exe
+            dist/paint-pro-*-web.html

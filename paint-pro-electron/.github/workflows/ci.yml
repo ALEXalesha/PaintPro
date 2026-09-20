@@ -1,0 +1,61 @@
+# Проверки на каждый пуш.
+#
+# Раннер именно windows: медленнее и дороже линукса, но быстрый набор водит мышью по
+# настоящему Chromium, а медленный запускает настоящий Electron. Проверять сборку,
+# которую никто не соберёт под Windows, смысла нет - приложение только под неё и есть.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Проверки
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci
+
+      # Playwright ставит свой Chromium: системного на раннере может не быть, а набор
+      # открывает страницу именно в нём.
+      - name: Chromium для Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: 335 проверок страницы
+        run: npm test
+
+      - name: 14 проверок настоящего приложения
+        run: npm run test:app
+
+      - name: Сборка одного файла для браузера
+        run: npm run build:web
+
+      - name: Забрать собранный файл
+        uses: actions/upload-artifact@v4
+        with:
+          name: paint-pro-web
+          path: dist/paint-pro-*-web.html
+          if-no-files-found: error
+
+      # Отчёт Playwright нужен ровно тогда, когда что-то упало: по нему видно, на каком
+      # шаге и с какой картинкой.
+      - name: Отчёт, если упало
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
