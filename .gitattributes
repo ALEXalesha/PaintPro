@@ -1,0 +1,3 @@
+# Скрипты для Git Bash - только LF: при core.autocrlf=true checkout превращает их в CRLF,
+# и bash спотыкается о  в каждой строке.
+*.sh text eol=lf
