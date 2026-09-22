@@ -30,8 +30,10 @@ jobs:
       - name: Зависимости
         run: npm ci
 
+      # --publish never: увидев тег, electron-builder сам лезет выкладывать релиз и падает
+      # без GH_TOKEN. Выкладывает шаг ниже, сборщику тут делать нечего.
       - name: Portable и установщик
-        run: npm run build-all
+        run: npm run build-all -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
