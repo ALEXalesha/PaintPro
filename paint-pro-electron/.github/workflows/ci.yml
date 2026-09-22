@@ -33,14 +33,15 @@ jobs:
       - name: Chromium для Playwright
         run: npx playwright install --with-deps chromium
 
+      # До проверок, а не после: web.spec.js проверяет именно собранный файл.
+      - name: Сборка одного файла для браузера
+        run: npm run build:web
+
       - name: 335 проверок страницы
         run: npm test
 
       - name: 14 проверок настоящего приложения
         run: npm run test:app
-
-      - name: Сборка одного файла для браузера
-        run: npm run build:web
 
       - name: Забрать собранный файл
         uses: actions/upload-artifact@v4
