@@ -145,7 +145,7 @@ The last one is the clearest example of why reading the code does not find these
 
 ## Where this comes from
 
-Paint Pro has a twin: the same editor rewritten in C# 12 on WPF and SkiaSharp. The two are developed side by side, and most of the rules in this codebase were found on one side and carried to the other - `tests/parity.spec.js` is named after exactly that, each check labelled with the release that discovered the rule elsewhere. The C# version is not published here.
+Paint Pro has a twin: the same editor rewritten in C# 12 on WPF and SkiaSharp. The two are developed side by side, and most of the rules in this codebase were found on one side and carried to the other - `tests/parity.spec.js` is named after exactly that, each check labelled with the release that discovered the rule elsewhere. The C# version lives in the same repository: see [its README](../docs/CSHARP.md) and [the repository README](../README.md).
 
 ## License
 
