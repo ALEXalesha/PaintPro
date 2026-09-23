@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="paint-pro-electron/docs/brand/avatar.png" width="96" alt="">
+<img src="paint-pro-electron/build/icon.png" width="96" alt="">
 
 # Paint Pro
 
