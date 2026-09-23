@@ -28,6 +28,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
+    # Electron-версия лежит в подкаталоге: репозиторий опубликован целиком с 1.27.0.
+    defaults:
+      run:
+        working-directory: paint-pro-electron
+
     steps:
       - uses: actions/checkout@v4
 
@@ -50,7 +55,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: paint-pro-electron/_site
 
       - id: deployment
         uses: actions/deploy-pages@v4

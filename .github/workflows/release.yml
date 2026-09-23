@@ -1,0 +1,133 @@
+# Релиз по тегу: сборки обеих версий в одном выпуске.
+#
+# С 1.27.0 репозиторий опубликован целиком, и тег идёт по номеру C#-версии (v1.27.0);
+# номер Electron-версии берётся из её package.json и попадает в название выпуска и в
+# имена файлов. До 1.15.0 теги были номерами Electron-версии.
+#
+# Собирается на раннере, а не выкладывается со своей машины: тогда у каждой сборки есть
+# журнал, по которому видно, из какого коммита она получилась. Подписи у сборок нет, и
+# electron-builder не должен уходить искать сертификат - отсюда CSC_IDENTITY_AUTO_DISCOVERY.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  electron:
+    name: Electron
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: paint-pro-electron
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: paint-pro-electron/package-lock.json
+
+      - name: Зависимости
+        run: npm ci
+
+      - id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # --publish never: увидев тег, electron-builder сам лезет выкладывать релиз и падает
+      # без GH_TOKEN. Выкладывает задача release ниже, сборщику тут делать нечего.
+      - name: Portable и установщик
+        run: npm run build-all -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Один файл для браузера
+        run: npm run build:web
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron
+          if-no-files-found: error
+          path: |
+            paint-pro-electron/dist/Paint Pro Electron Setup *.exe
+            paint-pro-electron/dist/PaintPro-*-portable.exe
+            paint-pro-electron/dist/paint-pro-*-web.html
+
+  csharp:
+    name: C# (WPF)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - id: version
+        shell: pwsh
+        run: |
+          $v = ([xml](Get-Content src/PaintPro.Wpf/PaintPro.Wpf.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Один self-contained exe
+        run: >
+          dotnet publish src/PaintPro.Wpf -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -o dist
+
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Установщик
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q installer\PaintPro.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC: $LASTEXITCODE" }
+
+      # У Electron-версии portable называется PaintPro-<версия>-portable.exe, поэтому
+      # файлам C#-версии в выпуске даётся своя приставка.
+      - name: Имена для выпуска
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item dist/PaintPro.exe "out/PaintPro-WPF-$v-portable.exe"
+          Copy-Item "dist/PaintPro-Setup-$v.exe" "out/PaintPro-WPF-Setup-$v.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: csharp
+          path: out/*.exe
+          if-no-files-found: error
+
+  release:
+    name: Выпуск
+    needs: [electron, csharp]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Paint Pro ${{ needs.csharp.outputs.version }} · Electron ${{ needs.electron.outputs.version }}
+          draft: false
+          generate_release_notes: true
+          files: files/*
