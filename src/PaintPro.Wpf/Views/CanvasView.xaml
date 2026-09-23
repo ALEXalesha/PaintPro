@@ -16,7 +16,7 @@
                 <!-- Drop shadow & checkered alpha background behind the canvas. -->
                 <Border x:Name="CanvasFrame"
                         Background="#181425"
-                        BorderBrush="{StaticResource GlassBorder}"
+                        BorderBrush="{DynamicResource GlassBorder}"
                         BorderThickness="1"
                         CornerRadius="4">
                     <Border.Effect>

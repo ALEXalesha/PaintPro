@@ -4,20 +4,20 @@
         Title="Paint Pro"
         Width="380" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource WindowBg}"
-        Foreground="{StaticResource TextPrimary}"
+        Background="{DynamicResource WindowBg}"
+        Foreground="{DynamicResource TextPrimary}"
         ResizeMode="NoResize">
-    <Border Style="{StaticResource GlassPanel}" Padding="16">
+    <Border Style="{DynamicResource GlassPanel}" Padding="16">
         <StackPanel>
             <TextBlock x:Name="PromptText" Text="" FontSize="13" Margin="0,0,0,8" TextWrapping="Wrap"/>
             <TextBox  x:Name="Input" FontSize="14" Padding="8,6"
-                      Background="{StaticResource GlassBgStrong}"
-                      Foreground="{StaticResource TextPrimary}"
-                      BorderBrush="{StaticResource GlassBorder}" BorderThickness="1"
-                      CaretBrush="{StaticResource TextPrimary}"/>
+                      Background="{DynamicResource GlassBgStrong}"
+                      Foreground="{DynamicResource TextPrimary}"
+                      BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                      CaretBrush="{DynamicResource TextPrimary}"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button Content="Отмена" Style="{StaticResource GhostButton}" Margin="0,0,8,0" IsCancel="True" Click="OnCancel"/>
-                <Button Content="OK"     Style="{StaticResource GhostButton}" IsDefault="True" Click="OnOk"/>
+                <Button Content="Отмена" Style="{DynamicResource GhostButton}" Margin="0,0,8,0" IsCancel="True" Click="OnCancel"/>
+                <Button Content="OK"     Style="{DynamicResource GhostButton}" IsDefault="True" Click="OnOk"/>
             </StackPanel>
         </StackPanel>
     </Border>

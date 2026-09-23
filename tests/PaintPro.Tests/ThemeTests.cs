@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -198,9 +198,19 @@ public class ThemeTests
         // Исключение ровно одно: Converter у привязки. Это НЕ свойство зависимости, и
         // DynamicResource там запрещён - приложение падает прямо при запуске. Найдено
         // именно так: тесты проходили, а окно не открывалось.
-        foreach (var file in new[] { "MainWindow.xaml", "Resources/GlassStyles.xaml" })
+        //
+        // Смотрим ВСЮ разметку, кроме самих тем. Прежде список был из двух файлов, и мимо
+        // него прошёл стиль иконок в ToolIcons.xaml: половина кнопок инструментов
+        // оставалась белой в светлой теме. Нашлось на кадре для README.
+        var root = Path.Combine(RepoRoot(), "src", "PaintPro.Wpf");
+        var files = Directory.GetFiles(root, "*.xaml", SearchOption.AllDirectories)
+            .Where(f => !f.Contains(Path.Combine("Resources", "Themes")) && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Select(f => Path.GetRelativePath(root, f))
+            .ToArray();
+        Assert.Contains(Path.Combine("Resources", "ToolIcons.xaml"), files);
+        foreach (var file in files)
         {
-            var path = Path.Combine(RepoRoot(), "src", "PaintPro.Wpf", file);
+            var path = Path.Combine(root, file);
             var bad = File.ReadAllLines(path)
                 .Select((line, i) => (line, no: i + 1))
                 .Where(x => x.line.Contains("StaticResource")
