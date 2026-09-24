@@ -633,7 +633,7 @@ public partial class MainViewModel : ObservableObject
     private bool ConfirmDiscard(string action)
     {
         if (!IsDirty) return true;
-        var answer = MessageBox.Show(
+        var answer = Views.GlassMessage.Show(
             $"Рисунок изменён. Сохранить перед тем, как {action}?",
             "Paint Pro", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         if (answer == MessageBoxResult.Cancel) return false;
@@ -695,7 +695,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (outcome.Status == OpenStatus.Failed)
         {
-            MessageBox.Show($"Не удалось открыть файл.\n{outcome.Error}",
+            Views.GlassMessage.Show($"Не удалось открыть файл.\n{outcome.Error}",
                 "Ошибка открытия", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
@@ -790,13 +790,13 @@ public partial class MainViewModel : ObservableObject
 
         if (outcome.Status == SaveStatus.FormatChanged)
         {
-            MessageBox.Show(
+            Views.GlassMessage.Show(
                 $"Этот формат записывать нельзя, файл сохранён как PNG:\n{outcome.Path}",
                 "Формат заменён", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         else if (outcome.Status == SaveStatus.Failed)
         {
-            MessageBox.Show($"Не удалось сохранить файл.\n{outcome.Error}",
+            Views.GlassMessage.Show($"Не удалось сохранить файл.\n{outcome.Error}",
                 "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -1161,7 +1161,7 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(input)) return;
         if (!TryParseCanvasSize(input, out var nw, out var nh))
         {
-            MessageBox.Show(
+            Views.GlassMessage.Show(
                 "Размер пишется двумя числами через «x»: например, 1200x800.",
                 "Не понял размер", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -1173,7 +1173,7 @@ public partial class MainViewModel : ObservableObject
         if (nw == Document.CanvasWidth && nh == Document.CanvasHeight) return;
         if (!Commands.ResizeCanvasCommand.IsAllowed(nw, nh))
         {
-            MessageBox.Show(
+            Views.GlassMessage.Show(
                 $"Размер должен быть от 1 до {Commands.ResizeCanvasCommand.MaxDimension} по каждой стороне " +
                 $"и не больше {Commands.ResizeCanvasCommand.MaxPixels / 1_000_000} млн пикселей всего.",
                 "Слишком большой холст", MessageBoxButton.OK, MessageBoxImage.Warning);

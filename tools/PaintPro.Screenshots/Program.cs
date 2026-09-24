@@ -67,6 +67,23 @@ internal static class Program
         Save(picker, output, "color-picker.png");
         picker.Close();
 
+        // Окна сообщения и ввода - для просмотра глазами, во временную папку, не в README.
+        var review = Path.Combine(Path.GetTempPath(), "paint-review");
+        Directory.CreateDirectory(review);
+        foreach (var (dialog, name) in new (Window, string)[]
+                 {
+                     (new PaintPro.Views.GlassMessage("Рисунок изменён. Сохранить перед выходом?", "Paint Pro", MessageBoxButton.YesNoCancel), "message.png"),
+                     (new PaintPro.Views.PromptDialog("Введите текст:", "Текст", "Привет"), "prompt.png"),
+                 })
+        {
+            dialog.WindowStartupLocation = WindowStartupLocation.Manual;
+            dialog.Left = -20000; dialog.Top = -20000; dialog.ShowInTaskbar = false; dialog.ShowActivated = false;
+            dialog.Show();
+            Wait(400);
+            Save(dialog, review, name);
+            dialog.Close();
+        }
+
         // Не window.Close(): рисунок изменён, и окно спросило бы «Сохранить перед
         // выходом?» настоящим MessageBox поверх экрана.
         Environment.Exit(0);

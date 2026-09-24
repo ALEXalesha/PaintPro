@@ -15,6 +15,7 @@ public partial class PromptDialog : Window
     {
         InitializeComponent();
         Title = title;
+        TitleText.Text = title;
         PromptText.Text = prompt;
         Input.Text = initial;
         Loaded += (_, _) => { Input.Focus(); Input.SelectAll(); };
@@ -28,4 +29,9 @@ public partial class PromptDialog : Window
 
     private void OnOk(object sender, RoutedEventArgs e) { Result = Input.Text; DialogResult = true; }
     private void OnCancel(object sender, RoutedEventArgs e) { DialogResult = false; }
+
+    private void OnBackgroundDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove();
+    }
 }

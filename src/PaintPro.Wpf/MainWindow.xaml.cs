@@ -46,7 +46,7 @@ public partial class MainWindow : Window
     {
         if (DataContext is not MainViewModel vm || !vm.IsDirty) return;
 
-        var answer = MessageBox.Show(
+        var answer = Views.GlassMessage.Show(
             "Рисунок изменён. Сохранить перед выходом?",
             "Paint Pro", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
 
@@ -210,7 +210,7 @@ public partial class MainWindow : Window
     }
 
     private void OnAboutClick(object sender, RoutedEventArgs e)
-        => MessageBox.Show($"Paint Pro {MainViewModel.AppVersion} — C# + WPF + SkiaSharp.\nLiquid Glass build.",
+        => Views.GlassMessage.Show($"Paint Pro {MainViewModel.AppVersion} — C# + WPF + SkiaSharp.\nLiquid Glass build.",
                            "О программе");
 
     private void OnDrop(object sender, DragEventArgs e)

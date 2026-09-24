@@ -1,0 +1,29 @@
+<!--
+  Сообщения и вопросы в цветах темы (1.28.0). Системный MessageBox приходил белым окном с
+  белым заголовком посреди тёмного стекла. Кнопки те же, что у MessageBox; Enter - кнопка
+  по умолчанию, Escape - отмена (или «Нет», или «OK», если отмены нет).
+-->
+<Window x:Class="PaintPro.Views.GlassMessage"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Paint Pro"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        Foreground="{DynamicResource TextPrimary}"
+        FontFamily="Segoe UI">
+    <Border Margin="14" Padding="20,18" CornerRadius="14" MinWidth="320" MaxWidth="480"
+            Background="{DynamicResource MenuBg}"
+            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+            MouseLeftButtonDown="OnBackgroundDown">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+        </Border.Effect>
+        <StackPanel>
+            <TextBlock x:Name="TitleText" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,10"/>
+            <TextBlock x:Name="BodyText" FontSize="13" TextWrapping="Wrap" LineHeight="19"/>
+            <StackPanel x:Name="Buttons" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0"/>
+        </StackPanel>
+    </Border>
+</Window>
