@@ -1,0 +1,114 @@
+<!--
+  Выбор цвета (1.28.0). Раньше по щелчку на цвет открывалось окно «Введите цвет в HEX» -
+  подобрать цвет глазами было нельзя. Теперь квадрат оттенков (насыщенность по
+  горизонтали, яркость по вертикали), полоса тона, поле HEX и образец «было / стало».
+  Окно без системного заголовка, в цветах темы; двигается за любое место фона.
+-->
+<Window x:Class="PaintPro.Views.ColorPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Выбор цвета"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        Foreground="{DynamicResource TextPrimary}"
+        FontFamily="Segoe UI">
+    <Border Margin="14" Padding="16" CornerRadius="14"
+            Background="{DynamicResource MenuBg}"
+            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+            MouseLeftButtonDown="OnBackgroundDown">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+        </Border.Effect>
+        <StackPanel>
+            <TextBlock Text="Выбор цвета" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+            <StackPanel Orientation="Horizontal">
+                <!-- Квадрат: тон задаётся заливкой, белый слева и чёрный снизу сверху неё. -->
+                <Grid x:Name="SvArea" Width="240" Height="180" Cursor="Cross" Background="Transparent"
+                      MouseLeftButtonDown="OnSvDown" MouseMove="OnSvMove" MouseLeftButtonUp="OnAreaUp">
+                    <Rectangle x:Name="HueFill" RadiusX="8" RadiusY="8" Fill="Red"/>
+                    <Rectangle RadiusX="8" RadiusY="8">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="White" Offset="0"/>
+                                <GradientStop Color="#00FFFFFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Rectangle RadiusX="8" RadiusY="8" Stroke="{DynamicResource GlassBorder}" StrokeThickness="1">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#00000000" Offset="0"/>
+                                <GradientStop Color="Black" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Canvas IsHitTestVisible="False">
+                        <Ellipse x:Name="SvMarker" Width="16" Height="16" Stroke="White" StrokeThickness="2.5">
+                            <Ellipse.Effect>
+                                <DropShadowEffect BlurRadius="4" ShadowDepth="0" Opacity="0.8" Color="Black"/>
+                            </Ellipse.Effect>
+                        </Ellipse>
+                    </Canvas>
+                </Grid>
+
+                <!-- Полоса тона: весь круг цветов сверху вниз. -->
+                <Grid x:Name="HueArea" Width="20" Height="180" Margin="12,0,0,0" Cursor="Hand" Background="Transparent"
+                      MouseLeftButtonDown="OnHueDown" MouseMove="OnHueMove" MouseLeftButtonUp="OnAreaUp">
+                    <Rectangle RadiusX="6" RadiusY="6" Stroke="{DynamicResource GlassBorder}" StrokeThickness="1">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#FF0000" Offset="0"/>
+                                <GradientStop Color="#FFFF00" Offset="0.1667"/>
+                                <GradientStop Color="#00FF00" Offset="0.3333"/>
+                                <GradientStop Color="#00FFFF" Offset="0.5"/>
+                                <GradientStop Color="#0000FF" Offset="0.6667"/>
+                                <GradientStop Color="#FF00FF" Offset="0.8333"/>
+                                <GradientStop Color="#FF0000" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Canvas IsHitTestVisible="False">
+                        <Border x:Name="HueMarker" Width="26" Height="8" Canvas.Left="-3" CornerRadius="4"
+                                BorderBrush="White" BorderThickness="2.5">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="4" ShadowDepth="0" Opacity="0.8" Color="Black"/>
+                            </Border.Effect>
+                        </Border>
+                    </Canvas>
+                </Grid>
+            </StackPanel>
+
+            <DockPanel Margin="0,14,0,0" LastChildFill="False">
+                <!-- Было (слева) и стало (справа). -->
+                <Border DockPanel.Dock="Left" Width="64" Height="34" CornerRadius="8" ClipToBounds="True"
+                        BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1" ToolTip="Было и стало">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="OldSwatch" CornerRadius="7,0,0,7"/>
+                        <Border x:Name="NewSwatch" Grid.Column="1" CornerRadius="0,7,7,0"/>
+                    </Grid>
+                </Border>
+                <TextBox x:Name="HexBox" DockPanel.Dock="Left" Width="110" Margin="12,0,0,0"
+                         FontSize="14" Padding="8,5" VerticalContentAlignment="Center"
+                         FontFamily="Consolas" MaxLength="7"
+                         Background="{DynamicResource GlassBgStrong}"
+                         Foreground="{DynamicResource TextPrimary}"
+                         BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                         CaretBrush="{DynamicResource TextPrimary}"
+                         TextChanged="OnHexChanged"/>
+            </DockPanel>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                <Button Content="Отмена" Style="{DynamicResource GhostButton}" MinWidth="84" IsCancel="True" Click="OnCancel"/>
+                <Button x:Name="OkButton" Content="Готово" Style="{DynamicResource GhostButton}" MinWidth="84" IsDefault="True" Click="OnOk"
+                        Background="{DynamicResource AccentGrad}"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

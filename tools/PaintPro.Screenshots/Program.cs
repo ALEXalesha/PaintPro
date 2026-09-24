@@ -55,6 +55,18 @@ internal static class Program
             Save(window, output, name);
         }
 
+        // Окно выбора цвета - отдельным кадром, тоже далеко за краем экрана.
+        ThemeService.Apply(ThemeService.DefaultId);
+        var picker = new PaintPro.Views.ColorPickerDialog(SKColor.Parse("#EF476F"))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20000, Top = -20000, ShowInTaskbar = false, ShowActivated = false,
+        };
+        picker.Show();
+        Wait(500);
+        Save(picker, output, "color-picker.png");
+        picker.Close();
+
         // Не window.Close(): рисунок изменён, и окно спросило бы «Сохранить перед
         // выходом?» настоящим MessageBox поверх экрана.
         Environment.Exit(0);
@@ -137,7 +149,10 @@ internal static class Program
     {
         Wait(700);
         var content = (FrameworkElement)window.Content;
-        var size = new Rect(0, 0, content.ActualWidth, content.ActualHeight);
+        // С полями вокруг содержимого: у окна выбора цвета они под тень, и без них кадр
+        // выходил сдвинутым и обрезанным справа.
+        var m = content.Margin;
+        var size = new Rect(0, 0, content.ActualWidth + m.Left + m.Right, content.ActualHeight + m.Top + m.Bottom);
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {

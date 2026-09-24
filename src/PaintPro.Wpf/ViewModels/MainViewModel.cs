@@ -492,13 +492,13 @@ public partial class MainViewModel : ObservableObject
         PrimaryColor = entry.Color;
     }
 
+    /// <summary>
+    /// Окно выбора цвета: квадрат оттенков, полоса тона, HEX. Раньше здесь было окно
+    /// «Введите цвет в HEX» - подобрать цвет глазами было нельзя.
+    /// </summary>
     [RelayCommand] private void PickCustomColor()
     {
-        var hex = $"#{PrimaryColor.Red:X2}{PrimaryColor.Green:X2}{PrimaryColor.Blue:X2}";
-        var result = Views.PromptDialog.Show(
-            "Введите цвет в HEX (например, #5B8DEF):", "Выбор цвета", hex);
-        if (string.IsNullOrWhiteSpace(result)) return;
-        if (SKColor.TryParse(result, out var c)) PrimaryColor = c;
+        if (Views.ColorPickerDialog.Show(PrimaryColor) is { } c) PrimaryColor = c;
     }
 
     // ───────── History ─────────
