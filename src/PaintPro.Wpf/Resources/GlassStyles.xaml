@@ -18,11 +18,13 @@
         </Setter>
     </Style>
 
-    <!-- Small ghost button used across toolbars. -->
+    <!-- Кнопка на стекле. Была «призрачной» - без фона и рамки, - и «Изменить размер…»,
+         «90°», «Flip», «+ слой» выглядели простым текстом, а не кнопками. -->
     <Style x:Key="GhostButton" TargetType="Button">
-        <Setter Property="Background"  Value="Transparent"/>
+        <Setter Property="Background"  Value="{DynamicResource GlassBg}"/>
         <Setter Property="Foreground"  Value="{DynamicResource TextPrimary}"/>
-        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource GlassBorder}"/>
+        <Setter Property="Margin" Value="3"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="10,6"/>
         <Setter Property="Cursor"  Value="Hand"/>
@@ -41,11 +43,11 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgHover}"/>
-                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource GlassBorder}"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource GlassBorderStrong}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource GlassBgHover}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.35"/>
@@ -56,15 +58,17 @@
         </Setter>
     </Style>
 
-    <!-- Tool button = 44×44 square in the left toolbar. Click toggles ActiveTool. -->
+    <!-- Tool button: значок и подпись под ним. Подпись берётся из AutomationProperties.Name -
+         это же имя слышит экранный диктор. Одних значков не хватало: «кисть» походила на
+         монитор, и что нарисовано на кнопках, было не понять. -->
     <Style x:Key="ToolButton" TargetType="ToggleButton">
         <Setter Property="Background"  Value="Transparent"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
         <Setter Property="Foreground"  Value="{DynamicResource TextPrimary}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Width"  Value="44"/>
-        <Setter Property="Height" Value="44"/>
-        <Setter Property="Margin" Value="3"/>
+        <Setter Property="Width"  Value="60"/>
+        <Setter Property="Height" Value="52"/>
+        <Setter Property="Margin" Value="1,2"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Focusable" Value="False"/>
         <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -77,7 +81,13 @@
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="12">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding (AutomationProperties.Name), RelativeSource={RelativeSource TemplatedParent}}"
+                                       FontSize="10" Margin="0,3,0,0" HorizontalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{TemplateBinding Foreground}"/>
+                        </StackPanel>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -115,12 +125,110 @@
         </Setter>
     </Style>
 
-    <!-- Slider with thin glass track. -->
+    <!-- Ползунок на стекле. Был системный: серая дорожка и белый квадратный бегунок, не по
+         центру строки. Теперь тонкая дорожка, пройденная часть - акцентом темы, круглый
+         бегунок; высота строки постоянная, чтобы ползунки стояли ровно под подписями. -->
+    <Style x:Key="GlassSliderFill" TargetType="RepeatButton">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border Height="4" CornerRadius="2" Background="{TemplateBinding Background}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="GlassSliderThumb" TargetType="Thumb">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Width" Value="16"/>
+        <Setter Property="Height" Value="16"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Ellipse x:Name="Knob" Fill="{DynamicResource TextPrimary}" Stroke="{DynamicResource Accent}" StrokeThickness="3">
+                        <Ellipse.Effect>
+                            <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.4" Color="Black"/>
+                        </Ellipse.Effect>
+                    </Ellipse>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Knob" Property="StrokeThickness" Value="4"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="GlassSlider" TargetType="Slider">
-        <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
-        <Setter Property="Background" Value="{DynamicResource GlassBg}"/>
         <Setter Property="IsMoveToPointEnabled" Value="True"/>
         <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Height" Value="22"/>
+        <Setter Property="Margin" Value="1,2"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid VerticalAlignment="Center">
+                        <Border Height="4" CornerRadius="2" Background="{DynamicResource GlassBgStrong}" Margin="8,0"/>
+                        <Track x:Name="PART_Track" Margin="0">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource GlassSliderFill}" Background="{DynamicResource Accent}"
+                                              Command="Slider.DecreaseLarge" Margin="8,0,0,0"/>
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource GlassSliderThumb}"/>
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource GlassSliderFill}" Background="Transparent"
+                                              Command="Slider.IncreaseLarge"/>
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Флажок на стекле. Системный был белым квадратом Windows 7 на тёмном стекле. -->
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Border x:Name="Box" Width="16" Height="16" CornerRadius="5" VerticalAlignment="Center"
+                                Background="{DynamicResource GlassBg}" BorderBrush="{DynamicResource GlassBorderStrong}" BorderThickness="1">
+                            <Path x:Name="Mark" Data="M3,8 L6.5,11.5 L13,4.5" Stroke="White" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Visibility="Collapsed"/>
+                        </Border>
+                        <ContentPresenter x:Name="Text" Margin="8,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentGrad}"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="Transparent"/>
+                            <Setter TargetName="Mark" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                        </Trigger>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="Text" Property="Margin" Value="0"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style TargetType="TextBlock">

@@ -16,12 +16,58 @@
         UseLayoutRounding="True"
         WindowStartupLocation="CenterScreen">
 
+    <!-- Свой заголовок окна: системная полоса убрана, рамка Windows осталась - прилипание к
+         краям, изменение размера за край, тень и скругление Windows 11 работают как раньше.
+         Окно не прозрачное: прозрачное WPF рисует без видеокарты, и холст бы тормозил. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="40"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0,0,0,1"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
     <Window.DataContext>
         <vm:MainViewModel/>
     </Window.DataContext>
 
     <Window.Resources>
         <conv:ToolKindToBoolConverter x:Key="ToolToBool"/>
+
+        <!-- Кнопки окна в цвет темы, как у калькуляторов: системная светлая полоса
+             заголовка со своими кнопками бросалась в глаза на тёмном стекле. -->
+        <Style x:Key="CaptionButton" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
+            <Setter Property="Background" Value="{DynamicResource GlassBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource GlassBorder}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="14" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="Tag" Value="close"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bg" Property="Background" Value="#D9FF5050"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <!-- Global hotkeys — see antipattern #3: bound on Window so focus on buttons can't steal them. -->
@@ -161,8 +207,20 @@
 
         <DockPanel LastChildFill="True">
 
-            <!-- ───── Menu bar ───── -->
-            <Menu DockPanel.Dock="Top" Background="Transparent" Margin="6,4,6,0">
+            <!-- ───── Заголовок окна: значок, название, меню и кнопки окна в одной полосе ───── -->
+            <Grid DockPanel.Dock="Top" Height="40">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="16,0,10,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <Image Source="pack://application:,,,/PaintPro;component/Assets/AppIcon.ico" Width="18" Height="18" Margin="0,0,8,0"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text="Paint Pro" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                </StackPanel>
+            <Menu Grid.Column="1" Background="Transparent" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
                 <MenuItem Header="_Файл">
                     <MenuItem Header="Создать"   InputGestureText="Ctrl+N" Command="{Binding NewDocumentCommand}"/>
                     <MenuItem Header="Открыть…"  InputGestureText="Ctrl+O" Command="{Binding OpenCommand}"/>
@@ -202,6 +260,18 @@
                     <MenuItem Header="О программе" Click="OnAboutClick"/>
                 </MenuItem>
             </Menu>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <Button Style="{StaticResource CaptionButton}" ToolTip="Свернуть" Click="OnMinimizeClick">
+                        <Path Data="M0,0 L10,0" Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.4" Width="10" Height="1.4" Stretch="Fill"/>
+                    </Button>
+                    <Button Style="{StaticResource CaptionButton}" ToolTip="Развернуть" Click="OnMaximizeClick">
+                        <Path x:Name="MaximizeGlyph" Data="M0.5,0.5 H9.5 V9.5 H0.5 Z" Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.3" Width="10" Height="10"/>
+                    </Button>
+                    <Button Style="{StaticResource CaptionButton}" Tag="close" ToolTip="Закрыть" Click="OnCloseClick">
+                        <Path Data="M0,0 L9,9 M9,0 L0,9" Stroke="{DynamicResource TextPrimary}" StrokeThickness="1.4" Width="9" Height="9"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
 
             <!-- ───── Status bar (bottom) ───── -->
             <Border DockPanel.Dock="Bottom" Style="{DynamicResource GlassPanel}" Margin="8,4,8,8" Padding="14,6">
@@ -232,10 +302,13 @@
                         </TextBlock>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="12,0">
-                        <Border Width="14" Height="14" CornerRadius="3"
+                        <!-- Цвет точки под курсором: и квадрат, и подпись. Раньше квадрат
+                             показывал цвет кисти, а подпись - точку под курсором, и рядом
+                             стояли два разных цвета. -->
+                        <Border x:Name="StatusSwatch" Width="14" Height="14" CornerRadius="3"
                                 BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
-                                Background="{Binding PrimaryColorBrush}"/>
-                        <TextBlock x:Name="StatusHex" Text=" #000000" Margin="6,0,0,0" Foreground="{DynamicResource TextDim}"/>
+                                Background="Transparent" Visibility="Hidden"/>
+                        <TextBlock x:Name="StatusHex" Text="" Margin="6,0,0,0" Foreground="{DynamicResource TextDim}"/>
                     </StackPanel>
                     <TextBlock Grid.Column="2" Margin="12,0"
                                Text="{Binding Zoom, StringFormat={}{0:P0}}"
@@ -247,121 +320,130 @@
             </Border>
 
             <!-- ───── Left toolbar ───── -->
-            <Border DockPanel.Dock="Left" Style="{DynamicResource GlassPanel}" Padding="8" Width="74">
+            <Border DockPanel.Dock="Left" Style="{DynamicResource GlassPanel}" Padding="6" Width="142">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
+                    <!-- Инструменты по группам, по два в ряд: с подписями в одну колонку все 19
+                         не помещались по высоте, и нижние уезжали под прокрутку. -->
+                    <StackPanel HorizontalAlignment="Center">
                         <!-- Drawing tools -->
+                        <UniformGrid Columns="2">
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Карандаш (P)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Pencil, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Pencil">
+                                Click="OnToolClick" Tag="Pencil" AutomationProperties.Name="Карандаш">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Pencil}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Кисть (B)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Brush, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Brush">
+                                Click="OnToolClick" Tag="Brush" AutomationProperties.Name="Кисть">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Brush}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Маркер (M)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Marker, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Marker">
+                                Click="OnToolClick" Tag="Marker" AutomationProperties.Name="Маркер">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Marker}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Ластик (E)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Eraser, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Eraser">
+                                Click="OnToolClick" Tag="Eraser" AutomationProperties.Name="Ластик">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Eraser}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Заливка (G)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Fill, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Fill">
+                                Click="OnToolClick" Tag="Fill" AutomationProperties.Name="Заливка">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Fill}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Пипетка (I)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Picker, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Picker">
+                                Click="OnToolClick" Tag="Picker" AutomationProperties.Name="Пипетка">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Picker}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Текст (T)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Text, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Text">
+                                Click="OnToolClick" Tag="Text" AutomationProperties.Name="Текст">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Text}"/>
                         </ToggleButton>
 
+                        </UniformGrid>
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="6,8" />
+                        <UniformGrid Columns="2">
 
                         <!-- Shape tools -->
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Линия (L)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Line, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Line">
+                                Click="OnToolClick" Tag="Line" AutomationProperties.Name="Линия">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Line}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Прямоугольник (R)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Rect, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Rect">
+                                Click="OnToolClick" Tag="Rect" AutomationProperties.Name="Прямоуг.">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Rect}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Эллипс (O)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Ellipse, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Ellipse">
+                                Click="OnToolClick" Tag="Ellipse" AutomationProperties.Name="Эллипс">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Ellipse}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Треугольник"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Triangle, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Triangle">
+                                Click="OnToolClick" Tag="Triangle" AutomationProperties.Name="Треуг.">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Triangle}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Прямоугольный треугольник"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=RightTriangle, Mode=OneWay}"
-                                Click="OnToolClick" Tag="RightTriangle">
+                                Click="OnToolClick" Tag="RightTriangle" AutomationProperties.Name="Прям. угол">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.RightTriangle}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Звезда"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Star, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Star">
+                                Click="OnToolClick" Tag="Star" AutomationProperties.Name="Звезда">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Star}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Стрелка"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Arrow, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Arrow">
+                                Click="OnToolClick" Tag="Arrow" AutomationProperties.Name="Стрелка">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Arrow}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Сердце"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Heart, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Heart">
+                                Click="OnToolClick" Tag="Heart" AutomationProperties.Name="Сердце">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Heart}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
 
+                        </UniformGrid>
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="6,8"/>
+                        <UniformGrid Columns="2">
 
                         <!-- Selection / navigation -->
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Прямоугольное выделение (S)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Select, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Select">
+                                Click="OnToolClick" Tag="Select" AutomationProperties.Name="Выделение">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Select}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Полигон-выделение (Q)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Quad, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Quad">
+                                Click="OnToolClick" Tag="Quad" AutomationProperties.Name="Полигон">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Quad}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Кадрирование (C)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Crop, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Crop">
-                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Crop}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
+                                Click="OnToolClick" Tag="Crop" AutomationProperties.Name="Обрезка">
+                            <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Crop}"/>
                         </ToggleButton>
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Рука / панорама (H)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Hand, Mode=OneWay}"
-                                Click="OnToolClick" Tag="Hand">
+                                Click="OnToolClick" Tag="Hand" AutomationProperties.Name="Рука">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Hand}"/>
                         </ToggleButton>
+                        </UniformGrid>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
             <!-- ───── Right side panel: color, size, opacity, layers, quick actions ───── -->
-            <Border DockPanel.Dock="Right" Style="{DynamicResource GlassPanel}" Width="280" Padding="14">
+            <Border DockPanel.Dock="Right" Style="{DynamicResource GlassPanel}" Width="290" Padding="14,14,6,14">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
+                    <!-- Отступ до полосы прокрутки: значения справа («12 px») упирались в неё. -->
+                    <StackPanel Margin="0,0,10,0">
                         <!-- Active colour preview + custom picker -->
                         <TextBlock Text="ЦВЕТ" FontSize="11" Opacity="0.6" Margin="0,0,0,6"/>
                         <Border CornerRadius="10" Height="40"
@@ -371,11 +453,12 @@
                                 Cursor="Hand"
                                 Margin="0,0,0,8"/>
 
-                        <!-- 40-colour palette -->
-                        <ItemsControl ItemsSource="{Binding Palette}">
+                        <!-- Палитра ровной сеткой по центру панели: в WrapPanel квадраты
+                             прижимались влево, и справа оставался пустой зазор. -->
+                        <ItemsControl ItemsSource="{Binding Palette}" HorizontalAlignment="Center">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel/>
+                                    <UniformGrid Columns="9"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
@@ -388,10 +471,10 @@
                         </ItemsControl>
 
                         <TextBlock Text="ПОСЛЕДНИЕ" FontSize="11" Opacity="0.6" Margin="0,12,0,4"/>
-                        <ItemsControl ItemsSource="{Binding RecentColors}">
+                        <ItemsControl ItemsSource="{Binding RecentColors}" HorizontalAlignment="Center">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel/>
+                                    <UniformGrid Columns="9" Rows="1"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
@@ -405,17 +488,23 @@
 
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
-                        <TextBlock Text="РАЗМЕР" FontSize="11" Opacity="0.6"/>
+                        <!-- Подпись слева, значение справа, ползунок под ними во всю ширину:
+                             значение под ползунком стояло отдельной строкой не по краю. -->
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding ToolSize, StringFormat={}{0} px}" FontSize="12" Opacity="0.85"/>
+                            <TextBlock Text="РАЗМЕР" FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
+                        </DockPanel>
                         <Slider Style="{DynamicResource GlassSlider}"
                                 Minimum="{Binding ToolSizeMin, Mode=OneTime}"
                                 Maximum="{Binding ToolSizeMax, Mode=OneTime}"
-                                Value="{Binding ToolSize}" TickFrequency="1"/>
-                        <TextBlock Text="{Binding ToolSize, StringFormat={}{0} px}" Opacity="0.8"/>
+                                Value="{Binding ToolSize}" TickFrequency="1" IsSnapToTickEnabled="True"/>
 
-                        <TextBlock Text="ПРОЗРАЧНОСТЬ" FontSize="11" Opacity="0.6" Margin="0,8,0,0"/>
+                        <DockPanel Margin="0,8,0,0">
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding Opacity, StringFormat={}{0:P0}}" FontSize="12" Opacity="0.85"/>
+                            <TextBlock Text="ПРОЗРАЧНОСТЬ" FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
+                        </DockPanel>
                         <Slider Style="{DynamicResource GlassSlider}" Minimum="0" Maximum="1"
                                 Value="{Binding Opacity}" SmallChange="0.05" LargeChange="0.1"/>
-                        <TextBlock Text="{Binding Opacity, StringFormat={}{0:P0}}" Opacity="0.8"/>
 
                         <CheckBox Margin="0,10,0,0"
                                   IsChecked="{Binding ShapeFill, Mode=TwoWay}"
@@ -425,26 +514,23 @@
 
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
-                        <TextBlock Text="ХОЛСТ" FontSize="11" Opacity="0.6"/>
-                        <Grid Margin="0,4,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Document.CanvasWidth, StringFormat='W={0}'}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Document.CanvasHeight, StringFormat='H={0}'}"/>
-                        </Grid>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" FontSize="12" Opacity="0.85">
+                                <Run Text="{Binding Document.CanvasWidth, Mode=OneWay}"/><Run Text=" × "/><Run Text="{Binding Document.CanvasHeight, Mode=OneWay}"/><Run Text=" px"/>
+                            </TextBlock>
+                            <TextBlock Text="ХОЛСТ" FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
+                        </DockPanel>
                         <Button Style="{DynamicResource GhostButton}" Margin="0,6,0,0"
                                 Content="Изменить размер…" Command="{Binding ResizeCanvasCommand}"/>
 
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
                         <TextBlock Text="БЫСТРЫЕ ДЕЙСТВИЯ" FontSize="11" Opacity="0.6"/>
-                        <UniformGrid Columns="2" Margin="0,4,0,0">
-                            <Button Style="{DynamicResource GhostButton}" Content="↻ 90°"   Command="{Binding Rotate90Command}"/>
-                            <Button Style="{DynamicResource GhostButton}" Content="↺ 90°" Command="{Binding RotateMinus90Command}"/>
-                            <Button Style="{DynamicResource GhostButton}" Content="↔ Flip"  Command="{Binding FlipHorizontalCommand}"/>
-                            <Button Style="{DynamicResource GhostButton}" Content="↕ Flip"  Command="{Binding FlipVerticalCommand}"/>
+                        <UniformGrid Columns="2" Margin="-3,4,-3,0">
+                            <Button Style="{DynamicResource GhostButton}" Content="↻ 90°" ToolTip="Повернуть по часовой" Command="{Binding Rotate90Command}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="↺ 90°" ToolTip="Повернуть против часовой" Command="{Binding RotateMinus90Command}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="↔ Отразить" ToolTip="Отразить по горизонтали" Command="{Binding FlipHorizontalCommand}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="↕ Отразить" ToolTip="Отразить по вертикали" Command="{Binding FlipVerticalCommand}"/>
                         </UniformGrid>
 
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
@@ -607,7 +693,7 @@
 
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
-                        <UniformGrid Columns="3">
+                        <UniformGrid Columns="3" Margin="-3,0">
                             <Button Style="{DynamicResource GhostButton}" Content="−" Command="{Binding ZoomOutCommand}"/>
                             <Button Style="{DynamicResource GhostButton}" Content="1:1" Command="{Binding ZoomResetCommand}"/>
                             <Button Style="{DynamicResource GhostButton}" Content="+" Command="{Binding ZoomInCommand}"/>

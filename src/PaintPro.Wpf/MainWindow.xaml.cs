@@ -56,7 +56,15 @@ public partial class MainWindow : Window
         // Сами строки собирает ViewGeometry: их формат проверяется тестами, а code-behind
         // остаётся тем, чем должен быть, - раскладкой готового по элементам.
         Canvas.PixelPositionChanged += p => StatusPos.Text = Services.ViewGeometry.PositionLabel(p);
-        Canvas.PixelColorChanged += c => StatusHex.Text = Services.ViewGeometry.HexLabel(c);
+        Canvas.PixelColorChanged += c =>
+        {
+            StatusHex.Text = Services.ViewGeometry.HexLabel(c);
+            // Квадрат - того же цвета, что подпись: точки под курсором, а не кисти.
+            StatusSwatch.Visibility = c is null ? Visibility.Hidden : Visibility.Visible;
+            if (c is { } color)
+                StatusSwatch.Background = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromArgb(color.Alpha, color.Red, color.Green, color.Blue));
+        };
 
         // Ctrl+wheel zoom, centred on the cursor.
         PreviewMouseWheel += OnMouseWheel;
@@ -95,6 +103,51 @@ public partial class MainWindow : Window
         => Vm.PickCustomColorCommand.Execute(null);
 
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
+
+    // ───── Свой заголовок окна ─────
+    private void OnMinimizeClick(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+
+    private void OnMaximizeClick(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this);
+        else SystemCommands.MaximizeWindow(this);
+    }
+
+    private void OnCloseClick(object sender, RoutedEventArgs e) => SystemCommands.CloseWindow(this);
+
+    /// <summary>
+    /// Развёрнутое окно без системного заголовка выходит за экран на толщину невидимой
+    /// рамки - края срезались бы; в развёрнутом виде рамка возвращается полем. Значок
+    /// кнопки меняется на «восстановить».
+    /// </summary>
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        var maximized = WindowState == WindowState.Maximized;
+        var frame = SystemParameters.WindowResizeBorderThickness;
+        RootGrid.Margin = maximized
+            ? new Thickness(frame.Left + 4, frame.Top + 4, frame.Right + 4, frame.Bottom + 4)
+            : new Thickness(0);
+        MaximizeGlyph.Data = System.Windows.Media.Geometry.Parse(maximized
+            ? "M2.5,0.5 H9.5 V7.5 M0.5,2.5 H7.5 V9.5 H0.5 Z"
+            : "M0.5,0.5 H9.5 V9.5 H0.5 Z");
+    }
+
+    /// <summary>
+    /// Скругление углов Windows 11: без системного заголовка оно пропадает, просим его явно.
+    /// На Windows 10 вызова нет - там углы у всех окон прямые.
+    /// </summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        var round = 2; // DWMWCP_ROUND
+        try { DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref round, sizeof(int)); }
+        catch (EntryPointNotFoundException) { }
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     /// <summary>
     /// Наполнить подменю тем. Список берётся из ThemeService: одно место на меню и на

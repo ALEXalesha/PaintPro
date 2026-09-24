@@ -4,13 +4,17 @@
 
     <!-- Minimal monochrome SVG-path icons for each tool. White on tinted background. -->
 
-    <Geometry x:Key="Icon.Pencil">M3 17.25 14.81 5.44l3.75 3.75L6.75 21H3v-3.75z</Geometry>
-    <Geometry x:Key="Icon.Brush">M6 21q-1.65 0-2.82-1.18T2 17h4v-1q0-.83.59-1.41T8 14h8q.83 0 1.41.59T18 16v1h4q0 1.65-1.18 2.83T18 21H6zM5 13V2h14v11H5z</Geometry>
-    <Geometry x:Key="Icon.Marker">M3 21v-4l13-13 4 4-13 13H3zM14.5 5.5 17 8M5 19h2v-2H5v2z</Geometry>
-    <Geometry x:Key="Icon.Eraser">M16.24 3.56 21.19 8.5q.59.59.59 1.41t-.59 1.41L11.66 21H7.34l-3.13-3.13q-.59-.59-.59-1.41t.59-1.41L13.42 5.97z</Geometry>
-    <Geometry x:Key="Icon.Fill">M19 11.5s-2 2.17-2 3.5q0 .83.59 1.41T19 17q.83 0 1.41-.59T21 15q0-1.33-2-3.5zM5.13 5 4 6.13l3.13 3.13L1.5 14.88 7.62 21h4.24L20 12.86 11.13 4q-.59-.59-1.42-.59T8.31 4L5.13 5z</Geometry>
-    <Geometry x:Key="Icon.Picker">M20.71 5.63 18.37 3.29q-.4-.4-1.06-.4t-1.06.4l-3.93 3.93-1.41-1.41L9.49 7.23l1.41 1.41L4 15.54V20h4.46l6.9-6.9 1.41 1.41 1.42-1.41-1.41-1.41 3.93-3.93q.4-.4.4-1.06t-.4-1.06z</Geometry>
-    <Geometry x:Key="Icon.Text">M5 4v3h5.5v12h3V7H19V4z</Geometry>
+    <!-- Значки инструментов: формы из набора Material Design Icons (Apache License 2.0),
+         по одному узнаваемому признаку на инструмент. Прежние читались плохо: кисть - как
+         монитор, маркер - как второй карандаш, обрезка - как набор уголков. -->
+    <Geometry x:Key="Icon.Pencil">M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z</Geometry>
+    <!-- Кисть: ручка наискосок и мазок. Прежний значок (прямоугольник на подставке) читался как монитор. -->
+    <Geometry x:Key="Icon.Brush">M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37-1.34-1.34a1 1 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a1 1 0 0 0 0-1.41z</Geometry>
+    <Geometry x:Key="Icon.Marker">M2 20h20v4H2zM13.06 3.19l3.75 3.75L8.75 15H5v-3.75l8.06-8.06zm4.82 2.68-3.75-3.75 1.83-1.83a1 1 0 0 1 1.41 0l2.34 2.34a1 1 0 0 1 0 1.41l-1.83 1.83z</Geometry>
+    <Geometry x:Key="Icon.Eraser">M16.24 3.56l4.95 4.94c.78.79.78 2.05 0 2.84L12 20.53a4.01 4.01 0 0 1-5.66 0L2.81 17c-.78-.79-.78-2.05 0-2.84l10.6-10.6c.79-.78 2.05-.78 2.83 0zM4.22 15.58l3.54 3.53c.78.79 2.04.79 2.83 0l3.53-3.53-4.95-4.95-4.95 4.95z</Geometry>
+    <Geometry x:Key="Icon.Fill">M16.56 8.94 7.62 0 6.21 1.41l2.38 2.38-5.15 5.15a1.49 1.49 0 0 0 0 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10 10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5z</Geometry>
+    <Geometry x:Key="Icon.Picker">M20.71 5.63l-2.34-2.34a1 1 0 0 0-1.41 0l-3.12 3.12-1.93-1.91-1.41 1.41 1.42 1.42L3 16.25V21h4.75l8.92-8.92 1.42 1.42 1.41-1.41-1.92-1.92 3.12-3.12a1 1 0 0 0 .01-1.42zM6.92 19 5 17.08l8.06-8.06 1.92 1.92L6.92 19z</Geometry>
+    <Geometry x:Key="Icon.Text">M5 4v3h5.5v12h3V7H19V4H5z</Geometry>
     <Geometry x:Key="Icon.Line">M4 20 20 4</Geometry>
     <Geometry x:Key="Icon.Rect">M3 5h18v14H3z</Geometry>
     <Geometry x:Key="Icon.Ellipse">M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z</Geometry>
@@ -19,10 +23,10 @@
     <Geometry x:Key="Icon.Star">M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01z</Geometry>
     <Geometry x:Key="Icon.Arrow">M4 12h12m-4-6 6 6-6 6</Geometry>
     <Geometry x:Key="Icon.Heart">M12 21s-7-4.5-9.5-9C1 8.5 3 5 6.5 5q2.5 0 4 2 1.5-2 4-2C18 5 20 8.5 18.5 12 16 16.5 12 21 12 21z</Geometry>
-    <Geometry x:Key="Icon.Select">M3 3h6v2H5v4H3V3zm12 0h6v6h-2V5h-4V3zM3 15h2v4h4v2H3v-6zm16 0h2v6h-6v-2h4v-4z</Geometry>
-    <Geometry x:Key="Icon.Quad">M4 4 18 6 20 16 8 20z</Geometry>
-    <Geometry x:Key="Icon.Crop">M7 17h10V7m0-3V7H7V4M4 17h3v3</Geometry>
-    <Geometry x:Key="Icon.Hand">M8 11V4a2 2 0 1 1 4 0v6h2V3a2 2 0 1 1 4 0v9h2V7a2 2 0 1 1 4 0v10a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6V8a2 2 0 1 1 4 0v3z</Geometry>
+    <Geometry x:Key="Icon.Select">M3 3h4v2H5v2H3V3zm6 0h6v2H9V3zm8 0h4v4h-2V5h-2V3zM3 9h2v6H3V9zm16 0h2v6h-2V9zM3 17h2v2h2v2H3v-4zm6 2h6v2H9v-2zm10-2h2v4h-4v-2h2v-2z</Geometry>
+    <Geometry x:Key="Icon.Quad">M5 6 18 3.5 20.5 16 8 20.5z</Geometry>
+    <Geometry x:Key="Icon.Crop">M17 15h2V7c0-1.1-.9-2-2-2H9v2h8v8zM7 17V1H5v4H1v2h4v10c0 1.1.9 2 2 2h10v4h2v-4h4v-2H7z</Geometry>
+    <Geometry x:Key="Icon.Hand">M23 5.5V20c0 2.2-1.8 4-4 4h-7.3c-1.08 0-2.1-.43-2.85-1.19L1 14.83s1.26-1.23 1.3-1.25c.22-.19.49-.29.79-.29.22 0 .42.06.6.16.04.01 4.31 2.46 4.31 2.46V4c0-.83.67-1.5 1.5-1.5S11 3.17 11 4v7h1V1.5c0-.83.67-1.5 1.5-1.5S15 .67 15 1.5V11h1V2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V11h1V5.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5z</Geometry>
 
     <Style x:Key="ToolGlyph" TargetType="Path">
         <Setter Property="Stroke" Value="{DynamicResource TextPrimary}"/>
