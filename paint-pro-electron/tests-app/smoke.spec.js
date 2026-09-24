@@ -18,9 +18,15 @@ test('окно открывается там и того размера, как�
   const os = require('os');
   const path = require('path');
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'paintpro-data-'));
-  const target = { x: 120, y: 90, width: 1100, height: 760 };
+  let target;
   try {
     const first = await launchApp([], { dataDir });
+    // Место и размер - от настоящего экрана: у раннера GitHub он 1024x768, и окно
+    // 1100x760 не помещалось - правило законно придвигало его к краю.
+    target = await first.app.evaluate(({ screen }) => {
+      const wa = screen.getPrimaryDisplay().workArea;
+      return { x: wa.x + 30, y: wa.y + 30, width: Math.min(1100, wa.width - 60), height: Math.min(760, wa.height - 60) };
+    });
     await first.app.evaluate(({ BrowserWindow }, b) => BrowserWindow.getAllWindows()[0].setBounds(b), target);
     await closeApp(first.app);
     const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'window-state.json'), 'utf8'));

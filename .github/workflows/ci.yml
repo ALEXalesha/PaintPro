@@ -41,10 +41,10 @@ jobs:
       - name: Сборка одного файла для браузера
         run: npm run build:web
 
-      - name: 335 проверок страницы
+      - name: Проверки страницы
         run: npm test
 
-      - name: 14 проверок настоящего приложения
+      - name: Проверки настоящего приложения
         run: npm run test:app
 
       - name: Забрать собранный файл
@@ -79,5 +79,5 @@ jobs:
 
       # WPF и SkiaSharp есть только под Windows, отсюда и раннер. Тесты слоя
       # представления держат свой STA-поток (WpfRunner), окна на экран не выводят.
-      - name: 623 теста xUnit
+      - name: Тесты xUnit
         run: dotnet test tests/PaintPro.Tests -c Release --nologo

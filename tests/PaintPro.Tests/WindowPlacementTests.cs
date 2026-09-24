@@ -125,8 +125,10 @@ public class WindowPlacementTests
             var before = WindowPlacementService.FilePath;
             try
             {
+                // Место и размер - от настоящего экрана: у раннера GitHub он 1024x768, и
+                // окно 1000x700 со сдвигом 40 не помещалось - правило законно двигало его к краю.
                 var main = WindowPlacementService.Screens()[0];
-                var want = new Area(main.X + 40, main.Y + 30, 1000, 700);
+                var want = new Area(main.X + 20, main.Y + 20, Math.Min(1000, main.Width - 40), Math.Min(700, main.Height - 40));
                 WindowPlacementService.FilePath = file;
                 WindowPlacementService.Save(new Placement(want.X, want.Y, want.Width, want.Height, false));
 
