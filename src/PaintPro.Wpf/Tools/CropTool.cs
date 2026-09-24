@@ -24,10 +24,53 @@ public sealed class CropTool : ITool
     private SKPoint _origin;
     private bool _dragging;
 
+    /// <summary>
+    /// Обведённая, но ещё не применённая рамка (1.28.0). Кадрирование, как в Electron-версии,
+    /// ждёт подтверждения - «Обрезать» или Enter, «Отмена» или Escape: раньше оно срабатывало,
+    /// едва отпускали мышь, и промах рамкой обрезал картинку.
+    /// </summary>
+    private SKRectI? _pending;
+    public bool HasPending => _pending is not null;
+    public event Action? PendingChanged;
+
+    private void SetPending(SKRectI? value)
+    {
+        _pending = value;
+        PendingChanged?.Invoke();
+    }
+
+    /// <summary>Применить обведённую рамку. False - применять нечего.</summary>
+    public bool Apply(ToolContext ctx)
+    {
+        if (_pending is not { } region) return false;
+        SetPending(null);
+        // Прижимаем поднятый объект ДО кадрирования, как это делают поворот, отражение и
+        // смена размера. После него прижимать некуда: команда заменяет содержимое всех
+        // слоёв и меняет размер холста, и объект просто снимается вместе с рамкой -
+        // пользователь терял то, что держал в руках, без записи в истории.
+        ctx.Document.CommitFloating();
+        var cmd = DocumentTransform.Crop(ctx.Document, region);
+        ctx.History.ExecuteAndPush(cmd, ctx.Document);
+        ctx.Document.Selection = null;
+        ctx.Document.EnterTransientMode(DocumentMode.Idle);
+        return true;
+    }
+
+    /// <summary>Убрать обведённую рамку, ничего не обрезая.</summary>
+    public void Cancel(ToolContext ctx)
+    {
+        if (_pending is null) return;
+        SetPending(null);
+        ctx.Document.Selection = null;
+        ctx.Document.EnterTransientMode(DocumentMode.Idle);
+    }
+
     public void OnActivate(ToolContext ctx) { }
 
     public void OnDeactivate(ToolContext ctx)
     {
+        // Другой инструмент - рамка без подтверждения отменяется, как в Electron-версии.
+        Cancel(ctx);
         // Switching tools mid-drag has to unwind the transient mode by hand: nothing else
         // recomputes it while the document is in Cropping, so it would stay stuck there
         // and selection state would stop driving Mode at all.
@@ -40,6 +83,8 @@ public sealed class CropTool : ITool
 
     public void OnPointerDown(SKPoint position, ToolContext ctx)
     {
+        // Новая рамка вместо прежней, ещё не применённой.
+        if (_pending is not null) SetPending(null);
         _origin = position;
         _dragging = true;
         ctx.Document.EnterTransientMode(DocumentMode.Cropping);
@@ -85,15 +130,7 @@ public sealed class CropTool : ITool
             return;
         }
 
-        // Прижимаем поднятый объект ДО кадрирования, как это делают поворот, отражение и
-        // смена размера. После него прижимать некуда: команда заменяет содержимое всех
-        // слоёв и меняет размер холста, и объект просто снимается вместе с рамкой -
-        // пользователь терял то, что держал в руках, без записи в истории.
-        ctx.Document.CommitFloating();
-
-        var cmd = DocumentTransform.Crop(ctx.Document, region);
-        ctx.History.ExecuteAndPush(cmd, ctx.Document);
-        ctx.Document.Selection = null;
-        ctx.Document.EnterTransientMode(DocumentMode.Idle);
+        // Рамка остаётся на холсте и ждёт «Обрезать» (Enter) или «Отмена» (Escape).
+        SetPending(region);
     }
 }

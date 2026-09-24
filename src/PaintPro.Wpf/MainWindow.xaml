@@ -721,7 +721,30 @@
 
             <!-- ───── Centre canvas ───── -->
             <Border Style="{DynamicResource GlassPanel}" Padding="0">
-                <views:CanvasView x:Name="Canvas" />
+                <Grid>
+                    <views:CanvasView x:Name="Canvas" />
+                    <!-- Кадрирование ждёт подтверждения, как в Electron-версии. -->
+                    <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,12,0,0"
+                            Padding="8" CornerRadius="12" Background="{DynamicResource MenuBg}"
+                            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CropPending}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{DynamicResource GhostButton}" Content="✓ Обрезать" ToolTip="Enter"
+                                    Background="{DynamicResource AccentGrad}" Command="{Binding ApplyCropCommand}"/>
+                            <Button Style="{DynamicResource GhostButton}" Content="Отмена" ToolTip="Escape"
+                                    Command="{Binding CancelCropCommand}"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Border>
         </DockPanel>
     </Grid>

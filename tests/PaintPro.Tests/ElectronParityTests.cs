@@ -129,6 +129,51 @@ public class ElectronParityTests
         Assert.False(vm.IsDirty);
     }
 
+    // ───────── кадрирование с подтверждением ─────────
+
+    private static MainViewModel Framed()
+    {
+        var vm = new MainViewModel { ActiveTool = ToolKind.Crop };
+        var tool = vm.ActiveToolInstance;
+        tool.OnPointerDown(new SkiaSharp.SKPoint(10, 10), vm.ToolContext);
+        tool.OnPointerMove(new SkiaSharp.SKPoint(110, 60), vm.ToolContext);
+        tool.OnPointerUp(new SkiaSharp.SKPoint(110, 60), vm.ToolContext);
+        return vm;
+    }
+
+    [Fact]
+    public void Releasing_the_mouse_only_frames_the_crop()
+    {
+        var vm = Framed();
+        Assert.True(vm.CropPending);
+        Assert.Equal(Document.DefaultWidth, vm.Document.CanvasWidth);
+    }
+
+    [Fact]
+    public void Enter_crops_and_Escape_cancels()
+    {
+        var vm = Framed();
+        vm.CommitFloatingCommand.Execute(null); // Enter
+        Assert.False(vm.CropPending);
+        Assert.Equal(100, vm.Document.CanvasWidth);
+        Assert.Equal(50, vm.Document.CanvasHeight);
+
+        var other = Framed();
+        other.CancelFloatingCommand.Execute(null); // Escape
+        Assert.False(other.CropPending);
+        Assert.Equal(Document.DefaultWidth, other.Document.CanvasWidth);
+        Assert.Null(other.Document.Selection);
+    }
+
+    [Fact]
+    public void Another_tool_drops_an_unconfirmed_crop()
+    {
+        var vm = Framed();
+        vm.ActiveTool = ToolKind.Pencil;
+        Assert.False(vm.CropPending);
+        Assert.Equal(Document.DefaultWidth, vm.Document.CanvasWidth);
+    }
+
     // ───────── размер выделения ─────────
 
     [Fact]

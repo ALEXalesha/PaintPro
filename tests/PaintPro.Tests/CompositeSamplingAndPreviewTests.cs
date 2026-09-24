@@ -213,6 +213,7 @@ public class CompositeSamplingAndPreviewTests
         crop.OnPointerDown(new SKPoint(0, 0), ctx);
         crop.OnPointerMove(new SKPoint(40, 40), ctx);
         crop.OnPointerUp(new SKPoint(40, 40), ctx);
+        Assert.True(crop.Apply(ctx)); // кадрирование ждёт подтверждения (1.28.0)
 
         Assert.Null(doc.FloatingPickup);
         Assert.Equal(40, doc.CanvasWidth);

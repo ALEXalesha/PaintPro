@@ -26,6 +26,14 @@ public partial class MainViewModel : ObservableObject
     private readonly Dictionary<ToolKind, ITool> _tools;
     private readonly PickerTool _pickerTool = new();
     private readonly TextTool _textTool = new();
+    private readonly CropTool _cropTool = new();
+
+    /// <summary>Рамка кадрирования обведена и ждёт «Обрезать» или «Отмена».</summary>
+    [ObservableProperty] private bool _cropPending;
+
+    [RelayCommand] private void ApplyCrop() { _cropTool.Apply(ToolContext); InvalidateCanvas?.Invoke(); }
+
+    [RelayCommand] private void CancelCrop() { _cropTool.Cancel(ToolContext); InvalidateCanvas?.Invoke(); }
 
     /// <summary>Raised when canvas needs an immediate visual refresh (rare; usually PropertyChanged handles it).</summary>
     public event Action? InvalidateCanvas;
@@ -57,6 +65,7 @@ public partial class MainViewModel : ObservableObject
         };
         _pickerTool.ColorPicked += c => PrimaryColor = c;
         _textTool.TextRequested += p => TextRequested?.Invoke(p);
+        _cropTool.PendingChanged += () => CropPending = _cropTool.HasPending;
 
         _tools = new Dictionary<ToolKind, ITool>
         {
@@ -77,7 +86,7 @@ public partial class MainViewModel : ObservableObject
             [ToolKind.Heart]   = new HeartShapeTool(),
             [ToolKind.Select]  = new SelectTool(),
             [ToolKind.Quad]    = new QuadTool(),
-            [ToolKind.Crop]    = new CropTool(),
+            [ToolKind.Crop]    = _cropTool,
             [ToolKind.Hand]    = new HandTool(),
         };
         ActiveToolInstance = _tools[ActiveTool];
@@ -1118,11 +1127,15 @@ public partial class MainViewModel : ObservableObject
     }
     [RelayCommand] private void CommitFloating()
     {
+        // Enter при обведённой рамке кадрирования - «Обрезать».
+        if (_cropTool.HasPending) { ApplyCrop(); return; }
         Document.CommitFloating();
         InvalidateCanvas?.Invoke();
     }
     [RelayCommand] private void CancelFloating()
     {
+        // Escape при обведённой рамке кадрирования - «Отмена».
+        if (_cropTool.HasPending) { CancelCrop(); return; }
         if (Document.FloatingPickup is null) { Document.Selection = null; return; }
         if (UndoOwnedPickup()) return;
         // Escape must leave no trace: the lifted pixels go back where they came from.

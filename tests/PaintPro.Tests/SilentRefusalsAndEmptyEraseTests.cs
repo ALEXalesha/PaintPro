@@ -150,6 +150,7 @@ public class SilentRefusalsAndEmptyEraseTests
         tool.OnPointerDown(new SKPoint(10, 10), vm.ToolContext);
         tool.OnPointerMove(new SKPoint(60, 60), vm.ToolContext);
         tool.OnPointerUp(new SKPoint(60, 60), vm.ToolContext);
+        Assert.True(tool.Apply(vm.ToolContext)); // кадрирование ждёт подтверждения (1.28.0)
 
         Assert.Equal(50, vm.Document.CanvasWidth);
         Assert.Equal("", vm.StatusHint);
