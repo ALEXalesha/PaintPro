@@ -707,9 +707,8 @@ test('очистка холста оставляет бумагу белой, а
   await addLayer(app);
   await paint(app, '#0000ff');
 
-  page.on('dialog', (d) => d.accept());
-  await app.page.evaluate(() => clearCanvas());
-  await app.settle();
+  await app.page.evaluate(() => { clearCanvas(); });
+  await app.answer('Да');
   expect(isWhite(await app.pixel(450, 300))).toBe(true);
   const st = await app.page.evaluate(() => ({
     n: state.layers.length,

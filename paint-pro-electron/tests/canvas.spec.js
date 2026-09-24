@@ -106,9 +106,8 @@ test('очистку холста можно отменить', async ({ page })
   await app.drag(150, 120, 400, 260);
   const before = await app.fingerprint();
 
-  page.on('dialog', (d) => d.accept());
-  await app.page.evaluate(() => clearCanvas());
-  await app.settle();
+  await app.page.evaluate(() => { clearCanvas(); });
+  await app.answer('Да');
   expect(await app.fingerprint()).not.toBe(before);
 
   await app.undo();

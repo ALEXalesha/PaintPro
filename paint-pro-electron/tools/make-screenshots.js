@@ -65,6 +65,7 @@ async function main() {
 
   const shot = mouse(win);
   await drawLandscape(win, shot);
+  await checkLandscape(win);
 
   // Темы. Порядок и имена - как в списке THEMES приложения.
   const themes = [
@@ -155,12 +156,24 @@ async function use(win, tool, color, size) {
 /**
  * Пейзаж на холсте 900x600.
  *
- * Фигуры рисуются контуром (fillMode по умолчанию - 'outline'), поэтому каждая закрашивается
- * вторым шагом: заливка внутрь контура тем же цветом. Так же это делал бы человек.
+ * Солнце и горы - фигуры с флажком «Заливать фигуры»: заливка и контур одним жестом.
+ * Раньше их рисовали контуром и закрашивали ведром, и основания гор уходили ниже линии
+ * горизонта: ведро останавливалось на линии, а контур торчал поверх травы. Теперь горы
+ * стоят на горизонте, а линия горизонта ложится поверх их оснований.
  */
 async function drawLandscape(win, m) {
   await use(win, 'fill', SKY);
   await m.click(450, 120);
+
+  await win.check('#fill-shapes');
+  await use(win, 'ellipse', SUN, 4);
+  await m.drag(330, 65, 435, 170);
+
+  await use(win, 'triangle', PEAK_LEFT, 4);
+  await m.drag(40, 458, 360, 180);
+  await use(win, 'triangle', PEAK_RIGHT, 4);
+  await m.drag(390, 458, 710, 155);
+  await win.uncheck('#fill-shapes');
 
   // Горизонт: линия идёт от края до края, и толщина взята с запасом. Нажатие за пределами
   // холста приложение не считает началом мазка, поэтому концы приходится держать внутри -
@@ -170,21 +183,6 @@ async function drawLandscape(win, m) {
   await m.drag(3, 455, 897, 455);
   await use(win, 'fill', GRASS);
   await m.click(450, 540);
-
-  await use(win, 'ellipse', SUN, 4);
-  await m.drag(330, 65, 435, 170);
-  await use(win, 'fill', SUN);
-  await m.click(382, 117);
-
-  await use(win, 'triangle', PEAK_LEFT, 4);
-  await m.drag(40, 462, 360, 180);
-  await use(win, 'fill', PEAK_LEFT);
-  await m.click(200, 400);
-
-  await use(win, 'triangle', PEAK_RIGHT, 4);
-  await m.drag(390, 462, 710, 155);
-  await use(win, 'fill', PEAK_RIGHT);
-  await m.click(550, 390);
 
   await use(win, 'brush', WHITE, 44);
   await m.drag(110, 75, 190, 75);
@@ -197,6 +195,23 @@ async function drawLandscape(win, m) {
   await m.drag(250, 27, 264, 40);
   await m.drag(283, 58, 295, 48);
   await m.drag(295, 48, 307, 58);
+}
+
+/**
+ * Рисунок получился тем, чем задуман: небо, солнце, трава и обе горы на своих местах.
+ * Окно на экране настоящее, и мышь человека поверх него однажды увела протяжку эллипса -
+ * кадр вышел с огромным зелёным овалом на фиолетовом. Такой кадр не должен уходить в README.
+ */
+async function checkLandscape(win) {
+  const probes = [['небо', 450, 20, SKY], ['солнце', 382, 117, SUN], ['трава', 450, 540, GRASS],
+                  ['левая гора', 200, 400, PEAK_LEFT], ['правая гора', 550, 390, PEAK_RIGHT],
+                  ['трава под левой горой', 200, 470, GRASS], ['трава под правой горой', 550, 470, GRASS]];
+  const bad = await win.evaluate((list) => {
+    const g = canvas.getContext('2d');
+    const hex = (x, y) => '#' + [...g.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => v.toString(16).padStart(2, '0')).join('');
+    return list.filter(([, x, y, want]) => hex(x, y) !== want.toLowerCase()).map(([name, x, y, want]) => `${name}: ${hex(x, y)} вместо ${want}`);
+  }, probes);
+  if (bad.length) throw new Error('рисунок не удался, кадры не сняты: ' + bad.join('; '));
 }
 
 /** Выделение: рамка «бегущие муравьи» и размер в строке состояния. */

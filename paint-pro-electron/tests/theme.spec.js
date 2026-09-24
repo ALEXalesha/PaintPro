@@ -267,7 +267,7 @@ test('во всех темах панели читаются, а не тольк
     await setThemeSettled(app, id);
     const rows = await app.page.evaluate(() => {
       const sels = ['.sidebar-title', '.info-row', '.layer-name', '.hist-item',
-                    '.tool', '.mb-app', '.mb-right', '.statusbar'];
+                    '.tool:not(.active)', '.tool:not(.active) .tool-label', '.side-btn', '.mb-app', '.mb-right', '.statusbar'];
       const parse = (c) => {
         const m = String(c).match(/rgba?\(([^)]+)\)/);
         if (!m) return null;

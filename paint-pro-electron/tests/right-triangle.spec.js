@@ -67,11 +67,12 @@ test('размер общий с остальными фигурами', async (
   expect(await page.evaluate(() => toolHasSize())).toBe(true);
 });
 
-test('инструмент называется своим именем в статусбаре', async ({ page }) => {
+test('кнопка инструмента подписана, а полное имя - в подсказке', async ({ page }) => {
   const app = await openApp(page);
   await app.pickTool('right-triangle');
-  expect(await page.evaluate(() => document.getElementById('info-tool').textContent))
-    .toBe('Прямоугольный треугольник');
+  const btn = page.locator('.tool.active');
+  expect(await btn.locator('.tool-label').textContent()).toBe('Прям. угол');
+  expect(await btn.getAttribute('data-tip')).toBe('Прямоугольный треугольник');
 });
 
 test('прозрачность в ноль не кладёт фигуру', async ({ page }) => {

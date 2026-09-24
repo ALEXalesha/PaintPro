@@ -94,13 +94,13 @@ test('LB3 ошибка записи доезжает до пользовател
     await stubSaveDialog(app, target);
     await drawSomething(win);
 
-    const alerts = [];
-    win.on('dialog', (d) => { alerts.push(d.message()); d.accept().catch(() => {}); });
     const ok = await win.evaluate(() => saveCanvas(true));
     await win.waitForTimeout(200);
 
     expect(ok, 'сохранение отчиталось об успехе').toBe(false);
-    expect(alerts.length, 'об ошибке записи не сказали ни слова').toBeGreaterThan(0);
+    // Сообщение - окно в цветах темы (glassAlert), а не системный alert.
+    const said = await win.evaluate(() => (document.querySelector('.gm-box .gm-text') || {}).textContent || '');
+    expect(said, 'об ошибке записи не сказали ни слова').toContain('Ошибка сохранения');
     // И документ не должен считаться сохранённым.
     expect(await win.evaluate(() => isDirty()), 'документ объявлен сохранённым').toBe(true);
   } finally {
@@ -214,11 +214,11 @@ test('LD1 открытие не-картинки объясняется', async 
     await stubOpenDialog(app, [bogus]);
     await captureErrorBoxes(app);
 
-    const alerts = [];
-    win.on('dialog', (d) => { alerts.push(d.message()); d.accept().catch(() => {}); });
     await win.keyboard.press('Control+o');
     await win.waitForTimeout(1200);
 
+    const alerts = await win.evaluate(() =>
+      [...document.querySelectorAll('.gm-box .gm-text')].map(e => e.textContent));
     const boxes = await errorBoxes(app);
     expect(alerts.length + boxes.length,
       'битый файл открылся молча: ' + JSON.stringify({ alerts, boxes })).toBeGreaterThan(0);

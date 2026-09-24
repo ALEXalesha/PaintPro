@@ -1,6 +1,12 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const WindowState = require('./window-state');
+
+// Размер и место окна между запусками: %APPDATA%\<приложение>\window-state.json. Минимум
+// 900x600 - как было, по умолчанию 1400x900.
+const SIZE = { width: 1400, height: 900, minWidth: 900, minHeight: 600 };
+const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
 
 let mainWindow;
 let pendingFileOpen = null; // Путь к файлу, который нужно открыть после старта
@@ -46,11 +52,17 @@ if (!gotLock) {
 }
 
 function createWindow() {
+  // Основной экран первым: на нём окно встанет по центру, если сохранённое место не видно.
+  const primary = screen.getPrimaryDisplay();
+  const areas = [primary, ...screen.getAllDisplays().filter((d) => d.id !== primary.id)].map((d) => d.workArea);
+  const placed = WindowState.restore(WindowState.load(stateFile()), areas, SIZE);
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 900,
-    minHeight: 600,
+    ...(placed.x !== undefined ? { x: placed.x, y: placed.y } : {}),
+    width: placed.width,
+    height: placed.height,
+    minWidth: SIZE.minWidth,
+    minHeight: SIZE.minHeight,
     backgroundColor: '#1a1a1f',
     icon: path.join(__dirname, 'build', 'icon.ico'),
     title: 'Paint Pro',
@@ -63,12 +75,20 @@ function createWindow() {
   });
 
   mainWindow.loadFile('paint-pro.html');
+  if (placed.maximized) mainWindow.maximize();
   closeConfirmed = false;
+
+  // Запись после каждого перемещения и изменения размера (события приходят один раз в
+  // конце перетаскивания) и при закрытии: если процесс убьют, размер не потеряется.
+  const win = mainWindow;
+  const remember = () => { if (!win.isDestroyed() && !win.isMinimized()) WindowState.save(stateFile(), WindowState.capture(win)); };
+  for (const event of ['resized', 'moved', 'maximize', 'unmaximize']) win.on(event, remember);
 
   // Закрытие окна молча теряло несохранённый рисунок. В WPF-версии вопрос есть
   // с 1.2.0, сюда правка не доехала. Спросить может только renderer - признак
   // изменений живёт там, - поэтому окно сначала не отпускаем.
   mainWindow.on('close', (e) => {
+    remember();
     if (closeConfirmed || mainWindow.webContents.isCrashed()) return;
     e.preventDefault();
     mainWindow.webContents.send('menu-action', 'request-close');

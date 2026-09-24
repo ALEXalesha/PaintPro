@@ -32,14 +32,17 @@ const APP_DIR = path.join(__dirname, '..');
  * второй запуск молча выходит, и проверка падает с «окно закрыто» вместо своей причины.
  * Там же живёт кеш, который иначе не поделить между прогонами.
  */
-async function launchApp(extraArgs) {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'paintpro-data-'));
+async function launchApp(extraArgs, opts) {
+  // opts.dataDir - запустить на уже существующей папке (второй запуск после первого);
+  // её тогда убирает вызывающий.
+  const own = !(opts && opts.dataDir);
+  const dataDir = own ? fs.mkdtempSync(path.join(os.tmpdir(), 'paintpro-data-')) : opts.dataDir;
   const app = await electron.launch({
     executablePath: require('electron'),
     args: [APP_DIR, '--user-data-dir=' + dataDir].concat(extraArgs || []),
     cwd: APP_DIR,
   });
-  app.__dataDir = dataDir;
+  app.__dataDir = own ? dataDir : null;
 
   // Вопрос «сохранить перед выходом?» подменяем СРАЗУ и по умолчанию. Иначе закрытие
   // приложения в конце каждой проверки открывает настоящее окно и ждёт живого человека:

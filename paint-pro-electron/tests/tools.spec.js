@@ -155,7 +155,7 @@ test('пипетка за пределами холста не роняет пр
 test('щелчок по образцу палитры меняет цвет', async ({ page }) => {
   const app = await openApp(page);
   const hex = await app.page.evaluate(() => {
-    document.querySelectorAll('.color-swatch')[11].click();
+    document.querySelectorAll('#palette .color-swatch')[colors.indexOf('#ff0000')].click();
     return state.color;
   });
   expect(hex.toLowerCase()).toBe('#ff0000');

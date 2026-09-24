@@ -44,6 +44,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "window-state.js",
       "paint-pro.html",
       "build/**/*"
     ],

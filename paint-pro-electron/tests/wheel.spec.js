@@ -138,8 +138,7 @@ test('ползунок и подписи следуют за колесом', as
 
   const now = await size(app);
   expect(await page.inputValue('#size-input')).toBe(String(now));
-  expect(await page.textContent('#size-display')).toBe(String(now));
-  expect(await page.textContent('#info-size')).toBe(now + ' px');
+  expect(await page.textContent('#size-display')).toBe(now + ' px');
 });
 
 test('колесо не пишет в ленту истории', async ({ page }) => {

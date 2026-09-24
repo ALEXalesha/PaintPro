@@ -199,7 +199,7 @@
 
   /* Содержимое лежит над фоном-градиентом. Прежде здесь же плавали пузыри - их
      убрали, а порядок слоёв остаётся: на нём стоит вся раскладка. */
-  .menubar, .toolbar, .main, .statusbar, .zoom-controls { position: relative; z-index: 2; }
+  .menubar, .main, .statusbar, .zoom-controls { position: relative; z-index: 2; }
 
   /* === Ripple на кнопках при клике === */
   .ripple {
@@ -385,7 +385,7 @@
   }
 
   /* === Тонкий блик/specular для оставшихся стеклянных панелей === */
-  .toolbar::before, .sidebar::before, .statusbar::before {
+  .tools-panel::before, .sidebar::before, .statusbar::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -394,25 +394,69 @@
     pointer-events: none;
     z-index: 0;
   }
-  .toolbar > *, .sidebar > *, .statusbar > * { position: relative; z-index: 1; }
-  /* === Панель инструментов === */
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    margin: 6px 10px 0 10px;
-    border-radius: 20px;
+  .tools-panel > *, .sidebar > *, .statusbar > * { position: relative; z-index: 1; }
+  /* === Панель инструментов ===
+     Слева, по два в ряд, у каждого значок и подпись - как в WPF-версии. Была полоса
+     сверху из одних значков: что нарисовано, было не понять, а на окне поуже она
+     переносила «Прозрачность» на вторую строку. */
+  .tools-panel {
+    width: var(--tools-w, 142px);
+    flex-shrink: 0;
+    padding: 8px 6px;
+    overflow-y: auto;
+    overflow-x: hidden;
     background: var(--glass-bg);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
     border: 1px solid var(--glass-border);
+    border-radius: 20px;
     box-shadow: var(--glass-shadow), var(--glass-inset);
-    min-height: 60px;
-    flex-wrap: wrap;
     position: relative;
-    z-index: 4;
-    /* overflow:visible — иначе тултипы (.tool::after) обрезаются по нижней кромке */
+  }
+  .tool-grid {
+    display: grid;
+    /* Столбцов столько, сколько влезает: по умолчанию два, суженная панель - один,
+       расширенная - три. */
+    grid-template-columns: repeat(auto-fill, 60px);
+    gap: 4px;
+    justify-content: center;
+  }
+  .tools-sep {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 8px 6px;
+  }
+  /* Край боковой панели, за который её тянут. Лежит в зазоре между панелью и холстом
+     (отрицательные поля съедают его собственную ширину), невидим, пока на него не
+     наведут: тогда проступает тонкая черта акцентом. */
+  .panel-grip {
+    flex: 0 0 10px;
+    margin: 0 -10px;
+    position: relative;
+    z-index: 3;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .panel-grip::after {
+    content: '';
+    position: absolute;
+    top: 20px;
+    bottom: 20px;
+    left: 4px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .panel-grip:hover::after { opacity: 0.7; }
+  .panel-grip.dragging::after { opacity: 1; }
+  .canvas-area { min-width: 0; }
+
+  .tool-label {
+    font-size: 10px;
+    line-height: 1;
+    white-space: nowrap;
   }
 
   .tool-group {
@@ -428,14 +472,16 @@
   }
 
   .tool {
-    width: 40px;
-    height: 40px;
+    width: 60px;
+    height: 52px;
     border: 1px solid transparent;
     background: transparent;
     color: var(--text);
     border-radius: 11px;
     cursor: pointer;
     display: flex;
+    flex-direction: column;
+    gap: 4px;
     align-items: center;
     justify-content: center;
     transition: all 0.18s ease;
@@ -456,8 +502,9 @@
   }
 
   .tool svg {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
   }
 
   .separator {
@@ -534,8 +581,8 @@
 
   .color-preview {
     width: 100%;
-    height: 44px;
-    border-radius: 12px;
+    height: 40px;
+    border-radius: 10px;
     border: 1.5px solid rgba(255,255,255,0.4);
     cursor: pointer;
     position: relative;
@@ -549,32 +596,35 @@
     inset: 0;
     background: linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.08) 45%, transparent 80%);
     pointer-events: none;
-    border-radius: 12px;
+    border-radius: 10px;
   }
 
   .color-preview input {
     position: absolute;
     inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    padding: 0;
     opacity: 0;
     cursor: pointer;
   }
 
   .palette {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
+    grid-template-columns: repeat(8, minmax(0, 24px));
     gap: 5px;
-    padding: 7px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid var(--glass-border);
-    border-radius: 11px;
+    justify-content: center;
   }
+  /* Пустой ряд «Последних» держит высоту: иначе при первом цвете всё ниже прыгает. */
+  .palette.recent { min-height: 24px; }
 
   .color-swatch {
     width: 100%;
     aspect-ratio: 1;
-    border-radius: 7px;
+    border-radius: 6px;
     cursor: pointer;
-    border: 1px solid rgba(255,255,255,0.25);
+    border: 1px solid var(--glass-border);
     transition: transform 0.14s ease, box-shadow 0.14s ease;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 1px 2px rgba(0,0,0,0.3);
     position: relative;
@@ -759,7 +809,9 @@
     border-color: var(--accent) !important;
     background: rgba(255,255,255,0.12) !important;
   }
-  .sidebar button {
+  /* Старые кнопки панели без своего класса. Новые (.side-btn) оформлены сами: этот
+     !important делал их жирными и белил при наведении даже в светлой теме. */
+  .sidebar button:not(.side-btn) {
     background: var(--glass-bg-strong) !important;
     border: 1px solid var(--glass-border) !important;
     color: var(--text) !important;
@@ -769,18 +821,20 @@
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
   }
-  .sidebar button:hover {
+  .sidebar button:not(.side-btn):hover {
     background: rgba(255,255,255,0.18) !important;
     border-color: var(--glass-border-strong) !important;
     transform: translateY(-1px);
   }
-  .sidebar button:active { transform: translateY(0); }
+  .sidebar button:not(.side-btn):active { transform: translateY(0); }
 
   /* === Zoom controls === */
   .zoom-controls {
     position: fixed;
     bottom: 56px;
-    right: 252px;
+    /* Над правым нижним углом холста: поле окна 10 + правая панель + зазор 10 + 14.
+       При ширине 252 панель стояла на правой панели и закрывала «Историю изменений». */
+    right: calc(var(--side-w, 290px) + 34px);
     display: flex;
     gap: 4px;
     /* И здесь тоже: на большом холсте эта панель ложится прямо на белое. */
@@ -832,8 +886,9 @@
 
   /* === Правая панель свойств === */
   .sidebar {
-    width: 240px;
-    padding: 18px;
+    width: var(--side-w, 290px);
+    flex-shrink: 0;
+    padding: 14px 16px 14px 14px;
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--glass-bg);
@@ -846,16 +901,52 @@
   }
 
   .sidebar-section {
-    margin-bottom: 22px;
-    padding: 14px;
-    background: var(--glass-bg-soft);
-    border: 1px solid var(--glass-border);
-    border-radius: 14px;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--glass-border);
   }
 
-  .sidebar-section:last-child { margin-bottom: 4px; }
+  .sidebar-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+  .sidebar-section > .color-preview { margin-bottom: 8px; }
+  .sidebar-title.sub { margin: 12px 0 6px; }
+
+  /* Подпись слева, значение справа, ползунок под ними во всю ширину. */
+  .side-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .side-row .sidebar-title { margin: 0; }
+  .sidebar input[type="range"] { width: 100%; display: block; margin: 8px 0 12px; }
+  .side-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .side-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .size-inputs { display: flex; gap: 6px; margin: 8px 0 6px; }
+  .size-inputs input { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; }
+
+  /* Кнопка на стекле с рамкой. Были голые надписи без рамок. */
+  .side-btn {
+    padding: 7px 8px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text);
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .side-btn:hover { background: var(--glass-bg-strong); border-color: var(--glass-border-strong); }
+  .side-btn.wide { width: 100%; }
+  .side-btn.primary { background: var(--accent-grad); color: #fff; border-color: rgba(255,255,255,0.3); }
+  .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
   .sidebar-title {
     font-size: 11px;
@@ -962,17 +1053,7 @@
   }
 
   .layer-buttons { display: flex; gap: 6px; }
-  .layer-buttons button {
-    flex: 1;
-    padding: 6px;
-    background: var(--bg-3);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-  .layer-buttons button:hover { background: var(--bg-2); }
+  .layer-buttons button { flex: 1; }
 
   /* Панель «История изменений» */
   .history-list {
@@ -1183,7 +1264,7 @@
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
-    color: var(--text);
+    color: var(--overlay-text);
     padding: 6px 10px;
     border-radius: 8px;
     font-size: 11px;
@@ -1197,6 +1278,34 @@
     transition: opacity 0.12s ease;
   }
   #tip.show { opacity: 1; visibility: visible; }
+
+  /* === Окна сообщений и вопросов ===
+     В цветах темы, как GlassMessage в WPF-версии. Системные alert и confirm были
+     белыми в любой теме и с заголовком «file://». */
+  .gm-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .gm-box {
+    min-width: 320px;
+    max-width: 460px;
+    padding: 16px 18px;
+    border-radius: 14px;
+    background-color: var(--app-base);
+    background-image: linear-gradient(var(--glass-bg-strong), var(--glass-bg-strong));
+    border: 1px solid var(--glass-border-strong);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+    color: var(--text);
+  }
+  .gm-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .gm-text { font-size: 13px; line-height: 1.45; white-space: pre-line; user-select: text; }
+  .gm-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .gm-buttons .side-btn { min-width: 84px; }
 
   /* === Скроллбар === */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -1492,6 +1601,7 @@
         <button class="mb-dd-item" onclick="copySelection()"><span>Копировать</span><span class="kb">Ctrl C</span></button>
         <button class="mb-dd-item" onclick="cutSelection()"><span>Вырезать</span><span class="kb">Ctrl X</span></button>
         <button class="mb-dd-item" onclick="pasteFromClipboard()"><span>Вставить</span><span class="kb">Ctrl V</span></button>
+        <button class="mb-dd-item" onclick="deleteSelectionContent()"><span>Удалить</span><span class="kb">Delete</span></button>
         <div class="mb-sep"></div>
         <button class="mb-dd-item" onclick="selectAll()"><span>Выделить всё</span><span class="kb">Ctrl A</span></button>
         <button class="mb-dd-item" onclick="deselect()"><span>Снять выделение</span><span class="kb">Ctrl D</span></button>
@@ -1513,9 +1623,10 @@
     <div class="mb-menu" data-menu="image">
       <button class="mb-item">Изображение</button>
       <div class="mb-dropdown">
-        <button class="mb-dd-item" onclick="rotateCanvas()"><span>Повернуть 90°</span></button>
-        <button class="mb-dd-item" onclick="flipH()"><span>Отразить по горизонтали</span></button>
-        <button class="mb-dd-item" onclick="flipV()"><span>Отразить по вертикали</span></button>
+        <button class="mb-dd-item" onclick="rotateCanvas()"><span>Повернуть 90° по часовой</span></button>
+        <button class="mb-dd-item" onclick="rotateCanvasCCW()"><span>Повернуть 90° против часовой</span></button>
+        <button class="mb-dd-item" onclick="flipH()"><span>Отразить горизонтально</span></button>
+        <button class="mb-dd-item" onclick="flipV()"><span>Отразить вертикально</span></button>
         <div class="mb-sep"></div>
         <button class="mb-dd-item" onclick="clearCanvas()"><span>Очистить холст</span></button>
       </div>
@@ -1538,138 +1649,41 @@
 </div>
 
 <!-- Панель инструментов -->
-<div class="toolbar">
-  <!-- Инструменты рисования -->
-  <div class="tool-group">
-    <button class="tool" data-tool="hand" data-tip="Рука / Прокрутка (H)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 11.5V5a1.5 1.5 0 0 1 3 0v6.5h.5A1.5 1.5 0 0 1 14 13v.5h.5A1.5 1.5 0 0 1 16 15v.5h.5A1.5 1.5 0 0 1 18 17v2a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-4.5A1.5 1.5 0 0 1 5.5 13H6v-1.5A1.5 1.5 0 0 1 7.5 10H9v1.5z"/></svg>
-    </button>
-    <button class="tool active" data-tool="pencil" data-tip="Карандаш (P)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-    </button>
-    <button class="tool" data-tool="brush" data-tip="Кисть (B)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34c-.39-.39-1.02-.39-1.41 0L9 12.25 11.75 15l8.96-8.96c.39-.39.39-1.02 0-1.41z"/></svg>
-    </button>
-    <button class="tool" data-tool="marker" data-tip="Маркер (M)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.5 1.15C17.97 1.15 17.46 1.34 17.07 1.73L11.26 7.55L16.91 13.2L22.73 7.39C23.5 6.61 23.5 5.35 22.73 4.56L19.89 1.73C19.5 1.34 18.83 1.15 18.5 1.15M10.3 8.5L4.34 14.46C3.56 15.24 3.56 16.5 4.34 17.31L5.75 18.72L3.97 20.5L2.41 22H7.28L9.87 19.41L11.28 20.82C12.07 21.61 13.33 21.61 14.11 20.82L20.07 14.86"/></svg>
-    </button>
-    <button class="tool" data-tool="eraser" data-tip="Ластик (E)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.24 3.56l4.95 4.94c.78.79.78 2.05 0 2.84L12 20.53a4.008 4.008 0 0 1-5.66 0L2.81 17c-.78-.79-.78-2.05 0-2.84l10.6-10.6c.79-.78 2.05-.78 2.83 0M4.22 15.58l3.54 3.53c.78.79 2.04.79 2.83 0l3.53-3.53l-4.95-4.95l-4.95 4.95Z"/></svg>
-    </button>
-    <button class="tool" data-tool="fill" data-tip="Заливка (G)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 11.5s-2 2.17-2 3.5a2 2 0 0 0 4 0c0-1.33-2-3.5-2-3.5M5.21 10L10 5.21L14.79 10m1.77-1.06L7.62.94a.996.996 0 0 0-1.41 0L4.09 3.06L2.68 1.65L1.27 3.06l2.12 2.12l-1.77 1.77c-.59.59-.59 1.54 0 2.12l7.07 7.07c.29.29.68.44 1.06.44c.39 0 .77-.15 1.06-.44l7.07-7.07c.59-.57.59-1.53 0-2.11"/></svg>
-    </button>
-    <button class="tool" data-tool="picker" data-tip="Пипетка (I)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.71 5.63l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-3.12 3.12l-1.93-1.91l-1.41 1.41l1.42 1.42L3 16.25V21h4.75l8.92-8.92l1.42 1.42l1.41-1.41l-1.92-1.92l3.12-3.12c.4-.4.4-1.03.01-1.42zM6.92 19L5 17.08l8.06-8.06l1.92 1.92L6.92 19z"/></svg>
-    </button>
-    <button class="tool" data-tool="text" data-tip="Текст (T)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4v3h5.5v12h3V7H19V4z"/></svg>
-    </button>
-  </div>
-
-  <div class="separator"></div>
-
-  <!-- Фигуры -->
-  <div class="tool-group">
-    <button class="tool" data-tool="line" data-tip="Линия">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
-    </button>
-    <button class="tool" data-tool="rect" data-tip="Прямоугольник">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
-    </button>
-    <button class="tool" data-tool="ellipse" data-tip="Эллипс">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="6"/></svg>
-    </button>
-    <button class="tool" data-tool="triangle" data-tip="Треугольник">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12,4 22,20 2,20"/></svg>
-    </button>
-    <button class="tool" data-tool="right-triangle" data-tip="Прямоугольный треугольник">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="4,4 4,20 20,20"/></svg>
-    </button>
-    <button class="tool" data-tool="star" data-tip="Звезда">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-    </button>
-    <button class="tool" data-tool="arrow" data-tip="Стрелка">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="18" y2="6"/><polyline points="10,6 18,6 18,14"/></svg>
-    </button>
-    <button class="tool" data-tool="heart" data-tip="Сердце">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-    </button>
-  </div>
-
-  <div class="separator"></div>
-
-  <!-- Выделение и обрезка -->
-  <div class="tool-group">
-    <button class="tool" data-tool="select" data-tip="Выделение (S)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"><rect x="4" y="4" width="16" height="16"/></svg>
-    </button>
-    <button class="tool" data-tool="quad" data-tip="Полигон 4 точками (Q)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 7 L20 4 L18 19 L3 17 Z" stroke-dasharray="2.5 2"/>
-        <circle cx="5" cy="7" r="2" fill="currentColor"/>
-        <circle cx="20" cy="4" r="2" fill="currentColor"/>
-        <circle cx="18" cy="19" r="2" fill="currentColor"/>
-        <circle cx="3" cy="17" r="2" fill="currentColor"/>
-      </svg>
-    </button>
-    <button class="tool" data-tool="crop" data-tip="Обрезать">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 15h2V7c0-1.1-.9-2-2-2H9v2h8v8zM7 17V1H5v4H1v2h4v10c0 1.1.9 2 2 2h10v4h2v-4h4v-2H7z"/></svg>
-    </button>
-  </div>
-
-  <div class="separator"></div>
-
-  <!-- Буфер обмена -->
-  <div class="tool-group">
-    <button class="tool" onclick="copySelection()" data-tip="Копировать (Ctrl+C)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-    </button>
-    <button class="tool" onclick="cutSelection()" data-tip="Вырезать (Ctrl+X)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z"/></svg>
-    </button>
-    <button class="tool" onclick="pasteFromClipboard()" data-tip="Вставить (Ctrl+V)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>
-    </button>
-  </div>
-
-  <div class="separator"></div>
-
-  <!-- Действия -->
-  <div class="tool-group">
-    <button class="tool" onclick="undo()" data-tip="Отменить (Ctrl+Z)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
-    </button>
-    <button class="tool" onclick="redo()" data-tip="Повторить (Ctrl+Y)">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>
-    </button>
-    <button class="tool" onclick="clearCanvas()" data-tip="Очистить">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-    </button>
-  </div>
-
-  <div class="separator"></div>
-
-  <!-- Размер -->
-  <div class="control-group">
-    <span class="control-label">Размер</span>
-    <input type="range" id="size-input" min="1" max="100" value="4">
-    <span class="size-display" id="size-display">4</span>
-  </div>
-
-  <div class="separator"></div>
-
-  <!-- Прозрачность -->
-  <div class="control-group">
-    <span class="control-label">Прозрачность</span>
-    <input type="range" id="opacity-input" min="1" max="100" value="100">
-    <span class="size-display" id="opacity-display">100%</span>
-  </div>
-
-</div>
-
 <!-- Основная область -->
 <div class="main">
+  <!-- Инструменты: слева, по два в ряд, значок и подпись - как в WPF-версии. -->
+  <div class="tools-panel">
+    <div class="tool-grid">
+      <button class="tool active" data-tool="pencil" data-tip="Карандаш (P)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg><span class="tool-label">Карандаш</span></button>
+      <button class="tool" data-tool="brush" data-tip="Кисть (B)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37-1.34-1.34a1 1 0 0 0-1.41 0L9 12.25 11.75 15l8.96-8.96a1 1 0 0 0 0-1.41z"/></svg><span class="tool-label">Кисть</span></button>
+      <button class="tool" data-tool="marker" data-tip="Маркер (M)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 20h20v4H2zM13.06 3.19l3.75 3.75L8.75 15H5v-3.75l8.06-8.06zm4.82 2.68-3.75-3.75 1.83-1.83a1 1 0 0 1 1.41 0l2.34 2.34a1 1 0 0 1 0 1.41l-1.83 1.83z"/></svg><span class="tool-label">Маркер</span></button>
+      <button class="tool" data-tool="eraser" data-tip="Ластик (E)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.24 3.56l4.95 4.94c.78.79.78 2.05 0 2.84L12 20.53a4.01 4.01 0 0 1-5.66 0L2.81 17c-.78-.79-.78-2.05 0-2.84l10.6-10.6c.79-.78 2.05-.78 2.83 0zM4.22 15.58l3.54 3.53c.78.79 2.04.79 2.83 0l3.53-3.53-4.95-4.95-4.95 4.95z"/></svg><span class="tool-label">Ластик</span></button>
+      <button class="tool" data-tool="fill" data-tip="Заливка (G)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.56 8.94 7.62 0 6.21 1.41l2.38 2.38-5.15 5.15a1.49 1.49 0 0 0 0 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10 10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5z"/></svg><span class="tool-label">Заливка</span></button>
+      <button class="tool" data-tool="picker" data-tip="Пипетка (I)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.71 5.63l-2.34-2.34a1 1 0 0 0-1.41 0l-3.12 3.12-1.93-1.91-1.41 1.41 1.42 1.42L3 16.25V21h4.75l8.92-8.92 1.42 1.42 1.41-1.41-1.92-1.92 3.12-3.12a1 1 0 0 0 .01-1.42zM6.92 19 5 17.08l8.06-8.06 1.92 1.92L6.92 19z"/></svg><span class="tool-label">Пипетка</span></button>
+      <button class="tool" data-tool="text" data-tip="Текст (T)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 4v3h5.5v12h3V7H19V4H5z"/></svg><span class="tool-label">Текст</span></button>
+    </div>
+    <div class="tools-sep"></div>
+    <div class="tool-grid">
+      <button class="tool" data-tool="line" data-tip="Линия (L)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 20 4"/></svg><span class="tool-label">Линия</span></button>
+      <button class="tool" data-tool="rect" data-tip="Прямоугольник (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v14H3z"/></svg><span class="tool-label">Прямоуг.</span></button>
+      <button class="tool" data-tool="ellipse" data-tip="Эллипс (O)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z"/></svg><span class="tool-label">Эллипс</span></button>
+      <button class="tool" data-tool="triangle" data-tip="Треугольник"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 22 21H2z"/></svg><span class="tool-label">Треуг.</span></button>
+      <button class="tool" data-tool="right-triangle" data-tip="Прямоугольный треугольник"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v18h16z"/></svg><span class="tool-label">Прям. угол</span></button>
+      <button class="tool" data-tool="star" data-tip="Звезда"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01z"/></svg><span class="tool-label">Звезда</span></button>
+      <button class="tool" data-tool="arrow" data-tip="Стрелка"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h12m-4-6 6 6-6 6"/></svg><span class="tool-label">Стрелка</span></button>
+      <button class="tool" data-tool="heart" data-tip="Сердце"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9.5-9C1 8.5 3 5 6.5 5q2.5 0 4 2 1.5-2 4-2C18 5 20 8.5 18.5 12 16 16.5 12 21 12 21z"/></svg><span class="tool-label">Сердце</span></button>
+    </div>
+    <div class="tools-sep"></div>
+    <div class="tool-grid">
+      <button class="tool" data-tool="select" data-tip="Прямоугольное выделение (S)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h4v2H5v2H3V3zm6 0h6v2H9V3zm8 0h4v4h-2V5h-2V3zM3 9h2v6H3V9zm16 0h2v6h-2V9zM3 17h2v2h2v2H3v-4zm6 2h6v2H9v-2zm10-2h2v4h-4v-2h2v-2z"/></svg><span class="tool-label">Выделение</span></button>
+      <button class="tool" data-tool="quad" data-tip="Полигон-выделение (Q)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6 18 3.5 20.5 16 8 20.5z"/></svg><span class="tool-label">Полигон</span></button>
+      <button class="tool" data-tool="crop" data-tip="Кадрирование (C)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 15h2V7c0-1.1-.9-2-2-2H9v2h8v8zM7 17V1H5v4H1v2h4v10c0 1.1.9 2 2 2h10v4h2v-4h4v-2H7z"/></svg><span class="tool-label">Обрезка</span></button>
+      <button class="tool" data-tool="hand" data-tip="Рука / панорама (H)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M23 5.5V20c0 2.2-1.8 4-4 4h-7.3c-1.08 0-2.1-.43-2.85-1.19L1 14.83s1.26-1.23 1.3-1.25c.22-.19.49-.29.79-.29.22 0 .42.06.6.16.04.01 4.31 2.46 4.31 2.46V4c0-.83.67-1.5 1.5-1.5S11 3.17 11 4v7h1V1.5c0-.83.67-1.5 1.5-1.5S15 .67 15 1.5V11h1V2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V11h1V5.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5z"/></svg><span class="tool-label">Рука</span></button>
+    </div>
+  </div>
+
+  <!-- Края панелей: тянуть - сузить или расширить, двойной щелчок - как было. -->
+  <div class="panel-grip" id="grip-left" title="Потяните, чтобы изменить ширину. Двойной щелчок - как было"></div>
   <div class="canvas-area" id="canvas-area">
     <div class="canvas-wrapper" id="canvas-wrapper">
       <canvas id="canvas" width="900" height="600"></canvas>
@@ -1748,15 +1762,47 @@
     </div>
   </div>
 
+  <div class="panel-grip" id="grip-right" title="Потяните, чтобы изменить ширину. Двойной щелчок - как было"></div>
   <!-- Правая панель -->
   <div class="sidebar">
     <div class="sidebar-section">
       <div class="sidebar-title">Цвет</div>
-      <div class="color-picker-container">
-        <div class="color-preview" id="color-preview" style="background:#000000">
-          <input type="color" id="color-input" value="#000000">
-        </div>
-        <div class="palette" id="palette"></div>
+      <!-- Щелчок по образцу в любом месте открывает выбор цвета. -->
+      <div class="color-preview" id="color-preview" style="background:#000000" data-tip="Выбрать свой цвет">
+        <input type="color" id="color-input" value="#000000">
+      </div>
+      <div class="palette" id="palette"></div>
+      <div class="sidebar-title sub">Последние</div>
+      <div class="palette recent" id="recent-colors"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="side-row"><span class="sidebar-title">Размер</span><span id="size-display">4 px</span></div>
+      <input type="range" id="size-input" min="1" max="100" value="4">
+      <div class="side-row"><span class="sidebar-title">Прозрачность</span><span id="opacity-display">100%</span></div>
+      <input type="range" id="opacity-input" min="1" max="100" value="100">
+      <label class="side-check" data-tip="Прямоугольник, эллипс, треугольник, звезда, сердце">
+        <input type="checkbox" id="fill-shapes" onchange="setFillMode(this.checked ? 'both' : 'outline')">
+        Заливать фигуры
+      </label>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="side-row"><span class="sidebar-title">Холст</span><span id="info-canvas">900 × 600 px</span></div>
+      <div class="size-inputs">
+        <input type="number" id="width-input" value="900" data-tip="Ширина, px">
+        <input type="number" id="height-input" value="600" data-tip="Высота, px">
+      </div>
+      <button class="side-btn wide" onclick="resizeCanvas()">Изменить размер</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Быстрые действия</div>
+      <div class="quick-grid">
+        <button class="side-btn" onclick="rotateCanvas()" data-tip="Повернуть 90° по часовой">↻ 90°</button>
+        <button class="side-btn" onclick="rotateCanvasCCW()" data-tip="Повернуть 90° против часовой">↺ 90°</button>
+        <button class="side-btn" onclick="flipH()" data-tip="Отразить горизонтально">↔ Отразить</button>
+        <button class="side-btn" onclick="flipV()" data-tip="Отразить вертикально">↕ Отразить</button>
       </div>
     </div>
 
@@ -1770,37 +1816,9 @@
         <span id="layer-opacity-value">100%</span>
       </div>
       <div class="layer-buttons">
-        <button onclick="addLayer()" title="Добавить слой">+ Слой</button>
-        <button onclick="removeLayer()" title="Удалить активный слой">− Слой</button>
+        <button class="side-btn" onclick="addLayer()" data-tip="Добавить слой">+ Слой</button>
+        <button class="side-btn" onclick="removeLayer()" data-tip="Удалить активный слой">− Слой</button>
       </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">Холст</div>
-      <div class="info-row"><span>Ширина</span><span id="info-width">900 px</span></div>
-      <div class="info-row"><span>Высота</span><span id="info-height">600 px</span></div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">Текущий инструмент</div>
-      <div class="info-row"><span>Тип</span><span id="info-tool">Карандаш</span></div>
-      <div class="info-row"><span>Размер</span><span id="info-size">4 px</span></div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">Размер холста</div>
-      <div style="display:flex; gap:6px; margin-bottom:6px;">
-        <input type="number" id="width-input" value="900" style="width:80px; padding:6px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:4px; font-size:12px;">
-        <input type="number" id="height-input" value="600" style="width:80px; padding:6px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:4px; font-size:12px;">
-      </div>
-      <button onclick="resizeCanvas()" style="width:100%; padding:8px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer; font-size:12px;">Применить</button>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">Быстрые действия</div>
-      <button onclick="rotateCanvas()" style="width:100%; padding:8px; margin-bottom:6px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer; font-size:12px;">Повернуть 90°</button>
-      <button onclick="flipH()" style="width:100%; padding:8px; margin-bottom:6px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer; font-size:12px;">Отразить ↔</button>
-      <button onclick="flipV()" style="width:100%; padding:8px; background:var(--bg-3); border:1px solid var(--border); color:var(--text); border-radius:6px; cursor:pointer; font-size:12px;">Отразить ↕</button>
     </div>
 
     <div class="sidebar-section">
@@ -2356,29 +2374,55 @@ state.savedDisabledKey = disabledKey();
 renderLayersPanel();
 
 // Палитра цветов
+// Палитра: пять рядов по восемь - серые, чистые, тёмные, средние, светлые. Та же, что
+// в WPF-версии (MainViewModel.InitPalette), в том же порядке.
 const colors = [
-  '#000000','#434343','#666666','#999999','#b7b7b7','#cccccc','#d9d9d9','#efefef','#f3f3f3','#ffffff',
-  '#980000','#ff0000','#ff9900','#ffff00','#00ff00','#00ffff','#4a86e8','#0000ff','#9900ff','#ff00ff',
-  '#e6b8af','#f4cccc','#fce5cd','#fff2cc','#d9ead3','#d0e0e3','#c9daf8','#cfe2f3','#d9d2e9','#ead1dc',
-  '#cc4125','#e06666','#f6b26b','#ffd966','#93c47d','#76a5af','#6d9eeb','#6fa8dc','#8e7cc3','#c27ba0'
+  '#000000','#434343','#666666','#999999','#b7b7b7','#d9d9d9','#efefef','#ffffff',
+  '#ff0000','#ff9900','#ffff00','#00ff00','#00ffff','#0000ff','#9900ff','#ff00ff',
+  '#980000','#b45f06','#bf9000','#38761d','#134f5c','#1155cc','#351c75','#741b47',
+  '#e06666','#f6b26b','#ffd966','#93c47d','#76a5af','#6d9eeb','#8e7cc3','#c27ba0',
+  '#f4cccc','#fce5cd','#fff2cc','#d9ead3','#d0e0e3','#c9daf8','#d9d2e9','#ead1dc'
 ];
 
-const palette = document.getElementById('palette');
-colors.forEach(c => {
+function makeSwatch(c) {
   const s = document.createElement('div');
   s.className = 'color-swatch';
   s.style.background = c;
+  s.dataset.tip = c.toUpperCase();
   s.onclick = () => setColor(c);
-  palette.appendChild(s);
-});
+  return s;
+}
 
-function setColor(c) {
+const palette = document.getElementById('palette');
+colors.forEach(c => palette.appendChild(makeSwatch(c)));
+
+// «Последние»: до восьми, свежий первым, без повторов - как RecentColors в WPF-версии.
+const RECENT_MAX = 8;
+let recentColors = [];
+function addRecentColor(c) {
+  c = c.toLowerCase();
+  recentColors = [c, ...recentColors.filter(x => x !== c)].slice(0, RECENT_MAX);
+  const box = document.getElementById('recent-colors');
+  box.innerHTML = '';
+  recentColors.forEach(x => box.appendChild(makeSwatch(x)));
+  markActiveSwatches();
+}
+
+function markActiveSwatches() {
+  document.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.style.backgroundColor === hexToRgb(state.color));
+  });
+}
+
+// live - цвет ещё подбирается в окне выбора цвета: в «Последние» он попадёт, когда окно
+// закроют, а не каждым промежуточным оттенком.
+function setColor(c, live) {
+  const changed = String(state.color).toLowerCase() !== String(c).toLowerCase();
   state.color = c;
   document.getElementById('color-preview').style.background = c;
   document.getElementById('color-input').value = c;
-  document.querySelectorAll('.color-swatch').forEach(s => {
-    s.classList.toggle('active', s.style.backgroundColor === hexToRgb(c));
-  });
+  if (changed && !live) addRecentColor(c);
+  else markActiveSwatches();
 }
 
 // ============ PIXEL PREVIEW В СТАТУСБАРЕ ============
@@ -2523,8 +2567,16 @@ function hexToRgb(hex) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-document.getElementById('color-input').addEventListener('input', (e) => {
-  setColor(e.target.value);
+// Окно выбора цвета: пока его крутят - цвет живой, закрыли - цвет идёт в «Последние»,
+// если он не тот, что был до открытия.
+let colorBeforePicker = null;
+const colorInput = document.getElementById('color-input');
+colorInput.addEventListener('click', () => { colorBeforePicker = String(state.color).toLowerCase(); });
+colorInput.addEventListener('input', (e) => setColor(e.target.value, true));
+colorInput.addEventListener('change', (e) => {
+  const c = e.target.value.toLowerCase();
+  if (c !== colorBeforePicker) addRecentColor(c);
+  colorBeforePicker = null;
 });
 
 // Инструменты
@@ -2588,7 +2640,6 @@ document.querySelectorAll('[data-tool]').forEach(btn => {
     document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.tool = btn.dataset.tool;
-    document.getElementById('info-tool').textContent = toolNames[state.tool];
     syncSizeForTool();
     // Сброс обычного выделения при смене
     if (state.tool !== 'select' && state.tool !== 'crop' && state.tool !== 'quad') {
@@ -2640,8 +2691,7 @@ function setToolSize(v) {
   if (state.tool === 'eraser') state.eraserSize = v;
   else if (BRUSH_GROUP.includes(state.tool)) state.brushSize = v;
   sizeInput.value = v;
-  document.getElementById('size-display').textContent = v;
-  document.getElementById('info-size').textContent = v + ' px';
+  document.getElementById('size-display').textContent = v + ' px';
   updateBrushCursor();
   return v;
 }
@@ -2661,13 +2711,12 @@ document.getElementById('opacity-input').addEventListener('input', (e) => {
   document.getElementById('opacity-display').textContent = e.target.value + '%';
 });
 
-// Режим заливки фигур: UI убран, оставляем безопасный сеттер на случай вызова из меню
+// Заливка фигур. Флажок «Заливать фигуры» - как в WPF-версии: залитая фигура там
+// рисуется заливкой и обводкой поверх, это режим 'both'. 'solid' остаётся для кода.
 function setFillMode(m) {
   if (!['outline', 'solid', 'both'].includes(m)) return;
   state.fillMode = m;
-  document.querySelectorAll('.fill-btn').forEach(b => {
-    b.classList.toggle('active', b.id === 'fill-' + m);
-  });
+  document.getElementById('fill-shapes').checked = m !== 'outline';
 }
 
 // Координаты
@@ -5042,8 +5091,72 @@ async function loadAppVersion() {
 }
 
 function showAbout() {
-  alert('Paint Pro' + (appVersion ? ' ' + appVersion : '')
-      + '\nГрафический редактор на HTML5 Canvas.');
+  glassAlert('Paint Pro' + (appVersion ? ' ' + appVersion : '')
+      + '\nГрафический редактор на HTML5 Canvas.', 'О программе');
+}
+
+// ============ ОКНА СООБЩЕНИЙ ============
+// Вместо alert и confirm: те белые в любой теме. buttons - [{label, value, primary,
+// cancel}]; Enter - основная кнопка, Escape - кнопка отмены. Пока окно открыто,
+// горячие клавиши редактора не срабатывают.
+function glassDialog(text, title, buttons) {
+  return new Promise((resolve) => {
+    const back = document.createElement('div');
+    back.className = 'gm-backdrop';
+    const box = document.createElement('div');
+    box.className = 'gm-box';
+    box.setAttribute('role', 'dialog');
+    const t = document.createElement('div');
+    t.className = 'gm-title';
+    t.textContent = title || 'Paint Pro';
+    const p = document.createElement('div');
+    p.className = 'gm-text';
+    p.textContent = text;
+    const row = document.createElement('div');
+    row.className = 'gm-buttons';
+    const primary = buttons.find(b => b.primary) || buttons[0];
+    const cancel = buttons.find(b => b.cancel) || buttons[buttons.length - 1];
+    const close = (v) => {
+      document.removeEventListener('keydown', onKey, true);
+      back.remove();
+      resolve(v);
+    };
+    function onKey(e) {
+      if (e.key === 'Tab') return;
+      e.stopPropagation();
+      e.preventDefault();
+      if (e.key === 'Escape') close(cancel.value);
+      else if (e.key === 'Enter') {
+        const f = document.activeElement;
+        if (f && f.parentElement === row) f.click(); else close(primary.value);
+      }
+    }
+    let focusBtn = null;
+    buttons.forEach(b => {
+      const btn = document.createElement('button');
+      btn.className = 'side-btn' + (b === primary ? ' primary' : '');
+      btn.textContent = b.label;
+      btn.onclick = () => close(b.value);
+      row.appendChild(btn);
+      if (b === primary) focusBtn = btn;
+    });
+    box.append(t, p, row);
+    back.appendChild(box);
+    document.body.appendChild(back);
+    document.addEventListener('keydown', onKey, true);
+    if (focusBtn) focusBtn.focus();
+  });
+}
+
+function glassAlert(text, title) {
+  return glassDialog(text, title, [{ label: 'OK', value: true, primary: true, cancel: true }]);
+}
+
+function glassConfirm(text, title) {
+  return glassDialog(text, title, [
+    { label: 'Да', value: true, primary: true },
+    { label: 'Нет', value: false, cancel: true },
+  ]);
 }
 
 // Спросить про несохранённую работу перед заменой документа. Три кнопки, как при
@@ -5056,7 +5169,7 @@ async function confirmDiscard() {
     if (answer === 0) return await saveCanvas(false);
     return true;
   }
-  return confirm('Несохранённые изменения будут потеряны. Продолжить?');
+  return await glassConfirm('Несохранённые изменения будут потеряны. Продолжить?');
 }
 
 // Открытый файл заменяет документ целиком: холст под размер картинки, содержимое - сама
@@ -5068,7 +5181,7 @@ async function confirmDiscard() {
 async function openImageAsDocument(dataUrl, fileName) {
   if (!await confirmDiscard()) return;
   const img = new Image();
-  img.onerror = () => alert('Не удалось прочитать изображение.');
+  img.onerror = () => glassAlert('Не удалось прочитать изображение.');
   img.onload = () => {
     if (state.floating) {
       state.floating.preCanvas = null;
@@ -5172,7 +5285,7 @@ async function saveCanvas(saveAs = false) {
     const target = await window.electronAPI.pickSavePath(defaultName, saveAs);
     if (!target || target.canceled || !target.filePath) return false;
     if (target.changed) {
-      alert('Этот формат записывать нельзя, файл сохранён как PNG:\n' + target.filePath);
+      glassAlert('Этот формат записывать нельзя, файл сохранён как PNG:\n' + target.filePath);
     }
     const { mime, quality } = encoderFor(target.filePath);
     const dataUrl = canvas.toDataURL(mime, quality);
@@ -5184,7 +5297,7 @@ async function saveCanvas(saveAs = false) {
   state.savedDisabledKey = disabledKey();
       return true;
     }
-    if (result && result.error) alert('Ошибка сохранения: ' + result.error);
+    if (result && result.error) glassAlert('Ошибка сохранения: ' + result.error);
     return false;
   }
 
@@ -5228,6 +5341,13 @@ window.addEventListener('beforeunload', (e) => {
   e.returnValue = '';
 });
 
+// Буква клавиши независимо от раскладки: e.code - физическая клавиша («KeyZ»), e.key -
+// то, что она печатает. На русской раскладке Ctrl+Z приходил как «я» и не отменял.
+function keyLetter(e) {
+  if (e.code && /^Key[A-Z]$/.test(e.code)) return e.code.slice(3).toLowerCase();
+  return String(e.key).toLowerCase();
+}
+
 // Ответ на запрос закрытия от main-процесса.
 async function handleCloseRequest() {
   // Отзыв о том, что скрипт жив и вопрос сейчас будет: main держит пятисекундную страховку
@@ -5242,8 +5362,28 @@ async function handleCloseRequest() {
   if (await saveCanvas(false)) window.electronAPI.confirmClose();
 }
 
-function clearCanvas() {
-  if (!confirm('Очистить холст?')) return;
+// Delete и «Правка → Удалить».
+function deleteSelectionContent() {
+  if (state.floating) {
+    // Удаление должно оставить дыру, а не вернуть объект на место:
+    // cancelFloating откатывал подъём, и Delete визуально не делал ничего.
+    if (deleteFloating()) saveHistory('Удаление');
+    return;
+  }
+  if (state.selection) {
+    if (!eraseRegion(state.selection.x, state.selection.y, state.selection.w, state.selection.h)) return;
+    hideSelection();
+    // Стирание по нетронутой бумаге ничего не меняет - saveHistory сам такую запись
+    // отбросит, а признак несохранённой работы не включится.
+    saveHistory('Удаление');
+  } else {
+    hint('Удалять нечего: сначала выделите область инструментом «Выделение» (S).');
+  }
+}
+
+async function clearCanvas() {
+  if (!await glassConfirm('Очистить холст? Все слои станут пустыми, бумага - белой. Отменить можно Ctrl+Z.',
+                           'Очистка холста')) return;
   // Сначала сбрасываем floating — иначе очистка визуально не сработает: он живёт
   // на previewCanvas поверх холста и через fillWhite не убирается. Именно
   // deleteFloating, а не commitFloating: применять pickup перед заливкой белым
@@ -5261,7 +5401,7 @@ function resizeCanvas() {
   // оставалось отвергнутое число, холст был прежний, и понять, что произошло, было
   // нельзя. Верхняя и нижняя границы отказывают одинаково.
   if (!w || !h || w < MIN_CANVAS_SIDE || h < MIN_CANVAS_SIDE || !canvasSizeAllowed(w, h)) {
-    alert('Размер должен быть от ' + MIN_CANVAS_SIDE + ' до ' + MAX_CANVAS_SIDE
+    glassAlert('Размер должен быть от ' + MIN_CANVAS_SIDE + ' до ' + MAX_CANVAS_SIDE
         + ' по каждой стороне\nи не больше ' + (MAX_CANVAS_PIXELS / 1000000)
         + ' млн пикселей всего.');
     updateCanvasInfo();
@@ -5276,7 +5416,12 @@ function resizeCanvas() {
   saveHistory('Размер холста');
 }
 
-function rotateCanvas() {
+function rotateCanvas() { rotateCanvasBy(1); }
+function rotateCanvasCCW() { rotateCanvasBy(-1); }
+
+// dir: 1 - по часовой, -1 - против. Против часовой раньше не было вовсе: чтобы
+// повернуть влево, приходилось крутить вправо три раза и получать три записи в ленте.
+function rotateCanvasBy(dir) {
   if (state.floating) commitFloating();
   // Рамка выделения осталась бы висеть на старом месте, а selectionReady
   // остался бы поднятым для области, которой там уже нет.
@@ -5285,13 +5430,13 @@ function rotateCanvas() {
   const ow = canvas.width, oh = canvas.height;
   transformLayers(nw, nh, (g, src) => {
     g.translate(nw / 2, nh / 2);
-    g.rotate(Math.PI / 2);
+    g.rotate(dir * Math.PI / 2);
     g.drawImage(src, -ow / 2, -oh / 2);
   });
   setCanvasSize(nw, nh);
   composite();
   updateCanvasInfo();
-  saveHistory('Поворот 90°');
+  saveHistory(dir > 0 ? 'Поворот по часовой' : 'Поворот против часовой');
 }
 
 function flipH() {
@@ -5344,8 +5489,7 @@ function selectAll() {
 }
 
 function updateCanvasInfo() {
-  document.getElementById('info-width').textContent = canvas.width + ' px';
-  document.getElementById('info-height').textContent = canvas.height + ' px';
+  document.getElementById('info-canvas').textContent = canvas.width + ' × ' + canvas.height + ' px';
   document.getElementById('width-input').value = canvas.width;
   document.getElementById('height-input').value = canvas.height;
 }
@@ -5365,7 +5509,7 @@ document.addEventListener('keydown', (e) => {
     // С зажатым Shift e.key приходит заглавной. Сравнение с маленькой буквой
     // убивало все шифтованные сочетания: «Сохранить как… Ctrl ⇧ S» стояло в меню,
     // но не работало. Ctrl+N там же стоял и не был заведён вовсе.
-    const k = e.key.toLowerCase();
+    const k = keyLetter(e);
     if (k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if (k === 'y') { e.preventDefault(); redo(); }
     else if (k === 's') { e.preventDefault(); saveCanvas(e.shiftKey); }
@@ -5384,9 +5528,12 @@ document.addEventListener('keydown', (e) => {
     else if (k === '0') { e.preventDefault(); zoomReset(); }
     return;
   }
-  const map = {s:'select', h:'hand', p:'pencil', b:'brush', m:'marker', e:'eraser', g:'fill', i:'picker', t:'text', q:'quad'};
-  if (map[e.key.toLowerCase()]) {
-    document.querySelector(`[data-tool="${map[e.key.toLowerCase()]}"]`).click();
+  // Те же буквы, что в WPF-версии: L, R, O и C там были, здесь их не хватало.
+  const map = {s:'select', h:'hand', p:'pencil', b:'brush', m:'marker', e:'eraser', g:'fill', i:'picker',
+               t:'text', q:'quad', l:'line', r:'rect', o:'ellipse', c:'crop'};
+  const letter = keyLetter(e);
+  if (map[letter] && !e.altKey) {
+    document.querySelector(`[data-tool="${map[letter]}"]`).click();
   }
   // [ / ] — поворот выделения на ±90° (Shift = ±15°). Если есть selection — поднимаем в floating.
   // Для quad-полигона поворачиваем и f.rotation (для pickup), и 4 точки вокруг центра bbox.
@@ -5415,22 +5562,8 @@ document.addEventListener('keydown', (e) => {
     }
   }
   if (e.key === 'Delete') {
-    if (state.floating) {
-      // Удаление должно оставить дыру, а не вернуть объект на место:
-      // cancelFloating откатывал подъём, и Delete визуально не делал ничего.
-      e.preventDefault();
-      if (deleteFloating()) saveHistory('Удаление');
-      return;
-    }
-    if (state.selection) {
-      if (!eraseRegion(state.selection.x, state.selection.y, state.selection.w, state.selection.h)) return;
-      hideSelection();
-      // Стирание по нетронутой бумаге ничего не меняет - saveHistory сам такую запись
-      // отбросит, а признак несохранённой работы не включится.
-      saveHistory('Удаление');
-    } else {
-      hint('Удалять нечего: сначала выделите область инструментом «Выделение» (S).');
-    }
+    e.preventDefault();
+    deleteSelectionContent();
   }
   if (e.key === 'Escape') {
     if (state.floating) {
@@ -5848,7 +5981,7 @@ if (window.electronAPI) {
       const filePath = window.electronAPI.getFilePath(file);
       if (filePath) {
         const result = await window.electronAPI.readDroppedFile(filePath);
-        if (result && result.error) { alert('Не удалось открыть файл: ' + result.error); break; }
+        if (result && result.error) { glassAlert('Не удалось открыть файл: ' + result.error); break; }
         if (result && result.dataUrl) {
           openImageAsDocument(result.dataUrl, result.fileName);
           break; // Открываем только первый файл
@@ -5879,10 +6012,10 @@ async function openViaDialog() {
   try {
     const data = await window.electronAPI.openFileDialog();
     if (!data) return;                       // диалог отменили
-    if (data.error) { alert('Не удалось открыть файл: ' + data.error); return; }
+    if (data.error) { glassAlert('Не удалось открыть файл: ' + data.error); return; }
     openImageAsDocument(data.dataUrl, data.fileName);
   } catch (err) {
-    alert('Не удалось открыть файл: ' + (err && err.message ? err.message : err));
+    glassAlert('Не удалось открыть файл: ' + (err && err.message ? err.message : err));
   }
 }
 
@@ -5902,7 +6035,7 @@ function openViaFileInput() {
     cleanup();
     if (!file) return;
     const reader = new FileReader();
-    reader.onerror = () => alert('Не удалось прочитать файл.');
+    reader.onerror = () => glassAlert('Не удалось прочитать файл.');
     reader.onload = () => openImageAsDocument(String(reader.result), file.name);
     reader.readAsDataURL(file);
   };
@@ -6022,6 +6155,87 @@ updateBrushCursor();
 })();
 
 // ============ ТУЛТИПЫ (data-tip) ============
+// ============ ШИРИНА БОКОВЫХ ПАНЕЛЕЙ ============
+// Обе панели можно сузить или расширить за внутренний край; ширина запоминается. Пределы
+// по содержимому, чтобы ничего не налезало: слева инструменты встают в один, два или три
+// столбца, справа восемь образцов палитры в ряд. На узком окне холсту остаётся не меньше
+// canvasMin: сначала сужается правая панель, потом левая, а запомненная ширина не
+// меняется. Правило и числа - те же, что PanelWidths в WPF-версии (это проверяет её тест).
+const PANELS = { leftMin: 88, leftDefault: 142, leftMax: 208, rightMin: 260, rightDefault: 290, rightMax: 420, canvasMin: 300, chrome: 40 };
+const PANELS_KEY = 'paintpro.panels';
+const clampLeftPanel = (w) => Number.isFinite(w) ? Math.min(Math.max(w, PANELS.leftMin), PANELS.leftMax) : PANELS.leftDefault;
+const clampRightPanel = (w) => Number.isFinite(w) ? Math.min(Math.max(w, PANELS.rightMin), PANELS.rightMax) : PANELS.rightDefault;
+
+function fitPanels(left, right, windowWidth) {
+  // Целые пиксели и вниз: уложенное укладывается так же ещё раз, без дрожи в знаках.
+  left = Math.floor(clampLeftPanel(left));
+  right = Math.floor(clampRightPanel(right));
+  if (!Number.isFinite(windowWidth)) return [left, right];
+  const room = windowWidth - PANELS.chrome - PANELS.canvasMin;
+  if (left + right > room) right = Math.max(PANELS.rightMin, Math.floor(room - left));
+  if (left + right > room) left = Math.max(PANELS.leftMin, Math.floor(room - right));
+  return [left, right];
+}
+
+const panelPref = { left: PANELS.leftDefault, right: PANELS.rightDefault };
+try {
+  const saved = JSON.parse(localStorage.getItem(PANELS_KEY));
+  if (saved && typeof saved === 'object') {
+    panelPref.left = clampLeftPanel(Number(saved.left));
+    panelPref.right = clampRightPanel(Number(saved.right));
+  }
+} catch (_) { /* нет хранилища или мусор - панели по умолчанию */ }
+
+function savePanels() {
+  try { localStorage.setItem(PANELS_KEY, JSON.stringify(panelPref)); } catch (_) { /* не беда */ }
+}
+
+function applyPanels() {
+  const [l, r] = fitPanels(panelPref.left, panelPref.right, window.innerWidth);
+  document.documentElement.style.setProperty('--tools-w', l + 'px');
+  document.documentElement.style.setProperty('--side-w', r + 'px');
+}
+window.addEventListener('resize', applyPanels);
+applyPanels();
+
+(function setupPanelGrips() {
+  for (const [id, side] of [['grip-left', 'left'], ['grip-right', 'right']]) {
+    const grip = document.getElementById(id);
+    const panel = document.querySelector(side === 'left' ? '.tools-panel' : '.sidebar');
+    let startX = 0, startW = 0;
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startW = panel.getBoundingClientRect().width;
+      grip.setPointerCapture(e.pointerId);
+      grip.classList.add('dragging');
+    });
+    grip.addEventListener('pointermove', (e) => {
+      if (!grip.hasPointerCapture(e.pointerId)) return;
+      const dx = e.clientX - startX;
+      // Край правой панели - левый: тянут влево - панель шире.
+      if (side === 'left') panelPref.left = clampLeftPanel(startW + dx);
+      else panelPref.right = clampRightPanel(startW - dx);
+      applyPanels();
+    });
+    const end = (e) => {
+      if (!grip.hasPointerCapture(e.pointerId)) return;
+      grip.releasePointerCapture(e.pointerId);
+      grip.classList.remove('dragging');
+      savePanels();
+    };
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+    grip.addEventListener('dblclick', () => {
+      if (side === 'left') panelPref.left = PANELS.leftDefault;
+      else panelPref.right = PANELS.rightDefault;
+      applyPanels();
+      savePanels();
+    });
+  }
+})();
+
 (function setupTooltips() {
   const tip = document.getElementById('tip');
   if (!tip) return;

@@ -83,6 +83,16 @@ class App {
     await this.page.waitForFunction((t) => state.tool === t, tool);
   }
 
+  /**
+   * Ответить в окне вопроса темы (glassDialog) кнопкой с этой надписью. Окно открывается
+   * без await: действие ждёт ответа, и evaluate с ним повис бы.
+   */
+  async answer(label) {
+    await this.page.locator('.gm-box button', { hasText: label }).click();
+    await this.page.waitForFunction(() => !document.querySelector('.gm-backdrop'));
+    await this.settle();
+  }
+
   async setColor(hex) {
     await this.page.evaluate((c) => setColor(c), hex);
   }
