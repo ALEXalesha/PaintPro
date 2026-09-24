@@ -108,3 +108,14 @@ test('файл ничего не тянет из сети', async ({ page }) => 
   await page.waitForTimeout(400);
   expect(external, 'файл тянет что-то извне: ' + external.join(', ')).toEqual([]);
 });
+
+test('каждая сборка кладёт в dist и файл для браузера', () => {
+  // Установщик, portable и один .html - три вида одной программы, и в dist после любой
+  // сборки должны лежать все, какие она делает, плюс браузерный. npm сам зовёт pre<имя>.
+  const scripts = require('../package.json').scripts;
+  const builds = Object.keys(scripts).filter((k) => /electron-builder/.test(scripts[k]));
+  expect(builds.length).toBeGreaterThan(0);
+  for (const name of builds) {
+    expect(scripts['pre' + name], `перед «npm run ${name}» не собирается браузерный файл`).toBe('node tools/build-web.js');
+  }
+});

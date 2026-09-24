@@ -24,8 +24,8 @@
 | Папка | [`paint-pro-electron/`](paint-pro-electron/README.ru.md) | [`src/`](docs/CSHARP.ru.md), [`tests/`](tests/PaintPro.Tests) |
 | Стек | один HTML-файл, canvas, чистый JS; Electron даёт окно, меню и диалоги файлов | C# 12, WPF, .NET 8, SkiaSharp, MVVM, Command Pattern |
 | Сборки | установщик, portable и один `.html`, который работает в любом браузере без сети | установщик и self-contained single `.exe` |
-| Версия | 1.15.0 | 1.27.0 |
-| Проверки | 335 проверок Playwright в Chromium + 14 по настоящему приложению | 623 теста xUnit, среди них два фаззера |
+| Версия | 1.16.0 | 1.28.0 |
+| Проверки | 376 проверок Playwright в Chromium + 17 по настоящему приложению | 708 тестов xUnit, среди них два фаззера |
 | Документация | [README](paint-pro-electron/README.ru.md), [устройство](paint-pro-electron/docs/ARCHITECTURE.md) | [README](docs/CSHARP.ru.md) ([English](docs/CSHARP.md)) |
 
 У обеих девятнадцать инструментов (от руки, заливка и пипетка, текст, восемь фигур,

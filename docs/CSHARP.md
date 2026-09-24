@@ -16,7 +16,7 @@ A raster image editor in the Apple Liquid Glass style, the native twin of the El
   - `Tools/`: `ITool` and 19 implementations (pencil, brush, marker, eraser, fill, eyedropper, text, line, rectangle, ellipse, triangle, right triangle, star, arrow, heart, select, four-point polygon, crop, hand).
   - `Services/`: history with limits by depth and by memory, files, clipboard, geometry, view arithmetic (zoom, scrolling, handle positions) moved out of code-behind so it can be tested.
   - `ViewModels/`, `Views/`: MVVM; `Document.Render` assembles the layers, the tool preview and the floating object, and the same function feeds the screen, the saved file and the eyedropper.
-- `tests/PaintPro.Tests/`: 623 xUnit tests.
+- `tests/PaintPro.Tests/`: 708 xUnit tests.
 - `installer/PaintPro.iss`: Inno Setup.
 - `tools/PaintPro.Screenshots/`: the README frames.
 
