@@ -255,6 +255,8 @@
                     <MenuItem Header="Повернуть 90° против часовой" Command="{Binding RotateMinus90Command}"/>
                     <MenuItem Header="Отразить горизонтально" Command="{Binding FlipHorizontalCommand}"/>
                     <MenuItem Header="Отразить вертикально"   Command="{Binding FlipVerticalCommand}"/>
+                    <Separator/>
+                    <MenuItem Header="Очистить холст" Command="{Binding ClearCanvasCommand}"/>
                 </MenuItem>
                 <MenuItem Header="_Справка">
                     <MenuItem Header="О программе" Click="OnAboutClick"/>
@@ -284,6 +286,8 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
                         <TextBlock x:Name="StatusPos" Text="—" Foreground="{DynamicResource TextDim}"/>
+                        <!-- Размер выделения или поднятого объекта, как в Electron-версии. -->
+                        <TextBlock Text="{Binding SelectionSizeLabel}" Margin="16,0,0,0" Foreground="{DynamicResource TextDim}"/>
                         <!-- Объяснение, почему жест ничего не сделал: скрытый слой и подобное.
                              Пустая строка прячет всю строку целиком. -->
                         <TextBlock Text="{Binding StatusHint}" Margin="16,0,0,0"
@@ -546,7 +550,8 @@
                                     Content="+ слой" Padding="6,2" FontSize="11"
                                     Command="{Binding AddLayerCommand}"/>
                         </Grid>
-                        <ItemsControl ItemsSource="{Binding LayerItems}">
+                        <!-- Верхний слой первым, как в Electron-версии. -->
+                        <ItemsControl ItemsSource="{Binding LayerItemsTopFirst}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Margin="0,2" Padding="6" CornerRadius="8"
@@ -567,6 +572,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <CheckBox Grid.Column="0"
                                                       IsChecked="{Binding Visible, Mode=TwoWay}"
@@ -579,7 +585,18 @@
                                                 <Slider Minimum="0" Maximum="1" Value="{Binding Opacity, Mode=TwoWay}"
                                                         Style="{DynamicResource GlassSlider}" Height="16"/>
                                             </StackPanel>
-                                            <Button Grid.Column="2" Style="{DynamicResource GhostButton}"
+                                            <!-- Порядок слоёв, как «▲ ▼» Electron-версии. -->
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="4,0,0,0">
+                                                <Button Style="{DynamicResource GhostButton}" Content="▲" FontSize="8" Padding="5,1" Margin="0,0,0,2"
+                                                        ToolTip="Выше"
+                                                        Command="{Binding DataContext.MoveLayerUpCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Style="{DynamicResource GhostButton}" Content="▼" FontSize="8" Padding="5,1" Margin="0"
+                                                        ToolTip="Ниже"
+                                                        Command="{Binding DataContext.MoveLayerDownCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="3" Style="{DynamicResource GhostButton}"
                                                     Content="×" FontSize="14" Padding="4,0"
                                                     Click="OnLayerDeleteClick" Tag="{Binding}"
                                                     ToolTip="Удалить слой"/>

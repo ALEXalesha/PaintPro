@@ -35,6 +35,16 @@ public partial class MainViewModel : ObservableObject
     /// <summary>VM-wrapped layer rows; rebuilt whenever Document.Layers changes.</summary>
     public ObservableCollection<LayerListItemViewModel> LayerItems { get; } = new();
 
+    /// <summary>
+    /// Те же строки для панели - верхний слой первым, как в Electron-версии и в любом
+    /// редакторе. <see cref="LayerItems"/> остаётся в порядке стопки: по нему ходят команды
+    /// и тесты.
+    /// </summary>
+    public ObservableCollection<LayerListItemViewModel> LayerItemsTopFirst { get; } = new();
+
+    /// <summary>Размер выделения или поднятого объекта для строки состояния; пусто - нет ни того, ни другого.</summary>
+    [ObservableProperty] private string _selectionSizeLabel = "";
+
     public MainViewModel()
     {
         Document = new Document(Document.DefaultWidth, Document.DefaultHeight);
@@ -91,6 +101,7 @@ public partial class MainViewModel : ObservableObject
                 or nameof(Document.CanvasWidth) or nameof(Document.CanvasHeight))
             {
                 InvalidateCanvas?.Invoke();
+                UpdateSelectionSize();
             }
             // Холст стал больше - прежний масштаб может оказаться неподъёмным. Открытие
             // фотографии в документ, увеличенный до восьмикратного, просило три гигабайта
@@ -154,6 +165,62 @@ public partial class MainViewModel : ObservableObject
             };
             LayerItems.Add(item);
         }
+        LayerItemsTopFirst.Clear();
+        for (int i = LayerItems.Count - 1; i >= 0; i--) LayerItemsTopFirst.Add(LayerItems[i]);
+    }
+
+    /// <summary>
+    /// Слой на ступень выше или ниже в стопке (1.28.0, как «▲ ▼» Electron-версии). Бумага
+    /// всегда внизу; отказ называет причину - их две, и они разные.
+    /// </summary>
+    public bool MoveLayer(int index, int delta)
+    {
+        int to = index + delta;
+        if (index <= 0 || to <= 0 || index >= Document.Layers.Count || to >= Document.Layers.Count)
+        {
+            ShowHint(index == 0 || to == 0
+                ? "Бумага документа всегда лежит снизу."
+                : "Слой уже с краю стопки: двигать его дальше некуда.");
+            return false;
+        }
+        Document.CommitFloating();
+        Document.History.ExecuteAndPush(new Commands.LayerMoveCommand(index, to), Document);
+        return true;
+    }
+
+    [RelayCommand] private void MoveLayerUp(LayerListItemViewModel? item)
+    {
+        if (item is not null) MoveLayer(Document.Layers.IndexOf(item.Layer), +1);
+    }
+
+    [RelayCommand] private void MoveLayerDown(LayerListItemViewModel? item)
+    {
+        if (item is not null) MoveLayer(Document.Layers.IndexOf(item.Layer), -1);
+    }
+
+    /// <summary>«Очистить холст» с вопросом, как в Electron-версии.</summary>
+    [RelayCommand] private void ClearCanvas()
+    {
+        if (Views.GlassMessage.Show("Очистить холст? Все слои станут пустыми, бумага - белой. Отменить можно Ctrl+Z.",
+                "Очистка холста", System.Windows.MessageBoxButton.YesNo) != System.Windows.MessageBoxResult.Yes) return;
+        ClearCanvasNow();
+    }
+
+    /// <summary>Сама очистка, без вопроса: её зовут тесты.</summary>
+    public void ClearCanvasNow()
+    {
+        Document.CommitFloating();
+        Document.Selection = null;
+        Document.History.ExecuteAndPush(Commands.DocumentTransform.Clear(Document), Document);
+        InvalidateCanvas?.Invoke();
+    }
+
+    private void UpdateSelectionSize()
+    {
+        SKRect? box = Document.FloatingPickup is { } f ? SKRect.Create(f.X, f.Y, f.Width, f.Height) : Document.Selection?.BoundingBox;
+        SelectionSizeLabel = box is { } b && b.Width >= 1 && b.Height >= 1
+            ? $"Выделение: {(int)MathF.Round(b.Width)} × {(int)MathF.Round(b.Height)}"
+            : "";
     }
 
     /// <summary>Когда и по какому слою последний раз двигали ползунок прозрачности.</summary>

@@ -29,6 +29,14 @@ public static class DocumentTransform
         });
     }
 
+    /// <summary>
+    /// «Очистить холст» (1.28.0, как в Electron-версии): все слои пустые, бумага белая, сами
+    /// слои с именами, видимостью и прозрачностью остаются. Одна запись в ленте.
+    /// </summary>
+    public static ReplaceAllLayersCommand Clear(Document doc) =>
+        Build(doc, "Очистка холста", doc.CanvasWidth, doc.CanvasHeight,
+            (c, _) => c.ClipRect(SKRect.Empty)); // старое содержимое не рисуется вовсе
+
     public static ReplaceAllLayersCommand Flip(Document doc, bool horizontal)
     {
         int w = doc.CanvasWidth, h = doc.CanvasHeight;
