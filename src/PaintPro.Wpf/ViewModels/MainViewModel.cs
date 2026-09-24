@@ -111,6 +111,7 @@ public partial class MainViewModel : ObservableObject
             {
                 InvalidateCanvas?.Invoke();
                 UpdateSelectionSize();
+                if (e.PropertyName is nameof(Document.CanvasWidth) or nameof(Document.CanvasHeight)) SyncCanvasSizeText();
             }
             // Холст стал больше - прежний масштаб может оказаться неподъёмным. Открытие
             // фотографии в документ, увеличенный до восьмикратного, просило три гигабайта
@@ -535,24 +536,24 @@ public partial class MainViewModel : ObservableObject
 
     private void InitPalette()
     {
-        var hexes = new[]
-        {
-            "#000000","#404040","#808080","#C0C0C0","#FFFFFF",
-            "#7F0000","#FF0000","#FF7F00","#FFC800","#FFFF00",
-            "#7FFF00","#00FF00","#00FF7F","#00FFFF","#007FFF",
-            "#0000FF","#7F00FF","#FF00FF","#FF007F","#A0522D",
-            "#5B8DEF","#9D5BEF","#EF5B6E","#EFC85B","#5BEFA3",
-            "#1A1330","#0E0C1A","#6E7080", // mid-grey-ish
-            "#F4F4F8","#9EA0AE","#3CC8FF",
-            "#FF64B4","#64FFB4","#B464FF","#FFB464",
-            "#FFEDA0","#FED976","#FEB24C","#FD8D3C",
-            "#FC4E2A","#E31A1C","#BD0026","#800026",
-        };
+        // Пять рядов по восемь - серые, чистые, тёмные, средние, светлые (1.28.0). Та же
+        // палитра, что в Electron-версии (paint-pro.html, colors), в том же порядке. Была
+        // россыпь из 43 цветов по девять в ряд с неполным последним рядом.
+        var hexes = PaletteHexes;
         foreach (var h in hexes)
         {
             if (SKColor.TryParse(h, out var c)) Palette.Add(new ColorEntryViewModel(c));
         }
     }
+
+    public static readonly string[] PaletteHexes =
+    {
+        "#000000","#434343","#666666","#999999","#B7B7B7","#D9D9D9","#EFEFEF","#FFFFFF",
+        "#FF0000","#FF9900","#FFFF00","#00FF00","#00FFFF","#0000FF","#9900FF","#FF00FF",
+        "#980000","#B45F06","#BF9000","#38761D","#134F5C","#1155CC","#351C75","#741B47",
+        "#E06666","#F6B26B","#FFD966","#93C47D","#76A5AF","#6D9EEB","#8E7CC3","#C27BA0",
+        "#F4CCCC","#FCE5CD","#FFF2CC","#D9EAD3","#D0E0E3","#C9DAF8","#D9D2E9","#EAD1DC",
+    };
 
     private void AddRecentColor(SKColor c)
     {
@@ -1231,6 +1232,32 @@ public partial class MainViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>Поля «ширина» и «высота» в правой панели (1.28.0, как в Electron-версии).</summary>
+    [ObservableProperty] private string _canvasWidthText = Document.DefaultWidth.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    [ObservableProperty] private string _canvasHeightText = Document.DefaultHeight.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private void SyncCanvasSizeText()
+    {
+        CanvasWidthText = Document.CanvasWidth.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        CanvasHeightText = Document.CanvasHeight.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// «Изменить размер» из полей панели. Не число - сказать и вернуть в поля нынешний
+    /// размер; тот же размер - не правка; вне пределов - сказать, как в диалоге.
+    /// </summary>
+    [RelayCommand] private void ApplyCanvasSize()
+    {
+        if (!int.TryParse(CanvasWidthText?.Trim(), out var nw) || !int.TryParse(CanvasHeightText?.Trim(), out var nh))
+        {
+            Views.GlassMessage.Show("Ширина и высота пишутся целыми числами, в пикселях.",
+                "Не понял размер", MessageBoxButton.OK, MessageBoxImage.Warning);
+            SyncCanvasSizeText();
+            return;
+        }
+        ApplyNewCanvasSize(nw, nh);
+    }
+
     [RelayCommand] private void ResizeCanvas()
     {
         var (w, h) = (Document.CanvasWidth, Document.CanvasHeight);
@@ -1246,23 +1273,31 @@ public partial class MainViewModel : ObservableObject
                 "Не понял размер", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+        ApplyNewCanvasSize(nw, nh);
+    }
+
+    /// <summary>Общая часть диалога и полей панели. True - размер сменился.</summary>
+    public bool ApplyNewCanvasSize(int nw, int nh)
+    {
         // Тот же самый размер - не правка: команда пересобирает все слои, пишет в историю
         // «Изменение размера», объявляет документ изменённым и заодно снимает выделение и
         // поднятый объект. Диалог открывается с текущим размером в поле, так что нажать
         // OK, ничего не поменяв, - самый обычный способ передумать.
-        if (nw == Document.CanvasWidth && nh == Document.CanvasHeight) return;
+        if (nw == Document.CanvasWidth && nh == Document.CanvasHeight) return false;
         if (!Commands.ResizeCanvasCommand.IsAllowed(nw, nh))
         {
             Views.GlassMessage.Show(
                 $"Размер должен быть от 1 до {Commands.ResizeCanvasCommand.MaxDimension} по каждой стороне " +
                 $"и не больше {Commands.ResizeCanvasCommand.MaxPixels / 1_000_000} млн пикселей всего.",
                 "Слишком большой холст", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            SyncCanvasSizeText();
+            return false;
         }
         Document.CommitFloating();
         var cmd = new ResizeCanvasCommand(nw, nh, SKColors.White);
         Document.History.ExecuteAndPush(cmd, Document);
         InvalidateCanvas?.Invoke();
+        return true;
     }
 
     /// <summary>

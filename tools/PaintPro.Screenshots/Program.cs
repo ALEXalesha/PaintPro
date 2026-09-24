@@ -34,6 +34,7 @@ internal static class Program
         ThemeService.Apply(ThemeService.DefaultId);
         // Окно в размере по умолчанию: сохранённый размер человека не читается и не пишется.
         WindowPlacementService.FilePath = null;
+        PanelWidths.FilePath = null;
 
         var window = new MainWindow
         {
@@ -55,6 +56,37 @@ internal static class Program
             Save(window, output, name);
         }
 
+        // Проверка раскладки: самые узкие панели на самом маленьком окне и самые широкие на
+        // большом. Всё содержимое панелей - в пределах видимой области их прокрутки, иначе
+        // программа выходит с кодом 1. Кадры - во временную папку, для просмотра глазами.
+        var review = Path.Combine(Path.GetTempPath(), "paint-review");
+        Directory.CreateDirectory(review);
+        ThemeService.Apply(ThemeService.DefaultId);
+        var problems = new List<string>();
+        foreach (var (w, h, left, right, name) in new[]
+                 {
+                     (900.0, 600.0, PanelWidths.LeftMin, PanelWidths.RightMin, "panels-narrow.png"),
+                     (1600.0, 1000.0, PanelWidths.LeftMax, PanelWidths.RightMax, "panels-wide.png"),
+                 })
+        {
+            window.Width = w;
+            window.Height = h;
+            window.SetPanelWidths(left, right);
+            Wait(500);
+            foreach (var panelName in new[] { "LeftPanel", "RightPanel" })
+                problems.AddRange(Overflow((FrameworkElement)window.FindName(panelName)).Select(x => $"{name} {panelName}: {x}"));
+            Save(window, review, name);
+        }
+        window.Width = 1400;
+        window.Height = 900;
+        window.SetPanelWidths(PanelWidths.LeftDefault, PanelWidths.RightDefault);
+        Wait(300);
+        if (problems.Count > 0)
+        {
+            foreach (var p in problems) Console.Error.WriteLine("  вылезает: " + p);
+            Environment.Exit(1);
+        }
+
         // Окно выбора цвета - отдельным кадром, тоже далеко за краем экрана.
         ThemeService.Apply(ThemeService.DefaultId);
         var picker = new PaintPro.Views.ColorPickerDialog(SKColor.Parse("#EF476F"))
@@ -68,8 +100,6 @@ internal static class Program
         picker.Close();
 
         // Окна сообщения и ввода - для просмотра глазами, во временную папку, не в README.
-        var review = Path.Combine(Path.GetTempPath(), "paint-review");
-        Directory.CreateDirectory(review);
         foreach (var (dialog, name) in new (Window, string)[]
                  {
                      (new PaintPro.Views.GlassMessage("Рисунок изменён. Сохранить перед выходом?", "Paint Pro", MessageBoxButton.YesNoCancel), "message.png"),
@@ -184,6 +214,45 @@ internal static class Program
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using (var file = File.Create(Path.Combine(folder, name))) encoder.Save(file);
         Console.WriteLine($"  {name}");
+    }
+
+    /// <summary>
+    /// Что в панели вылезает за видимую область её прокрутки по горизонтали. Кнопки,
+    /// подписи, палитра, поля - всё, у чего есть размер; содержимое вложенных прокруток
+    /// (лента истории) не считается, у него своя область.
+    /// </summary>
+    private static IEnumerable<string> Overflow(FrameworkElement panel)
+    {
+        var sv = Descendants(panel).OfType<System.Windows.Controls.ScrollViewer>().First();
+        var viewport = sv.ViewportWidth;
+        foreach (var el in Descendants((DependencyObject)sv.Content).OfType<FrameworkElement>())
+        {
+            if (!el.IsVisible || el.ActualWidth < 1 || el.ActualHeight < 1) continue;
+            // Контейнеры раскладки не видны сами: сетке кнопок нарочно дано поле -3, чтобы
+            // края кнопок (у них поле 3) встали вровень с краем панели.
+            if (el is System.Windows.Controls.Panel) continue;
+            if (Ancestors(el, sv).OfType<System.Windows.Controls.ScrollViewer>().Any()) continue;
+            var r = el.TransformToAncestor(sv).TransformBounds(new Rect(0, 0, el.ActualWidth, el.ActualHeight));
+            if (r.Left < -0.5 || r.Right > viewport + 0.5)
+                yield return $"{el.GetType().Name} {el.Name} {r.Left:0}..{r.Right:0} из 0..{viewport:0}";
+        }
+    }
+
+    private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            yield return child;
+            foreach (var d in Descendants(child)) yield return d;
+        }
+    }
+
+    /// <summary>Предки элемента до <paramref name="stop"/>, не включая его.</summary>
+    private static IEnumerable<DependencyObject> Ancestors(DependencyObject el, DependencyObject stop)
+    {
+        for (var p = VisualTreeHelper.GetParent(el); p is not null && p != stop; p = VisualTreeHelper.GetParent(p))
+            yield return p;
     }
 
     private static void Wait(int milliseconds)

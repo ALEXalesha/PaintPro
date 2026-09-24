@@ -1,4 +1,4 @@
-﻿<Window x:Class="PaintPro.MainWindow"
+<Window x:Class="PaintPro.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:PaintPro.ViewModels"
@@ -324,13 +324,14 @@
             </Border>
 
             <!-- ───── Left toolbar ───── -->
-            <Border DockPanel.Dock="Left" Style="{DynamicResource GlassPanel}" Padding="6" Width="142">
+            <Border x:Name="LeftPanel" DockPanel.Dock="Left" Style="{DynamicResource GlassPanel}" Padding="6" Width="142">
+              <Grid>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <!-- Инструменты по группам, по два в ряд: с подписями в одну колонку все 19
-                         не помещались по высоте, и нижние уезжали под прокрутку. -->
+                    <!-- Инструменты по группам. Столбцов столько, сколько влезает в ширину панели:
+                         по умолчанию два, суженная панель - один, расширенная - три. -->
                     <StackPanel HorizontalAlignment="Center">
                         <!-- Drawing tools -->
-                        <UniformGrid Columns="2">
+                        <WrapPanel HorizontalAlignment="Center">
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Карандаш (P)"
                                 IsChecked="{Binding ActiveTool, Converter={StaticResource ToolToBool}, ConverterParameter=Pencil, Mode=OneWay}"
                                 Click="OnToolClick" Tag="Pencil" AutomationProperties.Name="Карандаш">
@@ -367,9 +368,9 @@
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Text}"/>
                         </ToggleButton>
 
-                        </UniformGrid>
+                        </WrapPanel>
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="6,8" />
-                        <UniformGrid Columns="2">
+                        <WrapPanel HorizontalAlignment="Center">
 
                         <!-- Shape tools -->
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Линия (L)"
@@ -413,9 +414,9 @@
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Heart}" Fill="Transparent" Stroke="{DynamicResource TextPrimary}" StrokeThickness="2"/>
                         </ToggleButton>
 
-                        </UniformGrid>
+                        </WrapPanel>
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="6,8"/>
-                        <UniformGrid Columns="2">
+                        <WrapPanel HorizontalAlignment="Center">
 
                         <!-- Selection / navigation -->
                         <ToggleButton Style="{DynamicResource ToolButton}" ToolTip="Прямоугольное выделение (S)"
@@ -438,13 +439,20 @@
                                 Click="OnToolClick" Tag="Hand" AutomationProperties.Name="Рука">
                             <Path Style="{DynamicResource ToolGlyph}" Data="{DynamicResource Icon.Hand}"/>
                         </ToggleButton>
-                        </UniformGrid>
+                        </WrapPanel>
                     </StackPanel>
                 </ScrollViewer>
+                <!-- Край панели: тянуть - сузить или расширить, двойной щелчок - как было. -->
+                <Thumb Style="{DynamicResource PanelGrip}" HorizontalAlignment="Right" Margin="0,0,-7,0"
+                       ToolTip="Потяните, чтобы изменить ширину. Двойной щелчок - как было"
+                       DragDelta="OnLeftGripDrag" DragCompleted="OnGripDragCompleted"
+                       MouseDoubleClick="OnLeftGripReset"/>
+              </Grid>
             </Border>
 
             <!-- ───── Right side panel: color, size, opacity, layers, quick actions ───── -->
-            <Border DockPanel.Dock="Right" Style="{DynamicResource GlassPanel}" Width="290" Padding="14,14,6,14">
+            <Border x:Name="RightPanel" DockPanel.Dock="Right" Style="{DynamicResource GlassPanel}" Width="290" Padding="14,14,6,14">
+              <Grid>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <!-- Отступ до полосы прокрутки: значения справа («12 px») упирались в неё. -->
                     <StackPanel Margin="0,0,10,0">
@@ -462,7 +470,7 @@
                         <ItemsControl ItemsSource="{Binding Palette}" HorizontalAlignment="Center">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="9"/>
+                                    <UniformGrid Columns="8"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
@@ -478,7 +486,7 @@
                         <ItemsControl ItemsSource="{Binding RecentColors}" HorizontalAlignment="Center">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="9" Rows="1"/>
+                                    <UniformGrid Columns="8" Rows="1"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
@@ -524,8 +532,23 @@
                             </TextBlock>
                             <TextBlock Text="ХОЛСТ" FontSize="11" Opacity="0.6" VerticalAlignment="Center"/>
                         </DockPanel>
+                        <!-- Размер полями прямо в панели, как в Electron-версии; Enter - применить. -->
+                        <UniformGrid Columns="2" Margin="0,8,0,0">
+                            <TextBox Style="{DynamicResource GlassTextBox}" Margin="0,0,3,0" ToolTip="Ширина, px"
+                                     Text="{Binding CanvasWidthText, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Enter" Command="{Binding ApplyCanvasSizeCommand}"/>
+                                </TextBox.InputBindings>
+                            </TextBox>
+                            <TextBox Style="{DynamicResource GlassTextBox}" Margin="3,0,0,0" ToolTip="Высота, px"
+                                     Text="{Binding CanvasHeightText, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Enter" Command="{Binding ApplyCanvasSizeCommand}"/>
+                                </TextBox.InputBindings>
+                            </TextBox>
+                        </UniformGrid>
                         <Button Style="{DynamicResource GhostButton}" Margin="0,6,0,0"
-                                Content="Изменить размер…" Command="{Binding ResizeCanvasCommand}"/>
+                                Content="Изменить размер" Command="{Binding ApplyCanvasSizeCommand}"/>
 
                         <Rectangle Height="1" Fill="{DynamicResource GlassBorder}" Margin="0,14"/>
 
@@ -717,6 +740,11 @@
                         </UniformGrid>
                     </StackPanel>
                 </ScrollViewer>
+                <Thumb Style="{DynamicResource PanelGrip}" HorizontalAlignment="Left" Margin="-15,0,0,0"
+                       ToolTip="Потяните, чтобы изменить ширину. Двойной щелчок - как было"
+                       DragDelta="OnRightGripDrag" DragCompleted="OnGripDragCompleted"
+                       MouseDoubleClick="OnRightGripReset"/>
+              </Grid>
             </Border>
 
             <!-- ───── Centre canvas ───── -->

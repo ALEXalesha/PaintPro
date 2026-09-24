@@ -105,6 +105,59 @@
     </Style>
 
     <!-- Colour swatch square in palette + recent rows. -->
+    <!-- Край боковой панели, за который её тянут. Невидим, пока на него не наведут: тогда
+         проступает тонкая черта акцентом. -->
+    <Style x:Key="PanelGrip" TargetType="Thumb">
+        <Setter Property="Width" Value="8"/>
+        <Setter Property="Cursor" Value="SizeWE"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Background="Transparent">
+                        <Rectangle x:Name="Line" Width="2" Fill="{DynamicResource Accent}" Opacity="0" RadiusX="1" RadiusY="1"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Line" Property="Opacity" Value="0.7"/>
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Line" Property="Opacity" Value="1"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Поле ввода на стекле: размер холста в правой панели. -->
+    <Style x:Key="GlassTextBox" TargetType="TextBox">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="6,4"/>
+        <Setter Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource GlassBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Box" CornerRadius="8" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="ColorSwatch" TargetType="Button">
         <Setter Property="Width"  Value="22"/>
         <Setter Property="Height" Value="22"/>

@@ -21,7 +21,60 @@ public partial class MainWindow : Window
         Closing += OnClosing;
         // Обычные границы окна запоминаются, пока оно не развёрнуто: их и сохраним.
         LocationChanged += (_, _) => TrackNormalBounds();
-        SizeChanged += (_, _) => TrackNormalBounds();
+        SizeChanged += (_, _) => { TrackNormalBounds(); ApplyPanelWidths(); };
+        (_leftPanelWidth, _rightPanelWidth) = Services.PanelWidths.Load();
+        ApplyPanelWidths();
+    }
+
+    // ───────── Ширина боковых панелей ─────────
+    // Запомненная ширина, а не та, что стоит сейчас: на узком окне панели ужимаются,
+    // окно расширили - они возвращаются к своей.
+    private double _leftPanelWidth, _rightPanelWidth;
+
+    private void ApplyPanelWidths()
+    {
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        var (left, right) = Services.PanelWidths.Fit(_leftPanelWidth, _rightPanelWidth, width);
+        LeftPanel.Width = left;
+        RightPanel.Width = right;
+    }
+
+    /// <summary>Задать ширину панелей как пользователь (программа кадров и проверки раскладки).</summary>
+    public void SetPanelWidths(double left, double right)
+    {
+        _leftPanelWidth = Services.PanelWidths.ClampLeft(left);
+        _rightPanelWidth = Services.PanelWidths.ClampRight(right);
+        ApplyPanelWidths();
+    }
+
+    private void OnLeftGripDrag(object sender, DragDeltaEventArgs e)
+    {
+        _leftPanelWidth = Services.PanelWidths.ClampLeft(LeftPanel.ActualWidth + e.HorizontalChange);
+        ApplyPanelWidths();
+    }
+
+    private void OnRightGripDrag(object sender, DragDeltaEventArgs e)
+    {
+        // Край правой панели - левый: тянут влево - панель шире.
+        _rightPanelWidth = Services.PanelWidths.ClampRight(RightPanel.ActualWidth - e.HorizontalChange);
+        ApplyPanelWidths();
+    }
+
+    private void OnGripDragCompleted(object sender, DragCompletedEventArgs e) =>
+        Services.PanelWidths.Save(_leftPanelWidth, _rightPanelWidth);
+
+    private void OnLeftGripReset(object sender, MouseButtonEventArgs e)
+    {
+        _leftPanelWidth = Services.PanelWidths.LeftDefault;
+        ApplyPanelWidths();
+        Services.PanelWidths.Save(_leftPanelWidth, _rightPanelWidth);
+    }
+
+    private void OnRightGripReset(object sender, MouseButtonEventArgs e)
+    {
+        _rightPanelWidth = Services.PanelWidths.RightDefault;
+        ApplyPanelWidths();
+        Services.PanelWidths.Save(_leftPanelWidth, _rightPanelWidth);
     }
 
     private Services.WindowPlacement.Area? _normalBounds;
