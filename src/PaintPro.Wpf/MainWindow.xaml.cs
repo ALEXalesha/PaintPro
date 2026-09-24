@@ -19,6 +19,17 @@ public partial class MainWindow : Window
         AllowDrop = true;
         Drop += OnDrop;
         Closing += OnClosing;
+        // Обычные границы окна запоминаются, пока оно не развёрнуто: их и сохраним.
+        LocationChanged += (_, _) => TrackNormalBounds();
+        SizeChanged += (_, _) => TrackNormalBounds();
+    }
+
+    private Services.WindowPlacement.Area? _normalBounds;
+
+    private void TrackNormalBounds()
+    {
+        if (WindowState == WindowState.Normal && IsLoaded)
+            _normalBounds = Services.WindowPlacementService.CurrentBounds(this) ?? _normalBounds;
     }
 
     /// <summary>
@@ -26,6 +37,12 @@ public partial class MainWindow : Window
     /// the user back out — including when they cancel the save dialog itself.
     /// </summary>
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        AskAboutUnsaved(e);
+        if (!e.Cancel) SavePlacement();
+    }
+
+    private void AskAboutUnsaved(System.ComponentModel.CancelEventArgs e)
     {
         if (DataContext is not MainViewModel vm || !vm.IsDirty) return;
 
@@ -35,6 +52,14 @@ public partial class MainWindow : Window
 
         if (answer == MessageBoxResult.Cancel) { e.Cancel = true; return; }
         if (answer == MessageBoxResult.Yes && !vm.TrySaveForClose()) e.Cancel = true;
+    }
+
+    /// <summary>Размер и место окна - в файл, чтобы следующий запуск открылся так же.</summary>
+    private void SavePlacement()
+    {
+        var b = WindowState == WindowState.Normal ? Services.WindowPlacementService.CurrentBounds(this) ?? _normalBounds : _normalBounds;
+        if (b is { } r)
+            Services.WindowPlacementService.Save(new Services.WindowPlacement.Placement(r.X, r.Y, r.Width, r.Height, WindowState == WindowState.Maximized));
     }
 
     private MainViewModel Vm => (MainViewModel)DataContext;
@@ -144,6 +169,8 @@ public partial class MainWindow : Window
         var round = 2; // DWMWCP_ROUND
         try { DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref round, sizeof(int)); }
         catch (EntryPointNotFoundException) { }
+        // Размер и место с прошлого раза - до показа окна, чтобы оно не прыгало.
+        _normalBounds = Services.WindowPlacementService.Restore(this);
     }
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]

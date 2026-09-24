@@ -32,6 +32,8 @@ internal static class Program
         var app = new App();
         app.InitializeComponent(); // ресурсы и тема из App.xaml; Run() не нужен
         ThemeService.Apply(ThemeService.DefaultId);
+        // Окно в размере по умолчанию: сохранённый размер человека не читается и не пишется.
+        WindowPlacementService.FilePath = null;
 
         var window = new MainWindow
         {
