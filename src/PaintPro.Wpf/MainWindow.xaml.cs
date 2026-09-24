@@ -97,8 +97,8 @@ public partial class MainWindow : Window
         // Text-tool prompt.
         Vm.TextRequested += pt =>
         {
-            var s = Views.PromptDialog.Show("Введите текст:", "Текст", "", this);
-            if (!string.IsNullOrEmpty(s)) Vm.ProvideText(s);
+            // Шрифт, размер и B / I / U - как в панели текста Electron-версии.
+            if (Views.TextDialog.Show(this) is { } t && !string.IsNullOrEmpty(t.Text)) Vm.ProvideText(t.Text, t.Style);
         };
     }
 

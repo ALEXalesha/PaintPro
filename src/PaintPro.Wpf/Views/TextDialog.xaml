@@ -1,0 +1,93 @@
+<!--
+  Текст (1.28.0): шрифт, размер, жирный, курсив, подчёркнутый - как в панели текста
+  Electron-версии, с тем же списком шрифтов и теми же границами размера (8..200, по
+  умолчанию 24). Раньше было окно «Введите текст:», а размер брался у ползунка кисти.
+-->
+<Window x:Class="PaintPro.Views.TextDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Текст"
+        Width="460" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        Foreground="{DynamicResource TextPrimary}"
+        FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style x:Key="StyleToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" CornerRadius="8" Background="{DynamicResource GlassBg}"
+                                BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentGrad}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="Transparent"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Border Margin="14" Padding="20,18" CornerRadius="14"
+            Background="{DynamicResource MenuBg}"
+            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+            MouseLeftButtonDown="OnBackgroundDown">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+        </Border.Effect>
+        <StackPanel>
+            <TextBlock Text="Текст" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+            <DockPanel>
+                <ToggleButton x:Name="UnderlineToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
+                              ToolTip="Подчёркнутый" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
+                    <TextBlock Text="U" TextDecorations="Underline" FontSize="14"/>
+                </ToggleButton>
+                <ToggleButton x:Name="ItalicToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
+                              ToolTip="Курсив" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
+                    <TextBlock Text="I" FontStyle="Italic" FontSize="14" FontFamily="Georgia"/>
+                </ToggleButton>
+                <ToggleButton x:Name="BoldToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
+                              ToolTip="Жирный" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
+                    <TextBlock Text="B" FontWeight="Bold" FontSize="14"/>
+                </ToggleButton>
+                <TextBox x:Name="SizeBox" DockPanel.Dock="Right" Width="56" Margin="8,0,0,0" MaxLength="3"
+                         FontSize="13" Padding="6,5" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                         ToolTip="Размер, 8–200"
+                         Background="{DynamicResource GlassBgStrong}" Foreground="{DynamicResource TextPrimary}"
+                         BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                         CaretBrush="{DynamicResource TextPrimary}"
+                         TextChanged="OnSizeChanged" LostFocus="OnSizeLostFocus"/>
+                <ComboBox x:Name="FontBox" FontSize="13" SelectionChanged="OnStyleChanged" ToolTip="Шрифт"/>
+            </DockPanel>
+
+            <TextBox x:Name="Input" Margin="0,12,0,0" MinHeight="90" MaxHeight="220"
+                     AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                     FontSize="16" Padding="8,6"
+                     Background="{DynamicResource GlassBgStrong}" Foreground="{DynamicResource TextPrimary}"
+                     BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                     CaretBrush="{DynamicResource TextPrimary}"/>
+            <TextBlock Text="Enter - новая строка, Ctrl+Enter - готово" FontSize="11" Opacity="0.6" Margin="0,6,0,0"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                <Button Content="Отмена" Style="{DynamicResource GhostButton}" MinWidth="84" IsCancel="True" Click="OnCancel"/>
+                <Button Content="Готово" Style="{DynamicResource GhostButton}" MinWidth="84" Click="OnOk"
+                        Background="{DynamicResource AccentGrad}"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

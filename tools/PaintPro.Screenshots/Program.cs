@@ -74,6 +74,7 @@ internal static class Program
                  {
                      (new PaintPro.Views.GlassMessage("Рисунок изменён. Сохранить перед выходом?", "Paint Pro", MessageBoxButton.YesNoCancel), "message.png"),
                      (new PaintPro.Views.PromptDialog("Введите текст:", "Текст", "Привет"), "prompt.png"),
+                     (new PaintPro.Views.TextDialog("Привет, мир"), "text.png"),
                  })
         {
             dialog.WindowStartupLocation = WindowStartupLocation.Manual;

@@ -176,14 +176,14 @@
                         <Border Height="4" CornerRadius="2" Background="{DynamicResource GlassBgStrong}" Margin="8,0"/>
                         <Track x:Name="PART_Track" Margin="0">
                             <Track.DecreaseRepeatButton>
-                                <RepeatButton Style="{StaticResource GlassSliderFill}" Background="{DynamicResource Accent}"
+                                <RepeatButton Style="{DynamicResource GlassSliderFill}" Background="{DynamicResource Accent}"
                                               Command="Slider.DecreaseLarge" Margin="8,0,0,0"/>
                             </Track.DecreaseRepeatButton>
                             <Track.Thumb>
-                                <Thumb Style="{StaticResource GlassSliderThumb}"/>
+                                <Thumb Style="{DynamicResource GlassSliderThumb}"/>
                             </Track.Thumb>
                             <Track.IncreaseRepeatButton>
-                                <RepeatButton Style="{StaticResource GlassSliderFill}" Background="Transparent"
+                                <RepeatButton Style="{DynamicResource GlassSliderFill}" Background="Transparent"
                                               Command="Slider.IncreaseLarge"/>
                             </Track.IncreaseRepeatButton>
                         </Track>
@@ -413,6 +413,83 @@
                             </ContentPresenter.Resources>
                         </ContentPresenter>
                     </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Выпадающий список в цветах темы. Системный был светло-серым, и светлый текст на
+         нём пропадал - та же история, что с меню и подсказками. Нашлось на кадре окна
+         текста (список шрифтов). -->
+    <Style x:Key="GlassComboToggle" TargetType="ToggleButton">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd" CornerRadius="8" Background="{DynamicResource GlassBgStrong}"
+                            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1">
+                        <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
+                              Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource TextDim}" StrokeThickness="1.5"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Bd" CornerRadius="6" Padding="10,6" Margin="0,1" Background="Transparent">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource GlassBgStrong}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Accent}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton Style="{DynamicResource GlassComboToggle}"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"/>
+                        <ContentPresenter IsHitTestVisible="False" Margin="10,0,26,0" VerticalAlignment="Center"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                        <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True"
+                               Focusable="False" PopupAnimation="Fade">
+                            <Border Margin="0,4,10,10" Padding="4" CornerRadius="10" MinWidth="{TemplateBinding ActualWidth}"
+                                    Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
+                                </Border.Effect>
+                                <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

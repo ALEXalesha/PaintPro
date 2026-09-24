@@ -55,7 +55,11 @@ public sealed class TextTool : ITool
     /// строкой дальше вправо. Многострочное в поле попадает вставкой из буфера обмена, и
     /// пользователь получал вместо двух строк одну с квадратиком посередине.
     /// </summary>
-    public void CommitText(string text, float? fontSize = null, string family = "Segoe UI")
+    public void CommitText(string text, TextStyle style) =>
+        CommitText(text, style.Size, style.Family, style.Bold, style.Italic, style.Underline);
+
+    public void CommitText(string text, float? fontSize = null, string family = "Segoe UI",
+        bool bold = false, bool italic = false, bool underline = false)
     {
         // Из одних пробелов и переводов строки чернил не выходит: запись в истории при
         // пустом холсте - это «изменено» на ровном месте и вопрос про сохранение после
@@ -95,7 +99,10 @@ public sealed class TextTool : ITool
         // пикселя - привычный вид не меняется, а ползунок наконец на что-то влияет.
         float size = fontSize ?? Math.Clamp(_ctx.ToolSize * 6f, 8f, 600f);
 
-        using var typeface = SKTypeface.FromFamilyName(family);
+        using var typeface = SKTypeface.FromFamilyName(family,
+            bold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
+            SKFontStyleWidth.Normal,
+            italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright);
         using var paint = new SKPaint
         {
             IsAntialias = true,
@@ -106,6 +113,8 @@ public sealed class TextTool : ITool
         // Межстрочный интервал берём у самого шрифта, а не выдумываем: у разных гарнитур
         // высота строки разная, а строки обязаны стоять ровно.
         float lineHeight = paint.FontSpacing;
+        // Подчёркивание - полоса под базовой линией, как у Electron-версии (толщина size/20).
+        float underlineY = size * 0.12f, underlineH = MathF.Max(1f, size / 20f);
 
         // Габарит - объединение габаритов всех строк, каждый на своей высоте.
         float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
@@ -117,6 +126,12 @@ public sealed class TextTool : ITool
             float dy = i * lineHeight;
             minX = MathF.Min(minX, b.Left);   maxX = MathF.Max(maxX, b.Right);
             minY = MathF.Min(minY, b.Top + dy); maxY = MathF.Max(maxY, b.Bottom + dy);
+            if (underline)
+            {
+                minX = MathF.Min(minX, 0);
+                maxX = MathF.Max(maxX, paint.MeasureText(lines[i]));
+                maxY = MathF.Max(maxY, dy + underlineY + underlineH);
+            }
         }
         if (minX > maxX || minY > maxY) return;   // одни пробелы: рисовать нечего
 
@@ -136,10 +151,10 @@ public sealed class TextTool : ITool
             for (int i = 0; i < lines.Length; i++)
             {
                 if (lines[i].Length == 0) continue;
-                c.DrawText(lines[i],
-                    _lastClick.X - canvasRect.Left,
-                    _lastClick.Y - canvasRect.Top + i * lineHeight,
-                    paint);
+                float x = _lastClick.X - canvasRect.Left, y = _lastClick.Y - canvasRect.Top + i * lineHeight;
+                c.DrawText(lines[i], x, y, paint);
+                if (underline)
+                    c.DrawRect(SKRect.Create(x, y + underlineY, paint.MeasureText(lines[i]), underlineH), paint);
             }
         }
         _ctx.History.ExecuteAndPush(

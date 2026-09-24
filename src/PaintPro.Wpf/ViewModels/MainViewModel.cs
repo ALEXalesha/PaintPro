@@ -1208,4 +1208,7 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>Called by host when the user finished typing for the TextTool prompt.</summary>
     public void ProvideText(string text) => _textTool.CommitText(text);
+
+    /// <summary>Надпись из окна текста: шрифт, размер, B / I / U.</summary>
+    public void ProvideText(string text, Tools.TextStyle style) => _textTool.CommitText(text, style);
 }
