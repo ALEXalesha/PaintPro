@@ -29,7 +29,7 @@ public partial class Document : ObservableObject
         CanvasHeight = height;
         Layers = new ObservableCollection<Layer>
         {
-            new PixelLayer(width, height, SKColors.White) { Name = "Background" },
+            new PixelLayer(width, height, SKColors.White) { Name = Commands.ClearCanvasCommand.DefaultPaperName },
         };
         ActiveLayerIndex = 0;
         History = new HistoryManager();

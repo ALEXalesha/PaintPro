@@ -310,7 +310,7 @@ public partial class MainViewModel : ObservableObject
         var taken = Document.Layers.Select(l => l.Name).ToHashSet();
         for (int n = Document.Layers.Count; ; n++)
         {
-            var name = $"Layer {n}";
+            var name = $"Слой {n}"; // как в Electron-версии
             if (taken.Add(name)) return name;
         }
     }

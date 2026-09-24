@@ -27,7 +27,7 @@ public sealed class ClearCanvasCommand : IDocumentCommand, IDisposable
     private sealed record LayerShot(Guid Id, string Name, bool Visible, float Opacity, SKBitmap Content);
 
     /// <summary>Имя слоя-бумаги в новом документе - то же, что даёт ему конструктор <see cref="Document"/>.</summary>
-    public const string DefaultPaperName = "Background";
+    public const string DefaultPaperName = "Бумага"; // как в Electron-версии
 
     private readonly SKColor _fill;
     private LayerShot[]? _previousLayers;

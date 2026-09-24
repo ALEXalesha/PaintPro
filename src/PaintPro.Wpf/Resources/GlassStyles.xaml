@@ -148,7 +148,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
-                    <Ellipse x:Name="Knob" Fill="{DynamicResource TextPrimary}" Stroke="{DynamicResource Accent}" StrokeThickness="3">
+                    <Ellipse x:Name="Knob" Fill="White" Stroke="{DynamicResource Accent}" StrokeThickness="3">
                         <Ellipse.Effect>
                             <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.4" Color="Black"/>
                         </Ellipse.Effect>
