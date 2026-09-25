@@ -177,8 +177,18 @@ test('кисть на 300 рисует полосу шириной 300', async (
   await app.setColor('#000000');
   await page.evaluate(() => setToolSize(300));
   await app.drag(150, 300, 750, 300);
-  expect(await inked(app, 450, 300 - 145)).toBe(true);
-  expect(await inked(app, 450, 300 + 145)).toBe(true);
+  // Самая дальняя закрашенная точка сверху и снизу: между ворсинками кисти (1.19.0) есть
+  // просветы, край неровный - но не уже 0.42 размера и не шире 300.
+  const reach = await page.evaluate(() => {
+    const d = ctx.getImageData(450, 0, 1, canvas.height).data;
+    let up = 0, down = 0;
+    for (let k = 1; k <= 160; k++) {
+      if (d[(300 - k) * 4] < 200) up = k;
+      if (d[(300 + k) * 4] < 200) down = k;
+    }
+    return [up, down];
+  });
+  expect(Math.min(...reach), JSON.stringify(reach)).toBeGreaterThanOrEqual(126);
   expect(await inked(app, 450, 300 - 156)).toBe(false);
   expect(await inked(app, 450, 300 + 156)).toBe(false);
 });

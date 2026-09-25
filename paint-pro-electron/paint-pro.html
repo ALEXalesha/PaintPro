@@ -1335,6 +1335,18 @@
     transform: translate(-50%, -50%);
     z-index: 5;
   }
+  /* Крестик в центре большого кружка: системный указатель над ним спрятан. */
+  .brush-ring::before, .brush-ring::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: #000;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+    transform: translate(-50%, -50%);
+  }
+  .brush-ring::before { width: 11px; height: 1px; }
+  .brush-ring::after { width: 1px; height: 11px; }
   canvas.tool-picker {
     cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'><circle cx='11' cy='11' r='3' fill='none' stroke='white' stroke-width='2'/><circle cx='11' cy='11' r='3' fill='none' stroke='black' stroke-width='1'/><circle cx='11' cy='11' r='0.8' fill='black'/></svg>") 11 11, auto;
   }
@@ -1920,6 +1932,9 @@ let state = {
   strokePoints: null,
   // Размер у каждой точки штриха: колесо меняет его посреди штриха (1.17.0).
   strokeSizes: null,
+  strokeSeed: null,       // зерно пучка ворсинок текущего мазка кисти
+  strokeBristles: null,
+  nextBrushSeed: null,    // для проверок: зерно следующего мазка кисти
   // Слой, под который сейчас подкладывается превью мазка (см. composite).
   previewLayerId: null,
   history: [],
@@ -2618,6 +2633,122 @@ function strokeWidthFor(tool, size) {
   return Math.max(1, size);
 }
 
+// Ворсинки кисти (1.19.0). До того кисть рисовала ровно то же, что карандаш: круглую
+// сплошную линию той же толщины. Теперь мазок кисти - пучок тонких линий-ворсинок, у каждой
+// свой сдвиг от центра, своя толщина в долях размера и свой оттенок - чуть светлее
+// выбранного цвета: вдоль мазка идут полоски, край неровный. Ворсинка 0 - сердцевина по
+// центру ровно выбранного цвета. Ворсинки смешиваются режимом darken - где их несколько,
+// остаётся самая тёмная: круглый конец ворсинки с прошлого куска мазка выступает в
+// следующий, и при обычном наложении вдоль ворсинок шёл пунктир при любом порядке
+// рисования. С darken порядок ни на что не влияет, а сердцевина, самая тёмная, видна везде,
+// где лежит. Буфер у мазка свой - слой и прошлые мазки это не трогает. Весь пучок
+// лежит внутри круга размера - кружок размера не врёт. Пучок задаёт число-зерно из точки,
+// где мазок начат (bristleSeedAt): один и тот же мазок ложится всегда одинаково. Зерно
+// пишется в запись мазка, и пересборка ленты рисует тот же пучок. Генератор (mulberry32) и порядок
+// чисел те же, что в C# (Services/Bristles.cs): одно зерно - один пучок в обеих версиях.
+const BRISTLE_COUNT = 32;
+const BRISTLE_MIN_SIZE = 6;      // тоньше ворсинки неразличимы - кисть рисует сплошной линией
+const BRISTLE_MAX_OFFSET = 0.44;
+// Ворсинки по краю пучка: каждая нечётная, равномерно по кругу. Без них случайные ворсинки в
+// каком-то направлении не доставали до края, и полоса выходила уже кружка размера.
+const BRISTLE_RIM_COUNT = 16;
+const BRISTLE_RIM_INNER = 0.92;
+const BRISTLE_MIN_WIDTH = 0.05, BRISTLE_WIDTH_SPREAD = 0.07;
+const BRISTLE_CORE_WIDTH = 0.20;
+const BRISTLE_CORE_MIN_PX = 3;   // тоньше пятая часть малой кисти дала бы бледную точку
+const BRISTLE_SHADE_MIN = 0.0, BRISTLE_SHADE_SPREAD = 0.38; // доля пути к белому
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), 1 | t);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Зерно мазка из точки начала, с шагом в восьмую пикселя. Так же, как Bristles.SeedAt в C#.
+function bristleSeedAt(x, y) {
+  const ix = Math.round(x * 8) | 0, iy = Math.round(y * 8) | 0;
+  return (Math.imul(ix, 73856093) ^ Math.imul(iy, 19349663)) >>> 0;
+}
+
+function bristlesFor(seed) {
+  const next = mulberry32(seed);
+  const out = [{ dx: 0, dy: 0, w: BRISTLE_CORE_WIDTH, shade: 0 }];
+  const turn = next() * Math.PI * 2;   // поворот всего края: у каждого мазка свой
+  for (let i = 1; i < BRISTLE_COUNT; i++) {
+    const u = next(), a = next();
+    let r, angle;
+    if (i % 2 === 1) {
+      // Край: свой сектор круга, внутри сектора - со сдвигом не больше четверти.
+      const k = (i - 1) / 2;
+      angle = turn + (k + (a - 0.5) * 0.5) * (Math.PI * 2 / BRISTLE_RIM_COUNT);
+      r = BRISTLE_MAX_OFFSET * (BRISTLE_RIM_INNER + (1 - BRISTLE_RIM_INNER) * u);
+    } else {
+      // Середина: sqrt - чтобы по площади круга легли равномерно, а не у центра.
+      angle = a * Math.PI * 2;
+      r = BRISTLE_MAX_OFFSET * Math.sqrt(u);
+    }
+    const w = BRISTLE_MIN_WIDTH + BRISTLE_WIDTH_SPREAD * next();
+    const shade = BRISTLE_SHADE_MIN + BRISTLE_SHADE_SPREAD * next();
+    out.push({ dx: r * Math.cos(angle), dy: r * Math.sin(angle), w, shade });
+  }
+  return out;
+}
+
+// Цвет ворсинки: выбранный, сдвинутый к белому на её оттенок.
+function bristleTint(hex, shade) {
+  const ch = (v) => Math.round(v + (255 - v) * shade);
+  const r = ch(parseInt(hex.slice(1, 3), 16));
+  const g = ch(parseInt(hex.slice(3, 5), 16));
+  const b = ch(parseInt(hex.slice(5, 7), 16));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function bristlesApply(tool, bristles, size) {
+  return tool === 'brush' && !!bristles && size >= BRISTLE_MIN_SIZE;
+}
+
+// Отрезок мазка. Одна функция на перо и на пересборку ленты - чтобы повтор совпал до пикселя.
+function strokeSegment(g, tool, bristles, x0, y0, x1, y1, size) {
+  if (!bristlesApply(tool, bristles, size)) {
+    g.lineWidth = strokeWidthFor(tool, size);
+    g.beginPath();
+    g.moveTo(x0, y0);
+    g.lineTo(x1, y1);
+    g.stroke();
+    return;
+  }
+  // Цвет мазка уже стоит в strokeStyle (canvas отдаёт его как #rrggbb); оттенки считаются
+  // от него и запоминаются в самом пучке - на каждое движение мыши не пересчитывать.
+  const base = g.strokeStyle;
+  const op = g.globalCompositeOperation;
+  g.globalCompositeOperation = 'darken';
+  for (const b of bristles) {
+    const dx = b.dx * size, dy = b.dy * size;
+    if (b.tintOf !== base) {
+      b.tint = /^#[0-9a-f]{6}$/i.test(base) ? bristleTint(base, b.shade) : base;
+      b.tintOf = base;
+    }
+    g.strokeStyle = b.tint;
+    g.lineWidth = Math.max(b.dx === 0 && b.dy === 0 ? BRISTLE_CORE_MIN_PX : 1, b.w * size);
+    g.beginPath();
+    g.moveTo(x0 + dx, y0 + dy);
+    g.lineTo(x1 + dx, y1 + dy);
+    g.stroke();
+  }
+  g.strokeStyle = base;
+  g.globalCompositeOperation = op;
+}
+
+// Отпечаток на нажатии: крошечный отрезок, как у всех штрихов, - у кисти у каждой ворсинки.
+function strokeDot(g, tool, bristles, x, y, size) {
+  strokeSegment(g, tool, bristles, x, y, x + 0.01, y + 0.01, size);
+}
+
 // Кружок размера кисти. До 1.18.0 это был курсор-картинка, а у курсоров в Chromium
 // потолок около 128 точек: кружок зажимался в 96 и на кисти 300 px был втрое меньше
 // настоящей. Теперь это обычный элемент поверх холста, любого размера; курсор - крестик
@@ -2630,14 +2761,51 @@ function brushRingDiameter() {
   return strokeWidthFor(state.tool, state.size) * (state.zoom || 1);
 }
 
+// Самый большой кружок, который ещё помещается в курсор-картинку: у Chromium потолок
+// курсора 128 точек, минус поля под обводку.
+const CURSOR_RING_MAX = 120;
+
+/**
+ * Курсор-картинка: кружок и крестик в одной картинке. Её рисует система вместе с
+ * указателем, без задержки. Элемент поверх холста отстаёт от указателя на кадр-другой -
+ * кружок заметно тянулся за крестиком (замечание к 1.18.0), - поэтому он нужен только
+ * там, куда курсор-картинка не дотягивается.
+ */
+function ringCursorCss(d) {
+  const pad = 4;
+  const sz = Math.ceil(d + pad * 2);
+  const c = sz / 2;
+  const r = (d / 2).toFixed(2);
+  const cross = `<path d='M${c - 5} ${c}H${c + 5}M${c} ${c - 5}V${c + 5}' stroke='white' stroke-width='3'/>`
+    + `<path d='M${c - 5} ${c}H${c + 5}M${c} ${c - 5}V${c + 5}' stroke='black' stroke-width='1'/>`;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${sz}' height='${sz}' viewBox='0 0 ${sz} ${sz}'>`
+    + `<circle cx='${c}' cy='${c}' r='${r}' fill='none' stroke='white' stroke-width='2.4'/>`
+    + `<circle cx='${c}' cy='${c}' r='${r}' fill='none' stroke='black' stroke-width='1'/>`
+    + cross + `</svg>`;
+  return `url("data:image/svg+xml;utf8,${svg}") ${c} ${c}, crosshair`;
+}
+
 function updateBrushCursor() {
   const on = DRAWING_TOOLS.includes(state.tool);
-  canvas.style.cursor = on ? 'crosshair' : '';
-  if (!on || !ringPoint) {
+  if (!on) {
+    canvas.style.cursor = '';
     brushRing.style.display = 'none';
     return;
   }
   const d = brushRingDiameter();
+  // Небольшой кружок - в курсоре, без задержки. Большой - элементом, а системный
+  // указатель прячется, и крестик рисуется в том же элементе: тогда кружок и крестик
+  // движутся вместе, а не один догоняет другой.
+  if (d <= CURSOR_RING_MAX) {
+    canvas.style.cursor = ringCursorCss(d);
+    brushRing.style.display = 'none';
+    return;
+  }
+  canvas.style.cursor = 'none';
+  if (!ringPoint) {
+    brushRing.style.display = 'none';
+    return;
+  }
   brushRing.style.display = 'block';
   brushRing.style.width = d + 'px';
   brushRing.style.height = d + 'px';
@@ -2887,6 +3055,16 @@ function onDown(e) {
   state.strokeLayerId = activeLayer().id;
   state.strokePoints = [x, y];
   state.strokeSizes = [state.size];
+  // Пучок ворсинок на мазок свой: одинаковые полоски на всех мазках читались бы как узор.
+  // Зерно - из точки начала, а не случайное: тот же мазок ложится так же. nextBrushSeed -
+  // для проверок: задать зерно явно.
+  if (t === 'brush') {
+    state.strokeSeed = state.nextBrushSeed != null ? state.nextBrushSeed >>> 0 : bristleSeedAt(x, y);
+    state.strokeBristles = bristlesFor(state.strokeSeed);
+  } else {
+    state.strokeSeed = null;
+    state.strokeBristles = null;
+  }
 
   state.drawing = true;
   // На время рисования bbox прячем handles в selection-overlay — иначе при tiny drag
@@ -2898,10 +3076,7 @@ function onDown(e) {
   if (t === 'pencil' || t === 'brush' || t === 'marker') {
     beginPreviewStroke(t);
     applyStrokeStyle(previewCtx);
-    previewCtx.beginPath();
-    previewCtx.moveTo(x, y);
-    previewCtx.lineTo(x + 0.01, y + 0.01);
-    previewCtx.stroke();
+    strokeDot(previewCtx, t, state.strokeBristles, x, y, state.size);
   } else if (SHAPE_TOOLS.includes(t)) {
     beginPreviewStroke(t);
   } else if (t === 'eraser') {
@@ -3022,11 +3197,7 @@ function onMove(e) {
     // 1.17.0 линия шла прежней толщиной до отпускания кнопки. Цвет остаётся тем, что
     // снят на нажатии. Размер записывается у каждой точки - по нему штрих повторяется
     // при пересборке ленты.
-    previewCtx.lineWidth = strokeWidthFor(t, state.size);
-    previewCtx.beginPath();
-    previewCtx.moveTo(state.lastX, state.lastY);
-    previewCtx.lineTo(x, y);
-    previewCtx.stroke();
+    strokeSegment(previewCtx, t, state.strokeBristles, state.lastX, state.lastY, x, y, state.size);
     state.lastX = x;
     state.lastY = y;
     if (state.strokePoints) state.strokePoints.push(x, y);
@@ -3098,6 +3269,7 @@ function onUp(e) {
       kind: 'stroke', tool: t, points: state.strokePoints.slice(),
       sizes: state.strokeSizes.slice(),
       color: state.color, size: state.strokeSizes[0], opacity: state.opacity,
+      seed: state.strokeSeed,
       layerId: state.strokeLayerId
     });
   } else if (t === 'eraser') {
@@ -3696,18 +3868,13 @@ function replayEntry(r) {
       // пикселей в начале штриха. «Почти» здесь недопустимо: на пересборке стоит
       // обещание «выключить и включить обратно возвращает документ ДО ПИКСЕЛЯ».
       const p = r.points;
-      tg.lineWidth = strokeWidthFor(r.tool, sizeAtPoint(r, 0));
-      tg.beginPath();
-      tg.moveTo(p[0], p[1]);
-      tg.lineTo(p[0] + 0.01, p[1] + 0.01);
-      tg.stroke();
+      // Пучок ворсинок - из записанного зерна. У записей до 1.19.0 зерна нет, и кисть
+      // там рисовала сплошной линией - так её и повторяем.
+      const bristles = r.tool === 'brush' && r.seed != null ? bristlesFor(r.seed) : null;
+      strokeDot(tg, r.tool, bristles, p[0], p[1], sizeAtPoint(r, 0));
       for (let i = 2; i < p.length; i += 2) {
         // Отрезок до точки i/2 нарисован тем размером, что был у неё (колесо посреди штриха).
-        tg.lineWidth = strokeWidthFor(r.tool, sizeAtPoint(r, i / 2));
-        tg.beginPath();
-        tg.moveTo(p[i - 2], p[i - 1]);
-        tg.lineTo(p[i], p[i + 1]);
-        tg.stroke();
+        strokeSegment(tg, r.tool, bristles, p[i - 2], p[i - 1], p[i], p[i + 1], sizeAtPoint(r, i / 2));
       }
     } else {
       // drawShape берёт цвет, толщину и режим заливки из СОСТОЯНИЯ, а не из контекста.
@@ -4762,6 +4929,14 @@ quadCornerEls.forEach(el => {
 
 // Глобальные mousemove/mouseup для всех drag-операций над floating
 document.addEventListener('mousemove', (e) => {
+  // Перетаскивание объекта. Над самим холстом его ведёт onMove, а за краем холста
+  // событий у холста нет - до 1.19.0 объект замирал там, где указатель ушёл с холста, и
+  // «упирался» посреди пути. Теперь его ведёт документ: объект можно молча вытащить хоть
+  // за окно и там оставить - что за краем холста, в картинку просто не попадёт.
+  if (state.draggingFloating && state.floating && e.target !== canvas) {
+    onMove(e);
+    return;
+  }
   if (state.resizingFloating) {
     const { x, y } = getPos(e);
     state.shiftKey = e.shiftKey;

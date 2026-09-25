@@ -131,12 +131,26 @@ public partial class CanvasView : UserControl
     /// </summary>
     private void UpdateBrushRing()
     {
-        if (_vm is null || _ringPoint is not { } p || !HasBrushRing(_vm.ActiveTool))
+        if (_vm is null || !HasBrushRing(_vm.ActiveTool))
         {
-            BrushRing.Visibility = BrushRingOuter.Visibility = Visibility.Collapsed;
+            SetBrushCursor(null);
+            HideRingElements();
             return;
         }
         double d = Math.Max(1, _vm.ToolSize) * Math.Max(_vm.Zoom, ViewGeometry.MinZoom);
+        double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        // Небольшой кружок - в курсоре: его система рисует вместе с указателем, без
+        // задержки. Большой - элементами, указатель прячется, крестик рисуется здесь же.
+        if (RingCursor.Fits(d * dpi))
+        {
+            SetBrushCursor(d * dpi);
+            HideRingElements();
+            return;
+        }
+        SetBrushCursor(null);
+        BrushCursor = Cursors.None;
+        Cursor = Cursors.None;
+        if (_ringPoint is not { } p) { HideRingElements(); return; }
         foreach (var ring in new[] { BrushRingOuter, BrushRing })
         {
             ring.Width = ring.Height = d;
@@ -144,6 +158,45 @@ public partial class CanvasView : UserControl
             Canvas.SetTop(ring, p.Y - d / 2);
             ring.Visibility = Visibility.Visible;
         }
+        foreach (var cross in new[] { BrushCrossOuter, BrushCross })
+        {
+            Canvas.SetLeft(cross, p.X);
+            Canvas.SetTop(cross, p.Y);
+            cross.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void HideRingElements()
+    {
+        BrushRing.Visibility = BrushRingOuter.Visibility = Visibility.Collapsed;
+        BrushCross.Visibility = BrushCrossOuter.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Курсор, который холст ставит инструменту с кружком: курсор-картинка с кружком,
+    /// Cursors.None для большого кружка, null - у инструмента кружка нет.
+    /// </summary>
+    public Cursor? BrushCursor { get; private set; }
+
+    /// <summary>Диаметр кружка в курсоре-картинке, в пикселях экрана; null - курсора с кружком нет.</summary>
+    public double? BrushCursorDiameter { get; private set; }
+
+    private void SetBrushCursor(double? diameterPixels)
+    {
+        if (diameterPixels is not { } d)
+        {
+            if (BrushCursorDiameter is not null) { BrushCursor?.Dispose(); }
+            BrushCursor = null;
+            BrushCursorDiameter = null;
+            return;
+        }
+        d = Math.Round(d, 2);
+        if (BrushCursorDiameter == d && BrushCursor is not null) { Cursor = BrushCursor; return; }
+        var old = BrushCursorDiameter is not null ? BrushCursor : null;
+        BrushCursor = RingCursor.Create(d);
+        BrushCursorDiameter = d;
+        Cursor = BrushCursor;
+        old?.Dispose();
     }
     private void OnDocPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -792,7 +845,11 @@ public partial class CanvasView : UserControl
             _vm.ActiveToolInstance.OnPointerMove(pos, _vm.ToolContext);
             QueueRender();
         }
-        Cursor = _vm.ActiveToolInstance.GetCursor(pos) ?? Cursors.Arrow;
+        // У инструментов с кружком курсор - кружок (или спрятанный указатель над большим
+        // кружком), у остальных - свой курсор инструмента.
+        Cursor = HasBrushRing(_vm.ActiveTool) && BrushCursor is not null
+            ? BrushCursor
+            : _vm.ActiveToolInstance.GetCursor(pos) ?? Cursors.Arrow;
     }
 
     private void OnSurfaceMouseUp(object sender, MouseButtonEventArgs e)

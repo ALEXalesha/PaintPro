@@ -80,6 +80,7 @@ public abstract class StrokeToolBase : ITool
         if (_strokeAlpha == 0) ctx.ReportTransparentInk();
         _paint.Color = _paint.Color.WithAlpha(255);
         _mergeBlend = MergeBlendMode(ctx);
+        BeginStroke(position, ctx);
 
         _path = new SKPath();
         _path.MoveTo(position);
@@ -92,7 +93,7 @@ public abstract class StrokeToolBase : ITool
             BlendMode = _paint.BlendMode,
         })
         {
-            _strokeCanvas.DrawCircle(position, _paint.StrokeWidth / 2f, dot);
+            DrawDot(_strokeCanvas, position, dot, _paint);
         }
 
         _last = position;
@@ -112,7 +113,7 @@ public abstract class StrokeToolBase : ITool
         // размер. Отрезки с круглыми концами стыкуются сами, ступеньки на смене нет.
         _paint.StrokeWidth = CurrentStrokeWidth(ctx);
         _path.LineTo(position);
-        _strokeCanvas.DrawLine(_last, position, _paint);
+        DrawSegment(_strokeCanvas, _last, position, _paint);
         _last = position;
 
         var radius = _paint.StrokeWidth / 2f + 1f;
@@ -177,6 +178,17 @@ public abstract class StrokeToolBase : ITool
     /// <summary>Subclasses set Color, StrokeWidth, BlendMode here.</summary>
     protected abstract void ConfigurePaint(SKPaint paint, ToolContext ctx);
 
+    /// <summary>Начало мазка, после настройки краски. Кисть здесь берёт свой пучок ворсинок.</summary>
+    protected virtual void BeginStroke(SKPoint position, ToolContext ctx) { }
+
+    /// <summary>Отпечаток на нажатии: у всех, кроме кисти, - круг толщиной с линию.</summary>
+    protected virtual void DrawDot(SKCanvas canvas, SKPoint p, SKPaint fill, SKPaint stroke)
+        => canvas.DrawCircle(p, stroke.StrokeWidth / 2f, fill);
+
+    /// <summary>Отрезок мазка: у всех, кроме кисти, - одна круглая линия.</summary>
+    protected virtual void DrawSegment(SKCanvas canvas, SKPoint a, SKPoint b, SKPaint stroke)
+        => canvas.DrawLine(a, b, stroke);
+
     /// <summary>Краска для замера толщины: ConfigurePaint пишет и цвет, а штрих его менять не должен.</summary>
     private readonly SKPaint _widthProbe = new();
 
@@ -200,7 +212,7 @@ public abstract class StrokeToolBase : ITool
            && ReferenceEquals(ctx.Document.Layers[0], ctx.Document.ActiveLayer);
 }
 
-/// <summary>Thin line. Width = size * 0.5, no smoothing pass.</summary>
+/// <summary>Сплошная ровная линия толщиной с размер - в отличие от кисти, без ворсинок.</summary>
 public sealed class PencilTool : StrokeToolBase
 {
     public override string Name => "Pencil";
@@ -213,14 +225,46 @@ public sealed class PencilTool : StrokeToolBase
     }
 }
 
-/// <summary>Soft thick line. Width = size, round caps/joins (default).</summary>
+/// <summary>
+/// Кисть: мазок из ворсинок (1.33.0, см. <see cref="Bristles"/>). Толщина - размер, как у
+/// всех; до 1.33.0 она ничем не отличалась от карандаша.
+/// </summary>
 public sealed class BrushTool : StrokeToolBase
 {
     public override string Name => "Brush";
+
+    private Bristles.Bristle[] _bristles = Bristles.For(1);
+
+    /// <summary>Зерно следующего мазка; null - из точки начала (Bristles.SeedAt). Для проверок.</summary>
+    public uint? NextSeed { get; set; }
+
+    /// <summary>Зерно последнего начатого мазка.</summary>
+    public uint Seed { get; private set; }
+
     protected override void ConfigurePaint(SKPaint paint, ToolContext ctx)
     {
         paint.Color = ctx.PrimaryColor.WithAlpha((byte)(255 * ctx.Opacity));
         paint.StrokeWidth = MathF.Max(1f, ctx.ToolSize);
+    }
+
+    // Пучок на каждый мазок свой: одинаковые полоски на всех мазках читались бы как узор.
+    // Зерно - из точки начала, а не случайное: тот же мазок ложится так же.
+    protected override void BeginStroke(SKPoint position, ToolContext ctx)
+    {
+        Seed = NextSeed ?? Bristles.SeedAt(position);
+        _bristles = Bristles.For(Seed);
+    }
+
+    protected override void DrawDot(SKCanvas canvas, SKPoint p, SKPaint fill, SKPaint stroke)
+    {
+        if (Bristles.Applies(stroke.StrokeWidth)) Bristles.DrawDot(canvas, _bristles, p, stroke.StrokeWidth, fill);
+        else base.DrawDot(canvas, p, fill, stroke);
+    }
+
+    protected override void DrawSegment(SKCanvas canvas, SKPoint a, SKPoint b, SKPaint stroke)
+    {
+        if (Bristles.Applies(stroke.StrokeWidth)) Bristles.DrawSegment(canvas, _bristles, a, b, stroke.StrokeWidth, stroke);
+        else base.DrawSegment(canvas, a, b, stroke);
     }
 }
 

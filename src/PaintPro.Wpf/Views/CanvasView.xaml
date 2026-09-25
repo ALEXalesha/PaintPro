@@ -86,6 +86,10 @@
                         VerticalAlignment="Top">
                     <Ellipse x:Name="BrushRingOuter" Stroke="#E6FFFFFF" StrokeThickness="3" Visibility="Collapsed"/>
                     <Ellipse x:Name="BrushRing" Stroke="Black" StrokeThickness="1" Visibility="Collapsed"/>
+                    <!-- Крестик большого кружка: системный указатель над ним спрятан, чтобы
+                         кружок и крестик двигались вместе (см. RingCursor). -->
+                    <Path x:Name="BrushCrossOuter" Data="M-5,0 H5 M0,-5 V5" Stroke="#E6FFFFFF" StrokeThickness="3" Visibility="Collapsed"/>
+                    <Path x:Name="BrushCross" Data="M-5,0 H5 M0,-5 V5" Stroke="Black" StrokeThickness="1" Visibility="Collapsed"/>
                 </Canvas>
             </Grid>
         </ScrollViewer>

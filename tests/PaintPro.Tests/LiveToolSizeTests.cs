@@ -40,6 +40,25 @@ public class LiveToolSizeTests
     private static bool Inked(SKBitmap b, int x, int y) => b.GetPixel(x, y) != SKColors.White;
 
     /// <summary>
+    /// Докуда от линии y = 300 дотянулся мазок в столбце x: самая дальняя закрашенная точка,
+    /// сверху и снизу - меньшее из двух. Не «до первого просвета»: у кисти с 1.33.0 между
+    /// ворсинками есть просветы, и точка у самого края могла попасть в просвет, хотя мазок
+    /// шириной ровно такой, как надо.
+    /// </summary>
+    private static int Reach(Func<int, int, bool> touched, int x)
+    {
+        int up = 0, down = 0;
+        for (int d = 1; d <= 200; d++)
+        {
+            if (touched(x, 300 - d)) up = d;
+            if (touched(x, 300 + d)) down = d;
+        }
+        return Math.Min(up, down);
+    }
+
+    private static int Reach(SKBitmap b, int x) => Reach((px, py) => Inked(b, px, py), x);
+
+    /// <summary>
     /// Горизонтальный штрих: первая половина тонкая, посередине колесо вверх, вторая
     /// половина толстая. Возвращает размер после колеса.
     /// </summary>
@@ -72,11 +91,9 @@ public class LiveToolSizeTests
 
             // Первая половина тонкая: в 10 пикселях от линии пусто.
             Assert.True(Touched(200, 300));
-            Assert.False(Touched(200, 310));
-            // Вторая - толстая: в 15 пикселях от линии уже закрашено.
-            Assert.True(Touched(400, 315));
-            Assert.True(Touched(400, 285));
-            Assert.False(Touched(400, 330));
+            Assert.InRange(Reach(Touched, 200), 0, 9);
+            // Вторая - толстая: в 15 пикселях от линии уже закрашено, за 30 - ещё нет.
+            Assert.InRange(Reach(Touched, 400), 15, 29);
         });
     }
 
@@ -108,9 +125,9 @@ public class LiveToolSizeTests
             for (int x = 310; x <= 500; x += 10) Move(vm, x, 300);
             Up(vm, 500, 300);
             var b = Paper(vm);
-            Assert.True(Inked(b, 200, 315));
+            Assert.True(Reach(b, 200) >= 15);
             Assert.True(Inked(b, 400, 300));
-            Assert.False(Inked(b, 400, 310));
+            Assert.True(Reach(b, 400) < 10);
         });
     }
 
@@ -130,7 +147,7 @@ public class LiveToolSizeTests
             Assert.False(Inked(b, 400, 300));
             vm.RedoCommand.Execute(null);
             Assert.True(Inked(b, 200, 300));
-            Assert.True(Inked(b, 400, 315));
+            Assert.True(Reach(b, 400) >= 15);
         });
     }
 
@@ -144,8 +161,9 @@ public class LiveToolSizeTests
             ThinThenThick(vm, release: false);
             var preview = vm.ActiveToolInstance.PreviewBitmap;
             Assert.NotNull(preview);
-            Assert.True(preview!.GetPixel(400, 315).Alpha > 0, "толстая часть в превью");
-            Assert.Equal(0, preview.GetPixel(200, 310).Alpha);
+            bool Shown(int x, int y) => preview!.GetPixel(x, y).Alpha > 0;
+            Assert.True(Reach(Shown, 400) >= 15, "толстая часть в превью");
+            Assert.True(Reach(Shown, 200) < 10);
             Up(vm, 500, 300);
         });
     }
@@ -254,8 +272,16 @@ public class ToolSizeLimitTests
             t.OnPointerMove(new SKPoint(800, 300), vm.ToolContext);
             t.OnPointerUp(new SKPoint(800, 300), vm.ToolContext);
             var untouched = tool == ToolKind.Eraser ? SKColors.Black : SKColors.White;
-            Assert.NotEqual(untouched, paper.GetPixel(450, 300 - 145));
-            Assert.NotEqual(untouched, paper.GetPixel(450, 300 + 145));
+            // Самая дальняя закрашенная точка, а не сплошь до неё: у кисти между ворсинками
+            // просветы (1.33.0), и край у неё неровный - но не шире 300.
+            int up = 0, down = 0;
+            for (int d = 1; d <= 160; d++)
+            {
+                if (paper.GetPixel(450, 300 - d) != untouched) up = d;
+                if (paper.GetPixel(450, 300 + d) != untouched) down = d;
+            }
+            int near = tool == ToolKind.Brush ? 125 : 145;
+            Assert.True(up >= near && down >= near, $"{up} {down}");
             Assert.Equal(untouched, paper.GetPixel(450, 300 - 155));
             Assert.Equal(untouched, paper.GetPixel(450, 300 + 155));
         });
