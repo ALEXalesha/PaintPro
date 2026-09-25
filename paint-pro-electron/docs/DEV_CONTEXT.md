@@ -6,8 +6,9 @@
 
 ## 1. Стек и сборка
 
-- **Платформа:** Electron 33.4.11 + Node 24.14 / npm 11.9.
-- **electron-builder 25.1.8** — Windows portable + NSIS installer.
+- **Платформа:** Electron 44.4.5 + Node 24.14 / npm 11.9 (до 1.16.1 был Electron 33.4.11:
+  32 известные уязвимости движка, см. CHANGELOG 1.28.1 / 1.16.1).
+- **electron-builder 26.15.3** — Windows portable + NSIS installer (до 1.16.1 - 25.1.8).
 - **Один HTML-файл (`paint-pro.html` ≈ 3000+ строк)** содержит CSS + HTML + ванильный JS. Никаких бандлеров, фреймворков, transpile-шага. Это намеренно — приложение «open-and-edit».
 - **`main.js`** — создаёт `BrowserWindow`, отключает нативное меню (`Menu.setApplicationMenu(null)` + `setMenuBarVisibility(false)`), обрабатывает `ipcMain.handle('pick-save-path' | 'write-image' | 'clear-save-path' | 'open-file-dialog' | 'read-dropped-file')` и single-instance lock + ассоциации файлов. Сохранение разведено на два вызова специально: renderer должен знать расширение до `toDataURL`, иначе JPEG уезжает в файл PNG-байтами. `clear-save-path` обнуляет `global.lastSavedPath`: без него «Файл → Новый» оставлял документ привязанным к прежней картинке, и Ctrl+S перезаписывал её чистым холстом.
 - **`preload.js`** — `contextBridge.exposeInMainWorld('electronAPI', { pickSavePath, writeImage, clearSavePath, openFileDialog, getFilePath, readDroppedFile, onMenuAction, onOpenFile })`. `contextIsolation:true`, `nodeIntegration:false`.
@@ -753,7 +754,7 @@ calc-pro-electron/
     "build-installer": "electron-builder --win nsis --x64"
   },
   "devDependencies": {
-    "electron": "^33.4.11",
+    "electron": "^44.4.5",
     "electron-builder": "^25.1.8"
   },
   "build": {
@@ -780,4 +781,4 @@ calc-pro-electron/
 - Apple WWDC 2025 — Liquid Glass design language (iOS 26 / macOS Tahoe 26).
 - CSS-tricks: «Getting Clarity on Apple's Liquid Glass» — https://css-tricks.com/getting-clarity-on-apples-liquid-glass/
 - DEV.to: «Recreating Apple's Liquid Glass Effect with Pure CSS» — https://dev.to/kevinbism/recreating-apples-liquid-glass-effect-with-pure-css-3gpl
-- Browser support: `backdrop-filter` отлично работает в Electron 33 (Chromium 130+). На Windows hardware acceleration включён по умолчанию — производительность нормальная даже с 12 анимированными пузырями + 4 стеклянными панелями.
+- Browser support: `backdrop-filter` отлично работает в Electron 44 (так же было и в Electron 33). На Windows hardware acceleration включён по умолчанию — производительность нормальная даже с 12 анимированными пузырями + 4 стеклянными панелями.

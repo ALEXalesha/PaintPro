@@ -1,6 +1,6 @@
 {
   "name": "paint-pro",
-  "version": "1.16.0",
+  "version": "1.16.1",
   "description": "Paint Pro - полноценный графический редактор",
   "main": "main.js",
   "author": "ALEXalesha",
@@ -38,8 +38,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
-    "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.paintpro.electron",

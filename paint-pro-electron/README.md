@@ -132,6 +132,7 @@ This approach is not a matter of taste. It is where the defects actually came fr
 | 1.12.1 | a sweep over the new layer code | seven defects in one pass |
 | 1.15.0 | asking what ends a mouse gesture | resizing a selection broke if the mouse strayed two pixels off the path |
 | 1.16.0 | checking the layout in the real window | hotkeys did nothing on a Russian keyboard layout; buttons in a narrowed panel slid under the scrollbar |
+| 1.16.1 | Dependabot alerts on GitHub | the app ran on Electron 33 with 32 known engine vulnerabilities; now Electron 44 |
 
 The last one is the clearest example of why reading the code does not find these. The selection frame and its eight handles are overlay elements, not part of the canvas, so the cursor crossing a handle raises the same "pointer left" event as leaving the canvas entirely - and end-of-gesture hung on that event. Drawing perfectly along the path kept the handle under the cursor and hid the bug. Now a gesture ends when the button is released, and a stroke that runs off the edge of the canvas continues when you come back.
 

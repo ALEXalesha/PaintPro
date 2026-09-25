@@ -23,7 +23,7 @@
     <Copyright>Paint Pro</Copyright>
     <!-- Один источник версии: FileVersion/AssemblyVersion выводятся из Version.
          Прежде FileVersion был прописан отдельно и отстал на два релиза. -->
-    <Version>1.28.0</Version>
+    <Version>1.28.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
