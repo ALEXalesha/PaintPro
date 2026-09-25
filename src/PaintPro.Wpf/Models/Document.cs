@@ -495,7 +495,8 @@ public partial class Document : ObservableObject
                     // Внутри отдельного слоя прозрачность уже учтена в его собственной
                     // краске: применить её второй раз значило бы возвести в квадрат.
                     paint.Color = SKColors.White.WithAlpha((byte)(255 * (isolate ? 1f : opacity)));
-                    canvas.DrawBitmap(pl.Bitmap, 0, 0, paint);
+                    // Без копии битмапа - см. SkiaNoCopy: это самый частый вызов в программе.
+                    canvas.DrawBitmapNoCopy(pl.Bitmap, 0, 0, paint);
                 }
             }
             else layer.Render(canvas);
@@ -507,7 +508,7 @@ public partial class Document : ObservableObject
             {
                 paint.Color = SKColors.White.WithAlpha((byte)(previewAlpha * (isolate ? 1f : opacity)));
                 paint.BlendMode = previewBlend;
-                canvas.DrawBitmap(preview, 0, 0, paint);
+                canvas.DrawBitmapNoCopy(preview, 0, 0, paint);
                 paint.BlendMode = SKBlendMode.SrcOver;
             }
 
@@ -596,7 +597,7 @@ public partial class Document : ObservableObject
             Color = SKColors.White.WithAlpha(alpha),
             FilterQuality = resampled ? SKFilterQuality.Medium : SKFilterQuality.None,
         })
-            canvas.DrawBitmap(bmp, box, paint);
+            canvas.DrawBitmapNoCopy(bmp, box, paint);
         canvas.Restore();
     }
 

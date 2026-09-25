@@ -29,7 +29,7 @@ public class CanvasCenteringTests
         view.Measure(new Size(ViewW, ViewH));
         view.Arrange(new Rect(0, 0, ViewW, ViewH));
         view.UpdateLayout();
-        return (view, (FrameworkElement)view.FindName("Skia")!, (ScrollViewer)view.FindName("Scroll")!);
+        return (view, (FrameworkElement)view.FindName("Surface")!, (ScrollViewer)view.FindName("Scroll")!);
     }
 
     private static MainViewModel Sized(int w, int h, double zoom)

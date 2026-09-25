@@ -49,15 +49,29 @@
                         </Border.Effect>
                     </Border>
                 </Grid>
-                <!-- SkiaSharp viewport — renders the entire document (all layers + floating pickup). -->
-                <skia:SKElement x:Name="Skia"
+                <!-- Поверхность холста: размером с документ, умноженный на масштаб. Сама ничего
+                     не рисует - ловит мышь и задаёт координаты (пиксель документа = точка
+                     поверхности / масштаб). Прозрачный фон нужен, чтобы попадание мыши
+                     считалось по всей площади. -->
+                <Border x:Name="Surface"
+                        Background="Transparent"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"/>
+                <!-- Растр - только видимая часть поверхности, не больше окна просмотра
+                     (1.30.0). До того SKElement был во всю поверхность: фотография 4000x3000
+                     каждый кадр целиком собиралась и целиком уезжала в видеокарту, хотя
+                     видна была восьмая её часть. Место и размер растру ставит CanvasView
+                     (PlaceRaster) при каждой прокрутке и смене масштаба. Мышь он не ловит:
+                     её ловит Surface под ним. -->
+                <skia:SKElement x:Name="Raster"
                                 IgnorePixelScaling="False"
+                                IsHitTestVisible="False"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Top"/>
                 <!-- WPF overlay for selection-frame + drag handles. Lives at the same scale
-                     as the SKElement; coordinates are document pixels × Zoom.
+                     as the Surface; coordinates are document pixels × Zoom.
                      CRITICAL: Background="{x:Null}" so empty overlay areas pass mouse
-                     events through to SKElement below. Child handles with non-null Fill
+                     events through to Surface below. Child handles with non-null Fill
                      remain hit-testable in their own bounds. -->
                 <Canvas x:Name="Overlay"
                         Background="{x:Null}"

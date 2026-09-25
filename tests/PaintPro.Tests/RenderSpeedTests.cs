@@ -355,7 +355,7 @@ public class RenderSpeedTests
         view.Measure(new Size(w, h));
         view.Arrange(new Rect(0, 0, w, h));
         view.UpdateLayout();
-        return (view, (FrameworkElement)view.FindName("Skia")!, (ScrollViewer)view.FindName("Scroll")!);
+        return (view, (FrameworkElement)view.FindName("Surface")!, (ScrollViewer)view.FindName("Scroll")!);
     }
 
     [Fact]
@@ -514,9 +514,24 @@ public class RenderSpeedTests
         }
     }
 
-    /// <summary>Отрисовать вид в свою поверхность, как это делает SKElement.</summary>
-    private static SKBitmap Paint(CanvasView view, int w, int h)
+    // ───────── растр размером с окно (1.30.0) ─────────
+
+    private static SkiaSharp.Views.WPF.SKElement RasterOf(CanvasView view)
+        => (SkiaSharp.Views.WPF.SKElement)view.FindName("Raster")!;
+
+    /// <summary>Где растр стоит на поверхности, в DIP.</summary>
+    private static Point RasterOrigin(CanvasView view)
+        => RasterOf(view).TranslatePoint(new Point(0, 0), (FrameworkElement)view.FindName("Surface")!);
+
+    /// <summary>
+    /// Отрисовать растр вида в свою поверхность, как это делает SKElement: размер - как у
+    /// растра (масштаб экрана в тестах 1).
+    /// </summary>
+    private static SKBitmap Paint(CanvasView view)
     {
+        var raster = RasterOf(view);
+        int w = (int)Math.Round(raster.ActualWidth > 0 ? raster.ActualWidth : raster.Width);
+        int h = (int)Math.Round(raster.ActualHeight > 0 ? raster.ActualHeight : raster.Height);
         var bmp = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
         bmp.Erase(SKColors.Magenta);
         using var surface = SKSurface.Create(bmp.Info, bmp.GetPixels(), bmp.RowBytes);
@@ -527,55 +542,145 @@ public class RenderSpeedTests
         return bmp;
     }
 
-    private static MainViewModel RedCorner(double zoom)
+    /// <summary>Цвет растра в точке поверхности (DIP поверхности).</summary>
+    private static SKColor At(CanvasView view, SKBitmap bmp, double surfaceX, double surfaceY)
     {
-        var vm = new MainViewModel { Zoom = zoom };
+        var o = RasterOrigin(view);
+        int x = (int)Math.Floor(surfaceX - o.X), y = (int)Math.Floor(surfaceY - o.Y);
+        Assert.InRange(x, 0, bmp.Width - 1);
+        Assert.InRange(y, 0, bmp.Height - 1);
+        return bmp.GetPixel(x, y);
+    }
+
+    private static MainViewModel RedCorner(double zoom, int w = 900, int h = 600)
+    {
+        var vm = new MainViewModel();
+        if (w != vm.Document.CanvasWidth || h != vm.Document.CanvasHeight) Assert.True(vm.ResizeCanvasTo(w, h, 0, 0));
+        vm.Zoom = zoom;
         using var c = new SKCanvas(((PixelLayer)vm.Document.Layers[0]).Bitmap);
         c.DrawRect(new SKRect(0, 0, 300, 300), new SKPaint { Color = SKColors.Red });
         return vm;
     }
 
-    [Fact]
-    // на увеличении рисуется то, что в окне, а за краем окна растр не трогается
-    public void only_the_visible_part_of_the_raster_is_painted()
+    private static void Scroll(CanvasView view, ScrollViewer scroll, double x, double y)
+    {
+        scroll.ScrollToHorizontalOffset(x);
+        scroll.ScrollToVerticalOffset(y);
+        view.UpdateLayout();
+    }
+
+    public static IEnumerable<object[]> BigCases()
+    {
+        foreach (var z in new[] { 0.1, 0.25, 0.5, 1.0, 2.0 })
+            yield return new object[] { 4000, 3000, z };
+        foreach (var z in new[] { 0.5, 1.0, 2.0, 4.0 })
+            yield return new object[] { 1920, 1080, z };
+        foreach (var z in new[] { 1.0, 4.0, 8.0 })
+            yield return new object[] { 900, 600, z };
+        yield return new object[] { 8000, 6000, 0.5 };
+        yield return new object[] { 20000, 2000, 0.25 };
+        // С 1.30.0 потолка по холсту нет: фотография и самый большой холст - на 800%.
+        yield return new object[] { 4000, 3000, 8.0 };
+        yield return new object[] { 12000, 10000, 8.0 };
+    }
+
+    [Theory]
+    [MemberData(nameof(BigCases))]
+    // растр не больше окна просмотра, какой бы ни была картинка и масштаб
+    public void the_raster_is_never_bigger_than_the_view(int w, int h, double zoom)
     {
         WpfRunner.Run(() =>
         {
-            var (view, skia, scroll) = Show(RedCorner(4.0));
-            scroll.ScrollToHorizontalOffset(1000);
-            scroll.ScrollToVerticalOffset(500);
-            view.UpdateLayout();
-            using var bmp = Paint(view, (int)skia.ActualWidth, (int)skia.ActualHeight);
+            var (view, _, scroll) = Show(RedCorner(zoom, w, h));
+            var raster = RasterOf(view);
+            Assert.True(raster.ActualWidth <= scroll.ViewportWidth + 4, $"ширина растра {raster.ActualWidth} при окне {scroll.ViewportWidth}");
+            Assert.True(raster.ActualHeight <= scroll.ViewportHeight + 4, $"высота растра {raster.ActualHeight} при окне {scroll.ViewportHeight}");
+        });
+    }
 
-            // В окне: документ (275, 150) - красный, (375, 250) - белая бумага.
-            Assert.Equal(SKColors.Red, bmp.GetPixel(1100, 600));
-            Assert.Equal(SKColors.White, bmp.GetPixel(1500, 1000));
-            // Далеко за краем окна - то, что там было до отрисовки.
-            Assert.Equal(SKColors.Magenta, bmp.GetPixel(3500, 2300));
-            Assert.Equal(SKColors.Magenta, bmp.GetPixel(10, 10));
+    [Theory]
+    [MemberData(nameof(BigCases))]
+    // и накрывает всю видимую часть холста
+    public void the_raster_covers_every_visible_pixel_of_the_canvas(int w, int h, double zoom)
+    {
+        WpfRunner.Run(() =>
+        {
+            var (view, surface, scroll) = Show(RedCorner(zoom, w, h));
+            Scroll(view, scroll, scroll.ScrollableWidth / 3, scroll.ScrollableHeight / 2);
+            var visible = scroll.TransformToDescendant(surface)
+                .TransformBounds(new Rect(0, 0, scroll.ViewportWidth, scroll.ViewportHeight));
+            visible.Intersect(new Rect(0, 0, surface.ActualWidth, surface.ActualHeight));
+            var raster = RasterOf(view);
+            var o = RasterOrigin(view);
+            var covered = new Rect(o.X, o.Y, raster.ActualWidth, raster.ActualHeight);
+            Assert.True(covered.Contains(visible), $"растр {covered} не накрывает видимое {visible}");
+        });
+    }
+
+    [Theory]
+    [InlineData(4.0, 1000, 500)]
+    [InlineData(2.0, 300, 100)]
+    [InlineData(8.0, 5000, 3000)]
+    // растр показывает тот документ, что под ним: пиксель в пиксель по масштабу
+    public void the_raster_shows_the_document_under_it(double zoom, double sx, double sy)
+    {
+        WpfRunner.Run(() =>
+        {
+            var (view, _, scroll) = Show(RedCorner(zoom));
+            Scroll(view, scroll, sx, sy);
+            using var bmp = Paint(view);
+            var o = RasterOrigin(view);
+            var raster = RasterOf(view);
+            // Середина растра и его углы (с отступом в пиксель) - по документу.
+            foreach (var (fx, fy) in new[] { (0.5, 0.5), (0.02, 0.02), (0.98, 0.98), (0.02, 0.98) })
+            {
+                double px = o.X + raster.ActualWidth * fx, py = o.Y + raster.ActualHeight * fy;
+                double dx = px / zoom, dy = py / zoom;
+                if (Math.Abs(dx - 300) < 1 || Math.Abs(dy - 300) < 1) continue; // на самой границе
+                var expected = dx < 300 && dy < 300 ? SKColors.Red : SKColors.White;
+                Assert.Equal(expected, At(view, bmp, px, py));
+            }
         });
     }
 
     [Fact]
-    // прокрутили - в новом месте окна рисуется уже оно
-    public void after_scrolling_the_newly_visible_part_is_painted()
+    // прокрутили - растр переехал туда, где теперь окно, и рисует новое место
+    public void after_scrolling_the_raster_moves_and_paints_the_new_place()
     {
         WpfRunner.Run(() =>
         {
-            var (view, skia, scroll) = Show(RedCorner(4.0));
-            scroll.ScrollToHorizontalOffset(0);
-            scroll.ScrollToVerticalOffset(0);
-            view.UpdateLayout();
-            using var first = Paint(view, (int)skia.ActualWidth, (int)skia.ActualHeight);
-            Assert.Equal(SKColors.Red, first.GetPixel(10, 10));
-            Assert.Equal(SKColors.Magenta, first.GetPixel(3500, 2300));
+            var (view, _, scroll) = Show(RedCorner(4.0));
+            Scroll(view, scroll, 0, 0);
+            var first = RasterOrigin(view);
+            using (var bmp = Paint(view))
+                Assert.Equal(SKColors.Red, At(view, bmp, 10, 10));
 
-            scroll.ScrollToRightEnd();
-            scroll.ScrollToBottom();
-            view.UpdateLayout();
-            using var second = Paint(view, (int)skia.ActualWidth, (int)skia.ActualHeight);
-            Assert.Equal(SKColors.White, second.GetPixel(3500, 2300));
-            Assert.Equal(SKColors.Magenta, second.GetPixel(10, 10));
+            Scroll(view, scroll, scroll.ScrollableWidth, scroll.ScrollableHeight);
+            var second = RasterOrigin(view);
+            Assert.True(second.X > first.X + 1000 && second.Y > first.Y + 1000, $"{first} -> {second}");
+            using (var bmp = Paint(view))
+                Assert.Equal(SKColors.White, At(view, bmp, 3500, 2300));
+        });
+    }
+
+    [Fact]
+    // масштаб поменяли - растр снова по окну
+    public void after_zooming_the_raster_follows_the_view()
+    {
+        WpfRunner.Run(() =>
+        {
+            var vm = RedCorner(1.0);
+            var (view, _, scroll) = Show(vm);
+            foreach (var z in new[] { 2.0, 4.0, 8.0, 0.5, 0.1, 1.0 })
+            {
+                vm.Zoom = z;
+                view.UpdateLayout();
+                var raster = RasterOf(view);
+                var (sw, sh) = ViewGeometry.SurfaceSize(900, 600, z);
+                Assert.True(raster.ActualWidth <= Math.Min(sw, scroll.ViewportWidth) + 4, $"x{z}: {raster.ActualWidth}");
+                Assert.True(raster.ActualHeight <= Math.Min(sh, scroll.ViewportHeight) + 4, $"x{z}: {raster.ActualHeight}");
+                Assert.True(raster.ActualWidth >= Math.Min(sw, scroll.ViewportWidth - 2 * ViewGeometry.CanvasMargin) - 1, $"x{z}: {raster.ActualWidth}");
+            }
         });
     }
 
@@ -583,49 +688,180 @@ public class RenderSpeedTests
     [InlineData(0.25)]
     [InlineData(0.5)]
     [InlineData(1.0)]
-    // холст целиком в окне - рисуется целиком, как раньше
+    // холст целиком в окне - растр во весь холст и рисует его целиком
     public void a_canvas_that_fits_is_painted_whole(double zoom)
     {
         WpfRunner.Run(() =>
         {
-            var (v, skia, _) = Show(RedCorner(zoom));
-            int w = (int)skia.ActualWidth, h = (int)skia.ActualHeight;
-            using var bmp = Paint(v, w, h);
+            var (view, surface, _) = Show(RedCorner(zoom));
+            var raster = RasterOf(view);
+            Assert.Equal(surface.ActualWidth, raster.ActualWidth, 3);
+            Assert.Equal(surface.ActualHeight, raster.ActualHeight, 3);
+            using var bmp = Paint(view);
             Assert.Equal(SKColors.Red, bmp.GetPixel(0, 0));
-            Assert.Equal(SKColors.White, bmp.GetPixel(w - 1, h - 1));
-            Assert.Equal(SKColors.White, bmp.GetPixel(w - 1, 0));
-            Assert.Equal(SKColors.White, bmp.GetPixel(0, h - 1));
+            Assert.Equal(SKColors.White, bmp.GetPixel(bmp.Width - 1, bmp.Height - 1));
+            Assert.Equal(SKColors.White, bmp.GetPixel(bmp.Width - 1, 0));
+            Assert.Equal(SKColors.White, bmp.GetPixel(0, bmp.Height - 1));
         });
     }
 
     [Fact]
-    // вид вне окна (так его рисует программа кадров) - растр собирается целиком
+    // вид без окна просмотра - растр во всю поверхность, как до 1.30.0
     public void a_view_without_a_viewport_paints_everything()
     {
         WpfRunner.Run(() =>
         {
             var view = new CanvasView { DataContext = RedCorner(1.0) };
-            using var bmp = Paint(view, 900, 600);
+            var raster = RasterOf(view);
+            Assert.Equal(900, raster.Width);
+            Assert.Equal(600, raster.Height);
+            using var bmp = Paint(view);
             Assert.Equal(SKColors.Red, bmp.GetPixel(0, 0));
             Assert.Equal(SKColors.White, bmp.GetPixel(899, 599));
         });
     }
 
     [Fact]
-    // окно просмотра стало больше - открывшаяся часть рисуется
-    public void a_grown_view_paints_the_part_it_opened()
+    // окно просмотра выросло - растр вырос вместе с ним и рисует открывшееся
+    public void a_grown_view_grows_the_raster()
     {
         WpfRunner.Run(() =>
         {
-            var (view, skia, _) = Show(RedCorner(4.0), 800, 600);
-            using var small = Paint(view, (int)skia.ActualWidth, (int)skia.ActualHeight);
-            Assert.Equal(SKColors.Magenta, small.GetPixel(1500, 1000));
-
+            var (view, _, _) = Show(RedCorner(4.0), 800, 600);
+            double before = RasterOf(view).ActualWidth;
             view.Measure(new Size(1800, 1300));
             view.Arrange(new Rect(0, 0, 1800, 1300));
             view.UpdateLayout();
-            using var big = Paint(view, (int)skia.ActualWidth, (int)skia.ActualHeight);
-            Assert.Equal(SKColors.White, big.GetPixel(1500, 1000));
+            Assert.True(RasterOf(view).ActualWidth > before + 900, $"{before} -> {RasterOf(view).ActualWidth}");
+            using var bmp = Paint(view);
+            Assert.Equal(SKColors.White, At(view, bmp, 1500, 1000));
+        });
+    }
+
+    [Fact]
+    // растр мышь не ловит - её ловит поверхность под ним
+    public void the_raster_lets_the_mouse_through_to_the_surface()
+    {
+        WpfRunner.Run(() =>
+        {
+            var (view, surface, _) = Show(RedCorner(1.0));
+            Assert.False(RasterOf(view).IsHitTestVisible);
+            var hit = VisualTreeHelper.HitTest(surface, new Point(100, 100));
+            Assert.NotNull(hit);
+            Assert.Same(surface, hit!.VisualHit);
+        });
+    }
+
+    // ───────── рисование битмапа без копии ─────────
+
+    public static IEnumerable<object[]> DrawCases()
+    {
+        foreach (var alpha in new byte[] { 255, 128, 0 })
+        foreach (var quality in new[] { SKFilterQuality.None, SKFilterQuality.Low, SKFilterQuality.Medium })
+        foreach (var scale in new[] { 1f, 0.37f, 2.5f })
+            yield return new object[] { alpha, quality, scale };
+    }
+
+    private static SKBitmap Pattern(int w, int h)
+    {
+        var bmp = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
+        var rng = new Random(w * 31 + h);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                bmp.SetPixel(x, y, new SKColor((byte)rng.Next(256), (byte)rng.Next(256), (byte)rng.Next(256), (byte)rng.Next(256)).WithAlpha((byte)rng.Next(256)));
+        return bmp;
+    }
+
+    private static SKBitmap Draw(Action<SKCanvas> draw)
+    {
+        var dst = new SKBitmap(120, 90, SKColorType.Bgra8888, SKAlphaType.Premul);
+        dst.Erase(SKColors.White);
+        using var c = new SKCanvas(dst);
+        draw(c);
+        c.Flush();
+        return dst;
+    }
+
+    private static void SamePixels(SKBitmap a, SKBitmap b)
+    {
+        Assert.Equal(a.Width, b.Width);
+        Assert.Equal(a.Height, b.Height);
+        for (int y = 0; y < a.Height; y++)
+            for (int x = 0; x < a.Width; x++)
+                Assert.True(a.GetPixel(x, y) == b.GetPixel(x, y), $"({x},{y}): {a.GetPixel(x, y)} против {b.GetPixel(x, y)}");
+    }
+
+    [Theory]
+    [MemberData(nameof(DrawCases))]
+    // без копии - те же пиксели, что у DrawBitmap: целиком, со сдвигом и масштабом
+    public void no_copy_draw_matches_DrawBitmap_whole(byte alpha, SKFilterQuality quality, float scale)
+    {
+        using var src = Pattern(50, 40);
+        using var paint = new SKPaint { Color = SKColors.White.WithAlpha(alpha), FilterQuality = quality };
+        using var a = Draw(c => { c.Scale(scale); c.DrawBitmap(src, 7, 5, paint); });
+        using var b = Draw(c => { c.Scale(scale); c.DrawBitmapNoCopy(src, 7, 5, paint); });
+        SamePixels(a, b);
+    }
+
+    [Theory]
+    [MemberData(nameof(DrawCases))]
+    // и в прямоугольник, и частью в прямоугольник
+    public void no_copy_draw_matches_DrawBitmap_into_a_rect(byte alpha, SKFilterQuality quality, float scale)
+    {
+        using var src = Pattern(50, 40);
+        using var paint = new SKPaint { Color = SKColors.White.WithAlpha(alpha), FilterQuality = quality };
+        var dest = new SKRect(3, 4, 3 + 60 * scale, 4 + 33 * scale);
+        using var a = Draw(c => c.DrawBitmap(src, dest, paint));
+        using var b = Draw(c => c.DrawBitmapNoCopy(src, dest, paint));
+        SamePixels(a, b);
+        var part = new SKRect(10, 6, 41, 30);
+        using var a2 = Draw(c => c.DrawBitmap(src, part, dest, paint));
+        using var b2 = Draw(c => c.DrawBitmapNoCopy(src, part, dest, paint));
+        SamePixels(a2, b2);
+    }
+
+    [Fact]
+    // без копии - значит видны правки битмапа, сделанные после прошлого рисования
+    public void no_copy_draw_sees_later_changes_of_the_bitmap()
+    {
+        using var src = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
+        src.Erase(SKColors.Red);
+        using (var first = Draw(c => c.DrawBitmapNoCopy(src, 0, 0)))
+            Assert.Equal(SKColors.Red, first.GetPixel(5, 5));
+        src.Erase(SKColors.Blue);
+        using var second = Draw(c => c.DrawBitmapNoCopy(src, 0, 0));
+        Assert.Equal(SKColors.Blue, second.GetPixel(5, 5));
+    }
+
+    [Fact]
+    // пустой битмап без пикселей не роняет рисование
+    public void no_copy_draw_of_an_empty_bitmap_does_nothing()
+    {
+        using var empty = new SKBitmap();
+        using var result = Draw(c => c.DrawBitmapNoCopy(empty, 0, 0));
+        Assert.Equal(SKColors.White, result.GetPixel(0, 0));
+    }
+
+    [Fact]
+    // сборка документа на холсте и в файле по-прежнему одна и та же
+    public void the_screen_and_the_flattened_file_agree_pixel_for_pixel()
+    {
+        WpfRunner.Run(() =>
+        {
+            var vm = RedCorner(1.0);
+            vm.Document.Layers.Add(new PixelLayer(900, 600) { Opacity = 0.5f });
+            using (var c = new SKCanvas(((PixelLayer)vm.Document.Layers[1]).Bitmap))
+                c.DrawCircle(450, 300, 120, new SKPaint { Color = SKColors.Blue });
+            var (view, _, _) = Show(vm);
+            using var screen = Paint(view);
+            using var file = new SKBitmap(900, 600, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using (var c = new SKCanvas(file))
+            {
+                c.Clear(SKColors.White);
+                vm.Document.Render(c);
+            }
+            foreach (var (x, y) in new[] { (10, 10), (450, 300), (350, 300), (899, 599), (299, 299), (570, 300) })
+                Assert.Equal(file.GetPixel(x, y), screen.GetPixel(x, y));
         });
     }
 }

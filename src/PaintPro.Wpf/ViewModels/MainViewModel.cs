@@ -493,21 +493,23 @@ public partial class MainViewModel : ObservableObject
     partial void OnZoomChanged(double value) => ToolContext.Zoom = value;
 
     /// <summary>
-    /// Наибольший масштаб для нынешнего холста. Поверхность на экране - это холст,
-    /// умноженный на масштаб, и растрируется она целиком: без потолка обычная фотография
-    /// на восьмикратном увеличении просила три гигабайта и роняла приложение нехваткой
-    /// памяти (<see cref="ViewGeometry.MaxSurfacePixels"/>).
+    /// Наибольший масштаб для нынешнего холста. До 1.30.0 зависел от размера холста -
+    /// экранная поверхность растрировалась целиком; теперь растр размером с окно, и потолок
+    /// один на всех (<see cref="ViewGeometry.LargestAllowedZoom"/>).
     /// </summary>
     private double MaxZoom => ViewGeometry.LargestAllowedZoom(Document.CanvasWidth, Document.CanvasHeight);
 
     [RelayCommand] private void ZoomIn()
     {
         var next = GeometryMath.NextZoomStep((float)Zoom, true);
-        if (next > MaxZoom + 1e-6)
+        // На верхней ступени следующей нет, и NextZoomStep отвечает той же. Это тоже
+        // отказ: до 1.30.0 здесь молчали - подсказка была только у потолка по памяти, а
+        // на маленьком холсте Ctrl+= на 800% просто ничего не делал. В Electron-версии
+        // подсказка есть.
+        if (next > MaxZoom + 1e-6 || next <= Zoom + 1e-6)
         {
             // Молчащий отказ неотличим от сломанной кнопки - см. остальные отказы.
-            ShowHint($"Дальше увеличивать нельзя: холст {Document.CanvasWidth}×{Document.CanvasHeight} " +
-                     "не помещается в память на большем масштабе");
+            ShowHint("Больше увеличить нельзя: это предел масштаба.");
             return;
         }
         Zoom = next;

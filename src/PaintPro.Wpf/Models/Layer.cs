@@ -108,9 +108,10 @@ public sealed class PixelLayer : Layer
             return new SKBitmap(1, 1);
         var dst = new SKBitmap(clipped.Width, clipped.Height, _bitmap.ColorType, _bitmap.AlphaType);
         using var canvas = new SKCanvas(dst);
-        canvas.DrawBitmap(_bitmap,
-            source: new SKRect(clipped.Left, clipped.Top, clipped.Right, clipped.Bottom),
-            dest: new SKRect(0, 0, clipped.Width, clipped.Height));
+        // Без копии всего слоя ради кусочка: так снимается «до» у каждого штриха.
+        canvas.DrawBitmapNoCopy(_bitmap,
+            new SKRect(clipped.Left, clipped.Top, clipped.Right, clipped.Bottom),
+            new SKRect(0, 0, clipped.Width, clipped.Height));
         return dst;
     }
 
@@ -125,7 +126,7 @@ public sealed class PixelLayer : Layer
     {
         if (!Visible) return;
         using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)(255 * Opacity)) };
-        canvas.DrawBitmap(_bitmap, 0, 0, paint);
+        canvas.DrawBitmapNoCopy(_bitmap, 0, 0, paint);
     }
 
     public override void Dispose() => _bitmap.Dispose();

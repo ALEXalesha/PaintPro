@@ -25,7 +25,7 @@ public class CanvasGestureTests
         var view = new CanvasView { DataContext = vm };
         view.Measure(new Size(1200, 900));
         view.Arrange(new Rect(0, 0, 1200, 900));
-        return (view, (FrameworkElement)view.FindName("Skia")!, (Canvas)view.FindName("Overlay")!);
+        return (view, (FrameworkElement)view.FindName("Surface")!, (Canvas)view.FindName("Overlay")!);
     }
 
     private static void Press(FrameworkElement el, MouseButton button = MouseButton.Left)

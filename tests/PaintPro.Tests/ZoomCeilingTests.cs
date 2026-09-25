@@ -1,74 +1,66 @@
-﻿using PaintPro.Commands;
+using System.Windows;
+using System.Windows.Controls;
+using PaintPro.Commands;
 using PaintPro.Services;
 using PaintPro.ViewModels;
+using PaintPro.Views;
 using SkiaSharp;
 using Xunit;
 
 namespace PaintPro.Tests;
 
 /// <summary>
-/// Потолок на «холст × масштаб».
+/// Потолок масштаба.
 ///
-/// SKElement растрирует себя целиком, в размер своего элемента, а размер этот - холст,
-/// умноженный на масштаб; виртуализации по видимой области там нет. Потолок стоял только у
-/// самого документа - сторона до 20000 и до 120 млн пикселей всего, - а произведение не
-/// проверял никто. Обычная фотография 4000x3000 на восьмикратном увеличении просила без
-/// малого три гигабайта, самый большой разрешённый холст - двадцать девять, и приложение
-/// падало нехваткой памяти прямо в отрисовке. Дотянуться до этого можно было четырьмя
-/// нажатиями Ctrl+= .
+/// С 1.21.0 он зависел от холста: SKElement растрировал себя во всю поверхность «холст ×
+/// масштаб», и фотография 4000x3000 на восьмикратном увеличении просила три гигабайта и
+/// роняла приложение. Потолок в 64 млн пикселей поверхности это закрыл, но такой
+/// фотографии больше 200% не давал. С 1.30.0 растр размером с окно просмотра, масштаб
+/// памяти не просит, и потолок один на все холсты - 800%, как в Electron-версии. Проверки
+/// ниже держат обе стороны: масштаб доходит до верха, а растр при этом не растёт.
 /// </summary>
 public class ZoomCeilingTests
 {
-    /// <summary>
-    /// SKElement растрирует себя целиком, в размер своего элемента: поверхность в
-    /// canvas × zoom пикселей означает WriteableBitmap на столько же пикселей по 4 байта.
-    /// </summary>
-    private static double SurfaceMegabytes(int canvasW, int canvasH, double zoom)
-    {
-        var (w, h) = ViewGeometry.SurfaceSize(canvasW, canvasH, zoom);
-        return w * h * 4 / 1024.0 / 1024.0;
-    }
+    [Theory]
+    [InlineData(900, 600)]
+    [InlineData(1920, 1080)]
+    [InlineData(4000, 3000)]
+    [InlineData(12000, 10000)]
+    [InlineData(20000, 6000)]
+    [InlineData(1, 1)]
+    // потолок один на все холсты - верхняя ступень
+    public void the_ceiling_is_the_top_step_for_every_canvas(int w, int h)
+        => Assert.Equal(GeometryMath.ZoomSteps[^1], ViewGeometry.LargestAllowedZoom(w, h));
 
-    [Fact]
-    // холст по умолчанию на максимальном зуме - разумная память
-    public void default_canvas_at_max_zoom_is_fine()
-    {
-        Assert.True(SurfaceMegabytes(900, 600, 8) < 200, $"{SurfaceMegabytes(900, 600, 8):F0} МБ");
-    }
-
-    [Fact]
-    // обычная фотография на максимальном зуме
-    public void a_photo_at_max_zoom_is_bounded()
-    {
-        double zoom = ViewGeometry.LargestAllowedZoom(4000, 3000);
-        double mb = SurfaceMegabytes(4000, 3000, zoom);
-        Assert.True(mb < 512, $"фотография 4000x3000 на потолочном зуме {zoom} просит {mb:F0} МБ");
-    }
-
-    [Fact]
-    // самый большой разрешённый холст на максимальном зуме
-    public void the_largest_allowed_canvas_is_bounded()
-    {
-        // Потолок документа: сторона до 20000, всего до 120 млн пикселей.
-        double zoom = ViewGeometry.LargestAllowedZoom(12000, 10000);
-        double mb = SurfaceMegabytes(12000, 10000, zoom);
-        Assert.True(mb < 512, $"холст 12000x10000 на потолочном зуме {zoom} просит {mb:F0} МБ");
-    }
-
-    [Fact]
-    // зум ограничен размером холста
-    public void zoom_is_capped_by_the_canvas()
+    [Theory]
+    [InlineData(4000, 3000)]
+    [InlineData(8000, 8000)]
+    [InlineData(12000, 10000)]
+    // фотография доходит до восьмикратного - до 1.30.0 ей давали 200%
+    public void a_big_canvas_reaches_the_top_zoom(int w, int h)
     {
         var vm = new MainViewModel();
-        vm.Document.History.ExecuteAndPush(new ResizeCanvasCommand(4000, 3000), vm.Document);
+        vm.Document.History.ExecuteAndPush(new ResizeCanvasCommand(w, h), vm.Document);
         for (int i = 0; i < 12; i++) vm.ZoomInCommand.Execute(null);
-        double mb = SurfaceMegabytes(4000, 3000, vm.Zoom);
-        Assert.True(mb < 512, $"после двенадцати Ctrl+= поверхность просит {mb:F0} МБ (зум {vm.Zoom})");
+        Assert.Equal(8.0, vm.Zoom, 3);
     }
 
     [Fact]
-    // открытие большой картинки при уже задранном зуме сбрасывает его
-    public void opening_a_big_image_reins_in_the_zoom()
+    // упёрлись в потолок - подсказка про предел масштаба, а не про память
+    public void zooming_in_at_the_top_explains_the_limit()
+    {
+        var vm = new MainViewModel();
+        for (int i = 0; i < 12; i++) vm.ZoomInCommand.Execute(null);
+        Assert.Equal(8.0, vm.Zoom, 3);
+        vm.ZoomInCommand.Execute(null);
+        Assert.Equal(8.0, vm.Zoom, 3);
+        Assert.Contains("предел масштаба", vm.StatusHint);
+        Assert.DoesNotContain("памят", vm.StatusHint);
+    }
+
+    [Fact]
+    // открыли большую картинку при восьмикратном масштабе - масштаб остаётся
+    public void opening_a_big_image_keeps_the_zoom()
     {
         var vm = new MainViewModel();
         for (int i = 0; i < 12; i++) vm.ZoomInCommand.Execute(null);
@@ -78,8 +70,31 @@ public class ZoomCeilingTests
         using (var c = new SKCanvas(big)) c.Clear(SKColors.White);
         vm.ApplyOpenedBitmap(big);
 
-        double mb = SurfaceMegabytes(vm.Document.CanvasWidth, vm.Document.CanvasHeight, vm.Zoom);
-        Assert.True(mb < 512, $"после открытия поверхность просит {mb:F0} МБ (зум {vm.Zoom})");
+        Assert.Equal(4000, vm.Document.CanvasWidth);
+        Assert.Equal(8.0, vm.Zoom, 3);
+    }
+
+    [Theory]
+    [InlineData(4000, 3000)]
+    [InlineData(12000, 10000)]
+    [InlineData(20000, 6000)]
+    // на восьмикратном растр по-прежнему размером с окно: масштаб памяти не просит
+    public void at_the_top_zoom_the_raster_stays_the_size_of_the_view(int w, int h)
+    {
+        WpfRunner.Run(() =>
+        {
+            var vm = new MainViewModel();
+            vm.Document.History.ExecuteAndPush(new ResizeCanvasCommand(w, h), vm.Document);
+            vm.Zoom = ViewGeometry.LargestAllowedZoom(w, h);
+            var view = new CanvasView { DataContext = vm };
+            view.Measure(new Size(1200, 900));
+            view.Arrange(new Rect(0, 0, 1200, 900));
+            view.UpdateLayout();
+            var raster = (FrameworkElement)view.FindName("Raster")!;
+            var scroll = (ScrollViewer)view.FindName("Scroll")!;
+            Assert.True(raster.ActualWidth * raster.ActualHeight <= (scroll.ViewportWidth + 4) * (scroll.ViewportHeight + 4),
+                $"растр {raster.ActualWidth}x{raster.ActualHeight} при окне {scroll.ViewportWidth}x{scroll.ViewportHeight}");
+        });
     }
 
     [Fact]
@@ -99,5 +114,16 @@ public class ZoomCeilingTests
         vm.Document.History.ExecuteAndPush(new ResizeCanvasCommand(8000, 8000), vm.Document);
         for (int i = 0; i < 12; i++) vm.ZoomOutCommand.Execute(null);
         Assert.Equal(0.1, vm.Zoom, 3);
+    }
+
+    [Fact]
+    // «1:1» даёт один к одному на любом холсте
+    public void zoom_reset_gives_one_to_one_on_any_canvas()
+    {
+        var vm = new MainViewModel();
+        vm.Document.History.ExecuteAndPush(new ResizeCanvasCommand(12000, 10000), vm.Document);
+        vm.Zoom = 0.1;
+        vm.ZoomResetCommand.Execute(null);
+        Assert.Equal(1.0, vm.Zoom, 3);
     }
 }

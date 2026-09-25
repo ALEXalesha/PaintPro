@@ -106,7 +106,7 @@ public class CanvasOverlayTests
         {
             var vm = new MainViewModel();
             var (view, overlay) = Show(vm);
-            var skia = (FrameworkElement)view.FindName("Skia")!;
+            var skia = (FrameworkElement)view.FindName("Surface")!;
 
             Assert.All(CanvasHandles(overlay), h =>
             {
@@ -352,7 +352,7 @@ public class CanvasOverlayTests
         {
             var vm = new MainViewModel();
             var (view, _) = Show(vm);
-            var skia = (FrameworkElement)view.FindName("Skia")!;
+            var skia = (FrameworkElement)view.FindName("Surface")!;
             Assert.Equal(vm.Document.CanvasWidth, skia.Width, 3);
             Assert.Equal(vm.Document.CanvasHeight, skia.Height, 3);
         });
@@ -367,7 +367,7 @@ public class CanvasOverlayTests
             var vm = new MainViewModel();
             var (view, _) = Show(vm);
             vm.Document.History.ExecuteAndPush(new Commands.ResizeCanvasCommand(300, 200), vm.Document);
-            var skia = (FrameworkElement)view.FindName("Skia")!;
+            var skia = (FrameworkElement)view.FindName("Surface")!;
             Assert.Equal(300, skia.Width, 3);
             Assert.Equal(200, skia.Height, 3);
         });
@@ -381,7 +381,7 @@ public class CanvasOverlayTests
         {
             var vm = new MainViewModel();
             var (view, _) = Show(vm);
-            var skia = (FrameworkElement)view.FindName("Skia")!;
+            var skia = (FrameworkElement)view.FindName("Surface")!;
             var content = (FrameworkElement)view.FindName("ContentRoot")!;
             Assert.Equal(skia.Width + ViewGeometry.CanvasMargin * 2, content.Width, 3);
         });
@@ -396,7 +396,7 @@ public class CanvasOverlayTests
             var vm = new MainViewModel();
             vm.Zoom = 4.0;
             var (view, overlay) = Show(vm);
-            var skia = (FrameworkElement)view.FindName("Skia")!;
+            var skia = (FrameworkElement)view.FindName("Surface")!;
             Assert.Equal(skia.Width, overlay.Width, 3);
             Assert.Equal(skia.Height, overlay.Height, 3);
             Assert.Equal(skia.Margin, overlay.Margin);

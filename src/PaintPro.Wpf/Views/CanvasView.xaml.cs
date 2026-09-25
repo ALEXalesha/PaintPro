@@ -30,21 +30,21 @@ public partial class CanvasView : UserControl
     public CanvasView()
     {
         InitializeComponent();
-        Skia.PaintSurface += OnPaintSurface;
+        Raster.PaintSurface += OnPaintSurface;
 
-        // Pointer events — captured on the Skia element so handles in overlay don't steal them.
-        Skia.MouseDown += OnSkiaMouseDown;
-        Skia.MouseMove += OnSkiaMouseMove;
-        Skia.MouseUp   += OnSkiaMouseUp;
+        // Pointer events — captured on the Surface element so handles in overlay don't steal them.
+        Surface.MouseDown += OnSurfaceMouseDown;
+        Surface.MouseMove += OnSurfaceMouseMove;
+        Surface.MouseUp   += OnSurfaceMouseUp;
         // Захват мыши может уйти посреди штриха: чужое окно вышло вперёд, Alt+Tab,
         // модальный диалог. MouseUp тогда не придёт совсем, а вместе с ним не придёт и
         // запись штриха в слой: нарисованное оставалось висеть превью до следующего клика
         // и пропадало, а битмап размером с холст утекал. Ручки это пережили ещё в 1.8.0
         // (Overlay.LostMouseCapture), сам холст - нет.
-        Skia.LostMouseCapture += (_, _) => EndCanvasGesture();
+        Surface.LostMouseCapture += (_, _) => EndCanvasGesture();
         // Вместе с координатами гасим и цвет: курсор ушёл с холста, а статусбар
         // продолжал показывать последний прочитанный HEX как текущий.
-        Skia.MouseLeave += (_, _) =>
+        Surface.MouseLeave += (_, _) =>
         {
             PixelPositionChanged?.Invoke(null);
             PixelColorChanged?.Invoke(null);
@@ -55,10 +55,11 @@ public partial class CanvasView : UserControl
         // otherwise ScrollViewer would scroll instead of letting us zoom.
         PreviewMouseWheel += OnPreviewMouseWheel;
 
-        // Растр собирается только в видимой части (OnPaintSurface). Прокрутили - открылось
-        // то, что не рисовали; перерисовать сразу, в этом же кадре, а не через QueueRender:
-        // тот ждёт следующего кадра, и край на кадр показывал бы старое.
-        Scroll.ScrollChanged += (_, _) => Skia.InvalidateVisual();
+        // Растр - только видимая часть поверхности (PlaceRaster). Прокрутка, масштаб, размер
+        // окна - и он переезжает туда, где теперь окно, и перерисовывается сразу, в этом же
+        // кадре, а не через QueueRender: тот ждёт следующего кадра, и на кадр было бы видно
+        // пустое место. ScrollChanged приходит и на смену размера содержимого и окна.
+        Scroll.ScrollChanged += (_, _) => PlaceRaster();
 
         // Перетаскивание ручек слушает Overlay, а не сами ручки. DrawOverlay каждый кадр
         // делает Children.Clear() и пересоздаёт ручки заново, а WPF снимает захват мыши с
@@ -117,14 +118,17 @@ public partial class CanvasView : UserControl
         // Счёт живёт в ViewGeometry: здесь остаётся только разложить его по элементам.
         var (w, h) = ViewGeometry.SurfaceSize(_vm.Document.CanvasWidth, _vm.Document.CanvasHeight, _vm.Zoom);
         var (contentW, contentH) = ViewGeometry.ContentSize(w, h);
-        CanvasFrame.Width = CanvasDropShadow.Width = Skia.Width = Overlay.Width = w;
-        CanvasFrame.Height = CanvasDropShadow.Height = Skia.Height = Overlay.Height = h;
+        CanvasFrame.Width = CanvasDropShadow.Width = Surface.Width = Overlay.Width = w;
+        CanvasFrame.Height = CanvasDropShadow.Height = Surface.Height = Overlay.Height = h;
         ContentRoot.Width  = contentW;
         ContentRoot.Height = contentH;
-        CanvasFrame.Margin = CanvasDropShadow.Margin = Skia.Margin = Overlay.Margin = new Thickness(ViewGeometry.CanvasMargin);
+        CanvasFrame.Margin = CanvasDropShadow.Margin = Surface.Margin = Overlay.Margin = new Thickness(ViewGeometry.CanvasMargin);
         // Кэш теней - не больше ShadowCacheSide по длинной стороне, см. CanvasView.xaml.
         // Свойство у замороженного кэша не поменять, поэтому каждый раз новый.
         CanvasShadow.CacheMode = new BitmapCache(ViewGeometry.ShadowCacheScale(w, h)) { SnapsToDevicePixels = true };
+        // Окончательно растр встанет по ScrollChanged, когда новая раскладка пройдёт; здесь -
+        // для вида, у которого окна просмотра нет вовсе.
+        PlaceRaster();
         DrawOverlay();
     }
 
@@ -153,31 +157,75 @@ public partial class CanvasView : UserControl
     {
         CompositionTarget.Rendering -= OnCompositionRender;
         _renderQueued = false;
-        Skia.InvalidateVisual();
+        Raster.InvalidateVisual();
         DrawOverlay();
     }
 
-    // ───────── Skia rendering ─────────
+    // ───────── Растр: видимая часть поверхности ─────────
+
+    /// <summary>
+    /// Где растр стоит на поверхности сейчас, в целых DIP поверхности. Null - окна
+    /// просмотра нет, и растр во всю поверхность.
+    /// </summary>
+    private SKRectI? _rasterRect;
+
+    /// <summary>
+    /// Поставить растр на видимую часть поверхности и перерисовать. Окна просмотра ещё нет
+    /// (вид не разложен) - растр во всю поверхность, как было до 1.30.0.
+    /// </summary>
+    private void PlaceRaster()
+    {
+        SKRectI? rect = null;
+        if (Scroll.ViewportWidth > 0 && Scroll.ViewportHeight > 0 && Surface.ActualWidth > 0)
+        {
+            try
+            {
+                var view = Scroll.TransformToDescendant(Surface)
+                    .TransformBounds(new System.Windows.Rect(0, 0, Scroll.ViewportWidth, Scroll.ViewportHeight));
+                // Масштаб экрана 1: прямоугольник нужен в целых DIP поверхности, с запасом.
+                rect = ViewGeometry.VisibleSurfaceRect(
+                    view.Left, view.Top, view.Width, view.Height,
+                    Surface.ActualWidth, Surface.ActualHeight, 1.0,
+                    (int)Math.Ceiling(Surface.ActualWidth), (int)Math.Ceiling(Surface.ActualHeight))
+                    ?? SKRectI.Empty;
+            }
+            catch (InvalidOperationException)
+            {
+                rect = null; // не в одном дереве - ставить не по чему
+            }
+        }
+
+        _rasterRect = rect;
+        var r = rect ?? new SKRectI(0, 0, (int)Math.Ceiling(Surface.Width), (int)Math.Ceiling(Surface.Height));
+        if (r.Width <= 0 || r.Height <= 0)
+        {
+            Raster.Visibility = Visibility.Hidden;
+            return;
+        }
+        Raster.Visibility = Visibility.Visible;
+        var margin = new Thickness(ViewGeometry.CanvasMargin + r.Left, ViewGeometry.CanvasMargin + r.Top, 0, 0);
+        if (Raster.Margin != margin) Raster.Margin = margin;
+        if (Raster.Width != r.Width) Raster.Width = r.Width;
+        if (Raster.Height != r.Height) Raster.Height = r.Height;
+        Raster.InvalidateVisual();
+    }
+
     private void OnPaintSurface(object? sender, SKPaintSurfaceEventArgs e)
     {
         if (_vm is null) return;
         var canvas = e.Surface.Canvas;
-        // Собираем только видимую часть поверхности - см. ViewGeometry.VisibleSurfaceRect.
-        // Clear тоже подчиняется обрезке, так что за краем окна остаётся прежний кадр; туда
-        // рисуют заново, как только докрутят (ScrollChanged в конструкторе).
-        if (VisiblePixels(e.Info) is { } visible)
-        {
-            if (visible.IsEmpty) return;
-            canvas.ClipRect(visible);
-        }
         canvas.Clear(SKColors.White);
 
-        // Compute device-pixel scale from element size vs document size — this preserves
-        // crisp pixel rendering when zoomed.
-        var docW = _vm.Document.CanvasWidth;
-        var infoW = e.Info.Width;
-        var sx = (float)infoW / docW;
-        canvas.Scale(sx, sx);
+        // Растр - кусок поверхности с левым верхним углом в RasterOrigin (DIP поверхности).
+        // Пикселей растра на DIP столько, сколько даёт масштаб экрана Windows; дальше тот же
+        // масштаб документа, что и у поверхности.
+        double rasterDip = Raster.ActualWidth > 0 ? Raster.ActualWidth : Raster.Width;
+        float k = rasterDip > 0 ? (float)(e.Info.Width / rasterDip) : 1f;
+        var origin = RasterOrigin();
+        float zoom = (float)Math.Max(_vm.Zoom, ViewGeometry.MinZoom);
+        canvas.Scale(k);
+        canvas.Translate(-origin.X, -origin.Y);
+        canvas.Scale(zoom);
 
         // Слои, превью активного инструмента и плавающий объект - одной сборкой, той же,
         // через которую идёт сохранение файла. Превью и объект ложатся на свой слой, а не
@@ -190,33 +238,13 @@ public partial class CanvasView : UserControl
             canvas,
             _vm.ActiveToolInstance.PreviewBitmap,
             _vm.ActiveToolInstance.PreviewAlpha,
-            sx > 1f ? SKFilterQuality.None : SKFilterQuality.Low,
+            k * zoom > 1f ? SKFilterQuality.None : SKFilterQuality.Low,
             _vm.ActiveToolInstance.PreviewBlendMode);
     }
 
-    /// <summary>
-    /// Видимая часть растра SKElement. Null - окна просмотра ещё нет (вид не разложен или
-    /// не в дереве): тогда рисуем всё, как раньше. Пустой прямоугольник - холст целиком
-    /// за краем окна, рисовать нечего.
-    /// </summary>
-    private SKRect? VisiblePixels(SKImageInfo info)
-    {
-        if (Scroll.ViewportWidth <= 0 || Scroll.ViewportHeight <= 0 || Skia.ActualWidth <= 0) return null;
-        System.Windows.Rect view;
-        try
-        {
-            view = Scroll.TransformToDescendant(Skia)
-                .TransformBounds(new System.Windows.Rect(0, 0, Scroll.ViewportWidth, Scroll.ViewportHeight));
-        }
-        catch (InvalidOperationException)
-        {
-            return null; // не в одном дереве - обрезать не по чему
-        }
-        var r = ViewGeometry.VisibleSurfaceRect(
-            view.Left, view.Top, view.Width, view.Height,
-            Skia.ActualWidth, Skia.ActualHeight, info.Width / Skia.ActualWidth, info.Width, info.Height);
-        return r is { } px ? SKRect.Create(px.Left, px.Top, px.Width, px.Height) : SKRect.Empty;
-    }
+    /// <summary>Левый верхний угол растра на поверхности, в DIP поверхности.</summary>
+    private SKPoint RasterOrigin()
+        => _rasterRect is { } r ? new SKPoint(r.Left, r.Top) : new SKPoint(0, 0);
 
     // ───────── Overlay (selection / handles) ─────────
     private void DrawOverlay()
@@ -259,7 +287,7 @@ public partial class CanvasView : UserControl
             AnimateMarchingAnts(poly);
             Overlay.Children.Add(poly);
             // Corner dots: purely a hint that the corners are draggable. QuadTool does the
-            // hit-testing itself on the Skia element, so these must not swallow clicks.
+            // hit-testing itself on the Surface element, so these must not swallow clicks.
             foreach (var c in ps.Corners) AddQuadCornerDot(c, s);
         }
 
@@ -668,16 +696,16 @@ public partial class CanvasView : UserControl
     private SKPoint ToDoc(System.Windows.Point p)
         => ViewGeometry.ToDocument(p.X, p.Y, _vm?.Zoom ?? 1);
 
-    private void OnSkiaMouseDown(object sender, MouseButtonEventArgs e)
+    private void OnSurfaceMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (_vm is null) return;
         // MouseDown fires for every button. Without this a right-click would run the
         // active tool — with a brush selected that means a stray dot plus a history entry.
         if (e.ChangedButton != MouseButton.Left) return;
-        Skia.CaptureMouse();
+        Surface.CaptureMouse();
         _captured = true;
         if (_vm.ActiveTool == ToolKind.Hand) _panAnchor = e.GetPosition(Scroll);
-        var pos = ToDoc(e.GetPosition(Skia));
+        var pos = ToDoc(e.GetPosition(Surface));
         _lastDocPos = pos;
         _vm.ActiveToolInstance.OnPointerDown(pos, _vm.ToolContext);
         QueueRender();
@@ -686,10 +714,10 @@ public partial class CanvasView : UserControl
     // Status-bar updates throttled to ~30 Hz (per spec §"Статусбар").
     private DateTime _lastStatusUpdate = DateTime.MinValue;
 
-    private void OnSkiaMouseMove(object sender, MouseEventArgs e)
+    private void OnSurfaceMouseMove(object sender, MouseEventArgs e)
     {
         if (_vm is null) return;
-        var pos = ToDoc(e.GetPosition(Skia));
+        var pos = ToDoc(e.GetPosition(Surface));
         _lastDocPos = pos;
         var now = DateTime.UtcNow;
         if ((now - _lastStatusUpdate).TotalMilliseconds > 33)
@@ -725,15 +753,15 @@ public partial class CanvasView : UserControl
         Cursor = _vm.ActiveToolInstance.GetCursor(pos) ?? Cursors.Arrow;
     }
 
-    private void OnSkiaMouseUp(object sender, MouseButtonEventArgs e)
+    private void OnSurfaceMouseUp(object sender, MouseButtonEventArgs e)
     {
         if (_vm is null) return;
         if (e.ChangedButton != MouseButton.Left) return;
         _panAnchor = null;
         // Сначала снимаем флаг, потом отпускаем захват: ReleaseMouseCapture синхронно
         // стреляет LostMouseCapture, и обработчик потери завершил бы жест вторым разом.
-        if (_captured) { _captured = false; Skia.ReleaseMouseCapture(); }
-        var pos = ToDoc(e.GetPosition(Skia));
+        if (_captured) { _captured = false; Surface.ReleaseMouseCapture(); }
+        var pos = ToDoc(e.GetPosition(Surface));
         _lastDocPos = pos;
         _vm.ActiveToolInstance.OnPointerUp(pos, _vm.ToolContext);
         QueueRender();
@@ -756,8 +784,8 @@ public partial class CanvasView : UserControl
     /// <summary>Курсор над самим холстом, а не над полем вокруг него.</summary>
     private bool PointerOverCanvas(MouseWheelEventArgs e)
     {
-        var p = e.GetPosition(Skia);
-        return p.X >= 0 && p.Y >= 0 && p.X <= Skia.ActualWidth && p.Y <= Skia.ActualHeight;
+        var p = e.GetPosition(Surface);
+        return p.X >= 0 && p.Y >= 0 && p.X <= Surface.ActualWidth && p.Y <= Surface.ActualHeight;
     }
 
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -777,10 +805,10 @@ public partial class CanvasView : UserControl
         }
 
         // Document-space coords under the cursor BEFORE zoom (these stay constant).
-        var inSkia = e.GetPosition(Skia);
+        var inSurface = e.GetPosition(Surface);
         var oldZoom = _vm.Zoom;
-        var docX = inSkia.X / oldZoom;
-        var docY = inSkia.Y / oldZoom;
+        var docX = inSurface.X / oldZoom;
+        var docY = inSurface.Y / oldZoom;
 
         // Bump zoom (discrete steps per spec). Потолок тот же, что у Ctrl+= : поверхность
         // растрируется целиком, и «холст × масштаб» обязан влезать в память.
@@ -792,7 +820,7 @@ public partial class CanvasView : UserControl
         // Cursor position relative to ScrollViewer viewport (does not change with zoom).
         var inScroll = e.GetPosition(Scroll);
 
-        // After WPF re-layouts (Skia.Width changed via VM PropertyChanged → UpdateLayout2),
+        // After WPF re-layouts (Surface.Width changed via VM PropertyChanged → UpdateLayout2),
         // scroll so that (docX,docY) is at the same viewport pixel as (inScroll.X,inScroll.Y).
         Dispatcher.BeginInvoke(new Action(() =>
         {
