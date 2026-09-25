@@ -93,6 +93,7 @@
 
         <KeyBinding Key="S"      Modifiers="Ctrl" Command="{Binding SaveCommand}"/>
         <KeyBinding Key="S"      Modifiers="Ctrl+Shift" Command="{Binding SaveAsCommand}"/>
+        <KeyBinding Key="P"      Modifiers="Ctrl" Command="{Binding PrintCommand}"/>
         <KeyBinding Key="O"      Modifiers="Ctrl" Command="{Binding OpenCommand}"/>
         <KeyBinding Key="N"      Modifiers="Ctrl" Command="{Binding NewDocumentCommand}"/>
 
@@ -226,6 +227,8 @@
                     <MenuItem Header="Открыть…"  InputGestureText="Ctrl+O" Command="{Binding OpenCommand}"/>
                     <MenuItem Header="Сохранить" InputGestureText="Ctrl+S" Command="{Binding SaveCommand}"/>
                     <MenuItem Header="Сохранить как…" InputGestureText="Ctrl+Shift+S" Command="{Binding SaveAsCommand}"/>
+                    <Separator/>
+                    <MenuItem Header="Печать…" InputGestureText="Ctrl+P" Command="{Binding PrintCommand}"/>
                     <Separator/>
                     <MenuItem Header="Выход" Click="OnExitClick"/>
                 </MenuItem>

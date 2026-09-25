@@ -905,6 +905,23 @@ public partial class MainViewModel : ObservableObject
         Report(FileService.SaveAsDialog(Document));
     }
 
+    /// <summary>
+    /// Кто печатает лист: системное окно печати. Проверки подставляют своё, чтобы не
+    /// открывать настоящий диалог. False - пользователь передумал.
+    /// </summary>
+    public Func<System.Windows.Media.Imaging.BitmapSource, bool> Printer { get; set; } = PrintService.PrintWithDialog;
+
+    /// <summary>
+    /// Печать листа (1.35.0): картинка как на экране - слои и объект в руках, - а документ
+    /// не трогаем. Сохранение прижимает поднятый объект, печать - нет: напечатать не
+    /// значит закончить работу.
+    /// </summary>
+    [RelayCommand] private void Print()
+    {
+        using var sheet = FileService.Flatten(Document);
+        Printer(PrintService.ToBitmapSource(sheet));
+    }
+
     /// <summary>Save for the close-confirmation flow. False if the user backed out of the dialog.</summary>
     public bool TrySaveForClose()
     {
