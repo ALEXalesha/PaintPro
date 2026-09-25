@@ -639,8 +639,30 @@
                             <Border Margin="0,6,0,0" CornerRadius="8" Padding="2"
                                     Background="{DynamicResource GlassBg}"
                                     BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1">
-                                <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding HistoryItems}">
+                                <!-- Строки создаются только для видимой части (1.34.0): полоса
+                                     прокрутки внутри ItemsControl, а панель - виртуальная. Когда
+                                     ScrollViewer обнимал ItemsControl снаружи, виртуализации не
+                                     было, и лента в сотни правок создавала и раскладывала каждую
+                                     строку - быстрые мазки подряд подвисали. -->
+                                <ItemsControl x:Name="HistoryList"
+                                              ItemsSource="{Binding HistoryItems}"
+                                              VirtualizingPanel.IsVirtualizing="True"
+                                              VirtualizingPanel.VirtualizationMode="Recycling"
+                                              VirtualizingPanel.ScrollUnit="Pixel"
+                                              ScrollViewer.CanContentScroll="True">
+                                        <ItemsControl.Template>
+                                            <ControlTemplate TargetType="ItemsControl">
+                                                <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto"
+                                                              CanContentScroll="True" Focusable="False">
+                                                    <ItemsPresenter/>
+                                                </ScrollViewer>
+                                            </ControlTemplate>
+                                        </ItemsControl.Template>
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <VirtualizingStackPanel/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                               <Grid ToolTip="{Binding ToggleHint}">
@@ -657,9 +679,10 @@
                                                   неё. Есть он не у всех: правку, записывающую
                                                   картинку целиком, пропустить нельзя, и ту, ниже
                                                   которой такая есть, - тоже (HistoryManager.CanToggle).
-                                                  Привязка ОДНОСТОРОННЯЯ, переключает команда: в ответ
-                                                  на неё лента пересобирает строки, и запись обратно в
-                                                  уже выброшенный объект была бы записью в никуда.
+                                                  Привязка ОДНОСТОРОННЯЯ, переключает команда: галочку
+                                                  ставит лента по истории, а не щелчок - откажи
+                                                  история, и двусторонняя привязка оставила бы
+                                                  неправду на экране.
                                                 -->
                                                 <CheckBox Grid.Column="0" VerticalAlignment="Center"
                                                           Margin="4,0,0,0" Focusable="False"
@@ -727,7 +750,6 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                </ScrollViewer>
                             </Border>
                         </Expander>
 

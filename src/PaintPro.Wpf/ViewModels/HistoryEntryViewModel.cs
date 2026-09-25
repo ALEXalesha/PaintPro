@@ -12,20 +12,26 @@ namespace PaintPro.ViewModels;
 /// Кроме прыжка по ленте у строки есть выключатель: снятая галочка означает, что правка
 /// не применяется, а идущие после неё - применяются по-прежнему. Есть он не у всех - см.
 /// <see cref="CanToggle"/> и <see cref="Services.HistoryManager.CanToggle"/>.
+///
+/// Строка живёт, пока жива её запись: лента не пересоздаёт строки на каждую правку, а
+/// правит их на месте (MainViewModel.SyncHistoryItems, 1.34.0). Поэтому всё, что может
+/// поменяться без смены записи, - наблюдаемое: номер позиции сдвигается, когда лента
+/// выбрасывает самые старые записи, а выключатель пропадает, когда поверх легла правка,
+/// пишущая картинку целиком.
 /// </summary>
 public partial class HistoryEntryViewModel : ObservableObject
 {
-    public int Target { get; }
-    public string Label { get; }
-
     /// <summary>Запись, которой соответствует строка. У строки «Исходное состояние» её нет.</summary>
     public IDocumentCommand? Command { get; }
 
+    [ObservableProperty] private int _target;
+    [ObservableProperty] private string _label;
+
     /// <summary>Есть ли у строки выключатель.</summary>
-    public bool CanToggle { get; }
+    [ObservableProperty] private bool _canToggle;
 
     /// <summary>Что сказать при наведении: как пользоваться выключателем или почему его нет.</summary>
-    public string ToggleHint { get; }
+    [ObservableProperty] private string _toggleHint;
 
     [ObservableProperty] private bool _isCurrent;
     [ObservableProperty] private bool _isFuture;
@@ -35,19 +41,26 @@ public partial class HistoryEntryViewModel : ObservableObject
 
     public HistoryEntryViewModel(int target, string label)
     {
-        Target = target;
-        Label = label;
-        ToggleHint = "";
+        _target = target;
+        _label = label;
+        _toggleHint = "";
     }
 
     public HistoryEntryViewModel(int target, string label, IDocumentCommand command,
                                  bool enabled, bool canToggle, string toggleHint)
     {
-        Target = target;
-        Label = label;
+        _target = target;
+        _label = label;
         Command = command;
-        Enabled = enabled;
-        CanToggle = canToggle;
-        ToggleHint = toggleHint;
+        _enabled = enabled;
+        _canToggle = canToggle;
+        _toggleHint = toggleHint;
     }
+
+    /// <summary>
+    /// Напомнить привязке нынешнее Enabled. Щелчок по галочке переворачивает её на экране
+    /// ещё до команды; если история отказала, Enabled не поменялся, и без этого галочка
+    /// осталась бы перевёрнутой (раньше строку просто пересоздавали).
+    /// </summary>
+    public void ReassertEnabled() => OnPropertyChanged(nameof(Enabled));
 }

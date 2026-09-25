@@ -1590,6 +1590,26 @@
     padding: 6px 12px;
     box-shadow: var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.4);
   }
+
+  /* Печать - только лист (1.20.0). Раньше Ctrl+P печатал всё окно: меню, панели,
+     инструменты, а картинка шла мелкой частью посередине. Теперь на время печати на
+     странице видна одна картинка листа (#print-sheet, её собирает printSheet), по размеру
+     страницы и без полей интерфейса. */
+  #print-sheet { display: none; }
+  @media print {
+    @page { margin: 10mm; }
+    html, body { background: #fff !important; }
+    body::before, body::after { display: none !important; }
+    body > *:not(#print-sheet) { display: none !important; }
+    #print-sheet { display: block !important; }
+    #print-sheet img {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      max-height: 100vh;
+      object-fit: contain;
+    }
+  }
 </style>
 </head>
 <body>
@@ -1611,6 +1631,8 @@
         <div class="mb-sep"></div>
         <button class="mb-dd-item" onclick="saveCanvas(false)"><span>Сохранить</span><span class="kb">Ctrl S</span></button>
         <button class="mb-dd-item" onclick="saveCanvas(true)"><span>Сохранить как…</span><span class="kb">Ctrl ⇧ S</span></button>
+        <div class="mb-sep"></div>
+        <button class="mb-dd-item" onclick="printSheet()"><span>Печать…</span><span class="kb">Ctrl P</span></button>
       </div>
     </div>
 
@@ -5554,6 +5576,54 @@ async function saveCanvas(saveAs = false) {
   return true;
 }
 
+// ============ ПЕЧАТЬ ============
+// Печатается один лист - картинка так, как она видна: слои вместе и поднятый объект там,
+// где он лежит. Документ при этом не трогаем: объект остаётся в руках, лента - прежней.
+// Картинку собираем заранее и ждём, пока она раскодируется: иначе в предпросмотр печати
+// мог попасть пустой лист.
+function printSheetImage() {
+  const c = document.createElement('canvas');
+  c.width = canvas.width;
+  c.height = canvas.height;
+  const g = c.getContext('2d');
+  g.drawImage(canvas, 0, 0);
+  if (state.floating) drawFloatingOnto(g);
+  return c.toDataURL('image/png');
+}
+
+function preparePrintSheet() {
+  let sheet = document.getElementById('print-sheet');
+  if (!sheet) {
+    sheet = document.createElement('div');
+    sheet.id = 'print-sheet';
+    document.body.appendChild(sheet);
+  }
+  const img = new Image();
+  img.alt = 'Лист';
+  img.src = printSheetImage();
+  sheet.replaceChildren(img);
+  return img;
+}
+
+async function printSheet() {
+  const img = preparePrintSheet();
+  try { await img.decode(); } catch (e) { /* печатаем как есть */ }
+  sheetPreparedByUs = true;
+  window.print();
+}
+
+// Печать из меню самого браузера (или через window.print без нас) тоже должна дать лист.
+let sheetPreparedByUs = false;
+window.addEventListener('beforeprint', () => {
+  if (!sheetPreparedByUs) preparePrintSheet();
+  sheetPreparedByUs = false;
+});
+// После печати картинку убираем: на большом холсте это десятки мегабайт.
+window.addEventListener('afterprint', () => {
+  const sheet = document.getElementById('print-sheet');
+  if (sheet) sheet.replaceChildren();
+});
+
 // ============ НЕСОХРАНЁННАЯ РАБОТА ============
 // Закрытие окна молча теряло рисунок: в WPF-версии вопрос появился ещё в 1.2.0,
 // сюда правка не доехала. Признак изменений живёт здесь, а не копией в
@@ -5756,6 +5826,8 @@ document.addEventListener('keydown', (e) => {
     if (k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if (k === 'y') { e.preventDefault(); redo(); }
     else if (k === 's') { e.preventDefault(); saveCanvas(e.shiftKey); }
+    // Своя печать, а не браузерная: та печатала всё окно с панелями.
+    else if (k === 'p') { e.preventDefault(); printSheet(); }
     else if (k === 'n') { e.preventDefault(); newCanvas(); }
     // Условия «есть выделение» здесь быть не должно: без выделения Ctrl+C копирует
     // весь холст, а Ctrl+X объясняет, почему так не может. Пока условие стояло,

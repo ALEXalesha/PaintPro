@@ -100,8 +100,8 @@ public partial class MainViewModel : ObservableObject
             UndoCommand.NotifyCanExecuteChanged();
             RedoCommand.NotifyCanExecuteChanged();
         };
-        Document.History.Changed += RebuildHistoryItems;
-        RebuildHistoryItems();
+        Document.History.Changed += SyncHistoryItems;
+        SyncHistoryItems();
         Document.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(Document.ActiveLayerIndex)) RebuildLayerItems();
@@ -608,7 +608,7 @@ public partial class MainViewModel : ObservableObject
         InvalidateCanvas?.Invoke();
     }
 
-    /// <summary>Timeline rows for the History panel; rebuilt whenever the history changes.</summary>
+    /// <summary>Timeline rows for the History panel; kept in step with the history by <see cref="SyncHistoryItems"/>.</summary>
     public ObservableCollection<HistoryEntryViewModel> HistoryItems { get; } = new();
 
     [RelayCommand]
@@ -636,7 +636,10 @@ public partial class MainViewModel : ObservableObject
         if (!Document.History.SetEnabled(cmd, !entry.Enabled, Document))
         {
             ShowHint("Эту правку выключить нельзя: ниже неё есть та, что пишет картинку целиком");
-            RebuildHistoryItems();
+            SyncHistoryItems();
+            // Щелчок уже перевернул галочку на экране, а история отказала: сама строка не
+            // поменялась, и без явного напоминания галочка так и врала бы.
+            entry.ReassertEnabled();
             return;
         }
         AfterHistoryWalk();
@@ -650,35 +653,82 @@ public partial class MainViewModel : ObservableObject
         return "Выключить нельзя: ниже в ленте есть правка, которая записывает картинку целиком";
     }
 
-    private void RebuildHistoryItems()
+    private const string ToggleHintText = "Выключить эту правку, не трогая те, что идут после неё";
+
+    /// <summary>
+    /// Привести строки ленты в соответствие с историей - на месте, а не заново.
+    ///
+    /// До 1.34.0 здесь было «стереть всё и создать заново» на каждую правку. Строка ленты -
+    /// это флажок, кнопка и подсказка, а список не был виртуальным, так что создавалась и
+    /// раскладывалась каждая из них, даже невидимая. На ста тридцати правках это 10 мс на
+    /// строки и 58 мс на раскладку после КАЖДОГО мазка, и пауза росла с каждым следующим:
+    /// быстрые мазки подряд подвисали. Теперь строка правится, только если у неё что-то
+    /// поменялось: новый мазок - одна новая строка и две сменённые пометки.
+    /// </summary>
+    private void SyncHistoryItems()
     {
         var history = Document.History;
-        HistoryItems.Clear();
+        var commands = history.Commands;
+        int n = commands.Count;
+
         // Row 0 is the document's starting point (nothing applied) — пока лента не
         // переполнялась. Стоит ей выбросить самые старые записи, и нулевая позиция
         // означает уже не чистый лист, а состояние после забытых правок: строка обещала
         // вернуть документ к началу работы, а возвращала к середине.
-        HistoryItems.Add(new HistoryEntryViewModel(
-            0, history.Trimmed ? "Дальше отмена не идёт" : "Исходное состояние")
+        if (HistoryItems.Count == 0 || HistoryItems[0].Command is not null)
+            HistoryItems.Insert(0, new HistoryEntryViewModel(0, ""));
+        var start = HistoryItems[0];
+        start.Label = history.Trimmed ? "Дальше отмена не идёт" : "Исходное состояние";
+        start.IsCurrent = history.Cursor == 0;
+
+        // Лента выбросила самые старые записи: их строки убираем разом, остальные только
+        // сдвигаются. Иначе на пределе глубины каждая правка сдвигала бы все строки и
+        // пересоздавала их одну за другой.
+        if (n > 0)
         {
-            IsCurrent = history.Cursor == 0,
-        });
-        for (int i = 0; i < history.Commands.Count; i++)
+            int at = -1;
+            for (int r = 1; r < HistoryItems.Count; r++)
+                if (ReferenceEquals(HistoryItems[r].Command, commands[0])) { at = r; break; }
+            for (int r = at - 1; r >= 1; r--) HistoryItems.RemoveAt(r);
+        }
+
+        // Выключатель есть, пока ниже (позже) нет записи, пишущей картинку целиком, - то же
+        // правило, что HistoryManager.CanToggle, но одним проходом с конца, а не по проходу
+        // на строку.
+        var snapshotAfter = new bool[n];
+        bool seen = false;
+        for (int i = n - 1; i >= 0; i--)
+        {
+            snapshotAfter[i] = seen;
+            if (commands[i].WritesSnapshot) seen = true;
+        }
+
+        for (int i = 0; i < n; i++)
         {
             int target = i + 1; // this command applied
-            var cmd = history.Commands[i];
-            bool canToggle = history.CanToggle(cmd);
-            HistoryItems.Add(new HistoryEntryViewModel(
-                target, LocalizeCommand(cmd.DisplayName), cmd,
-                history.IsEnabled(cmd), canToggle,
-                canToggle
-                    ? "Выключить эту правку, не трогая те, что идут после неё"
-                    : ExplainNoToggle(cmd, history))
+            var cmd = commands[i];
+            bool canToggle = !cmd.WritesSnapshot && !snapshotAfter[i];
+            string hint = canToggle ? ToggleHintText : ExplainNoToggle(cmd, history);
+            HistoryEntryViewModel row;
+            if (target < HistoryItems.Count && ReferenceEquals(HistoryItems[target].Command, cmd))
             {
-                IsCurrent = target == history.Cursor,
-                IsFuture = target > history.Cursor,
-            });
+                row = HistoryItems[target];
+            }
+            else
+            {
+                row = new HistoryEntryViewModel(target, LocalizeCommand(cmd.DisplayName), cmd,
+                                                history.IsEnabled(cmd), canToggle, hint);
+                if (target < HistoryItems.Count) HistoryItems[target] = row;
+                else HistoryItems.Add(row);
+            }
+            row.Target = target;
+            row.Enabled = history.IsEnabled(cmd);
+            row.CanToggle = canToggle;
+            row.ToggleHint = hint;
+            row.IsCurrent = target == history.Cursor;
+            row.IsFuture = target > history.Cursor;
         }
+        while (HistoryItems.Count > n + 1) HistoryItems.RemoveAt(HistoryItems.Count - 1);
     }
 
     /// <summary>Map a command's English DisplayName to a Russian label for the UI.</summary>
