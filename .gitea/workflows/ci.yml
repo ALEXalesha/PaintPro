@@ -79,9 +79,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
+      # .NET на ПК уже стоит; setup-dotnet ставил бы его в Program Files, а прав на
+      # это у раннера нет.
 
       # WPF и SkiaSharp есть только под Windows, отсюда и раннер. Тесты слоя
       # представления держат свой STA-поток (WpfRunner), окна на экран не выводят.
