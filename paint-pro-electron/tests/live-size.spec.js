@@ -62,7 +62,9 @@ test('pencil: колесо посреди штриха меняет толщин
   const size = await page.evaluate(() => state.size);
   expect(size).toBeGreaterThanOrEqual(40);
   expect(await inked(app, 250, 306)).toBe(false);
-  expect(await inked(app, 600, 300 + Math.floor(size * 0.25) - 1)).toBe(true);
+  // С 1.18.0 толщина карандаша - сам размер, а не половина.
+  expect(await inked(app, 600, 300 + Math.floor(size / 2) - 2)).toBe(true);
+  expect(await inked(app, 600, 300 + Math.floor(size / 2) + 3)).toBe(false);
 });
 
 test('колесо вниз посреди штриха - линия становится тоньше', async ({ page }) => {

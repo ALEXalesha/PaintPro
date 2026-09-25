@@ -104,7 +104,7 @@ Node.js 18 or newer. The first `npm install` pulls Electron, about 150 MB.
 ```bash
 npm install
 npm start                 # run in development
-npm test                  # 390 checks in Chromium, ~2 minutes
+npm test                  # 423 checks in Chromium, ~3 minutes
 npm run test:app          # 14 checks against the real app, ~40 seconds
 npm run build:web         # single-file browser build into dist/
 npm run build             # portable .exe
@@ -118,7 +118,7 @@ The version number lives in exactly one place, the `version` field of `package.j
 
 ## About the tests
 
-390 Playwright checks plus 17 against the packaged application. They are not unit tests around the functions; the page is opened in Chromium, the mouse really moves across the canvas, and the assertions read pixels back with `getImageData` or compare whole frames through `toDataURL`. Only the Electron bridge is stubbed. The 17 slow ones launch the real Electron binary and run code inside the main process, replacing native dialogs, because file writing and the close-without-saving question live there and nothing else reaches them.
+423 Playwright checks plus 17 against the packaged application. They are not unit tests around the functions; the page is opened in Chromium, the mouse really moves across the canvas, and the assertions read pixels back with `getImageData` or compare whole frames through `toDataURL`. Only the Electron bridge is stubbed. The 17 slow ones launch the real Electron binary and run code inside the main process, replacing native dialogs, because file writing and the close-without-saving question live there and nothing else reaches them.
 
 Two of the files are fuzzers rather than examples. `fuzz.spec.js` generates random sequences of edits from a seed and checks four invariants of the history tape over them; the strongest is that *the cursor position alone determines the document, whatever path led there*. That one law covers more ground than any list of hand-written undo cases.
 
@@ -134,6 +134,7 @@ This approach is not a matter of taste. It is where the defects actually came fr
 | 1.16.0 | checking the layout in the real window | hotkeys did nothing on a Russian keyboard layout; buttons in a narrowed panel slid under the scrollbar |
 | 1.16.1 | Dependabot alerts on GitHub | the app ran on Electron 33 with 32 known engine vulnerabilities; now Electron 44 |
 | 1.17.0 | a remark from the user | the wheel resized the brush only after the button was released and pressed again; an eraser stroke resized mid-way replayed at one size |
+| 1.18.0 | a remark from the user | the size circle was a cursor image capped at 96 points, a third of a 300 px brush; the pencil drew half its size and the marker one and a half |
 
 The last one is the clearest example of why reading the code does not find these. The selection frame and its eight handles are overlay elements, not part of the canvas, so the cursor crossing a handle raises the same "pointer left" event as leaving the canvas entirely - and end-of-gesture hung on that event. Drawing perfectly along the path kept the handle under the cursor and hid the bug. Now a gesture ends when the button is released, and a stroke that runs off the edge of the canvas continues when you come back.
 

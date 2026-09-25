@@ -48,6 +48,8 @@ public partial class CanvasView : UserControl
         {
             PixelPositionChanged?.Invoke(null);
             PixelColorChanged?.Invoke(null);
+            // Тянут кисть за край, не отпуская кнопку, - кружок идёт за мышью дальше.
+            if (!_captured) MoveBrushRing(null);
         };
 
         // Ctrl+wheel zoom with focal point under the cursor.
@@ -102,7 +104,46 @@ public partial class CanvasView : UserControl
     private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MainViewModel.Zoom)) UpdateLayout2();
+        if (e.PropertyName is nameof(MainViewModel.Zoom) or nameof(MainViewModel.ToolSize) or nameof(MainViewModel.ActiveTool))
+            UpdateBrushRing();
         Refresh();
+    }
+
+    // ───────── Кружок размера кисти ─────────
+
+    /// <summary>Где курсор над поверхностью, в DIP поверхности; null - курсора над холстом нет.</summary>
+    private System.Windows.Point? _ringPoint;
+
+    /// <summary>У каких инструментов есть кружок: у тех, что рисуют линией заданной толщины.</summary>
+    public static bool HasBrushRing(ToolKind tool)
+        => tool is ToolKind.Pencil or ToolKind.Brush or ToolKind.Marker or ToolKind.Eraser || tool.IsShapeTool();
+
+    /// <summary>Поставить кружок под курсор (точка поверхности) или убрать (null).</summary>
+    public void MoveBrushRing(System.Windows.Point? surfacePoint)
+    {
+        _ringPoint = surfacePoint;
+        UpdateBrushRing();
+    }
+
+    /// <summary>
+    /// Диаметр - толщина инструмента, умноженная на масштаб: мазок пользователь видит в
+    /// экранных точках. Толщина у всех инструментов с кружком - сам размер (1.32.0).
+    /// </summary>
+    private void UpdateBrushRing()
+    {
+        if (_vm is null || _ringPoint is not { } p || !HasBrushRing(_vm.ActiveTool))
+        {
+            BrushRing.Visibility = BrushRingOuter.Visibility = Visibility.Collapsed;
+            return;
+        }
+        double d = Math.Max(1, _vm.ToolSize) * Math.Max(_vm.Zoom, ViewGeometry.MinZoom);
+        foreach (var ring in new[] { BrushRingOuter, BrushRing })
+        {
+            ring.Width = ring.Height = d;
+            Canvas.SetLeft(ring, p.X - d / 2);
+            Canvas.SetTop(ring, p.Y - d / 2);
+            ring.Visibility = Visibility.Visible;
+        }
     }
     private void OnDocPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -118,11 +159,11 @@ public partial class CanvasView : UserControl
         // Счёт живёт в ViewGeometry: здесь остаётся только разложить его по элементам.
         var (w, h) = ViewGeometry.SurfaceSize(_vm.Document.CanvasWidth, _vm.Document.CanvasHeight, _vm.Zoom);
         var (contentW, contentH) = ViewGeometry.ContentSize(w, h);
-        CanvasFrame.Width = CanvasDropShadow.Width = Surface.Width = Overlay.Width = w;
-        CanvasFrame.Height = CanvasDropShadow.Height = Surface.Height = Overlay.Height = h;
+        CanvasFrame.Width = CanvasDropShadow.Width = Surface.Width = Overlay.Width = RingLayer.Width = w;
+        CanvasFrame.Height = CanvasDropShadow.Height = Surface.Height = Overlay.Height = RingLayer.Height = h;
         ContentRoot.Width  = contentW;
         ContentRoot.Height = contentH;
-        CanvasFrame.Margin = CanvasDropShadow.Margin = Surface.Margin = Overlay.Margin = new Thickness(ViewGeometry.CanvasMargin);
+        CanvasFrame.Margin = CanvasDropShadow.Margin = Surface.Margin = Overlay.Margin = RingLayer.Margin = new Thickness(ViewGeometry.CanvasMargin);
         // Кэш теней - не больше ShadowCacheSide по длинной стороне, см. CanvasView.xaml.
         // Свойство у замороженного кэша не поменять, поэтому каждый раз новый.
         CanvasShadow.CacheMode = new BitmapCache(ViewGeometry.ShadowCacheScale(w, h)) { SnapsToDevicePixels = true };
@@ -717,6 +758,7 @@ public partial class CanvasView : UserControl
     private void OnSurfaceMouseMove(object sender, MouseEventArgs e)
     {
         if (_vm is null) return;
+        MoveBrushRing(e.GetPosition(Surface));
         var pos = ToDoc(e.GetPosition(Surface));
         _lastDocPos = pos;
         var now = DateTime.UtcNow;
@@ -761,7 +803,10 @@ public partial class CanvasView : UserControl
         // Сначала снимаем флаг, потом отпускаем захват: ReleaseMouseCapture синхронно
         // стреляет LostMouseCapture, и обработчик потери завершил бы жест вторым разом.
         if (_captured) { _captured = false; Surface.ReleaseMouseCapture(); }
-        var pos = ToDoc(e.GetPosition(Surface));
+        var at = e.GetPosition(Surface);
+        // Отпустили за краем холста - кружок там больше не нужен.
+        if (at.X < 0 || at.Y < 0 || at.X > Surface.ActualWidth || at.Y > Surface.ActualHeight) MoveBrushRing(null);
+        var pos = ToDoc(at);
         _lastDocPos = pos;
         _vm.ActiveToolInstance.OnPointerUp(pos, _vm.ToolContext);
         QueueRender();

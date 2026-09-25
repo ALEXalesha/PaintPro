@@ -19,7 +19,9 @@ const { openApp } = require('./harness');
 async function prepare(app) {
   await app.pickTool('pencil');
   await app.setColor('#000000');
-  await app.setSize(30);
+  // 15, а не 30: с 1.18.0 толщина карандаша - сам размер, а не половина; картинка та же,
+  // на которой мерились потолки ниже.
+  await app.setSize(15);
   await app.drag(100, 100, 800, 500);
   await app.pickTool('rect');
   await app.setColor('#000000');

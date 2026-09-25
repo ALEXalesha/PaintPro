@@ -1322,9 +1322,19 @@
     cursor: default;
   }
 
-  /* Для всех инструментов рисования курсор-круг по размеру кисти задаётся
-     инлайн через JS (updateBrushCursor). Здесь оставлены только статические
-     курсоры неравномерных инструментов. */
+  /* У инструментов рисования курсор - крестик, а размер показывает кружок #brush-ring
+     (updateBrushCursor). Здесь оставлены только статические курсоры остальных. */
+  .brush-ring {
+    position: absolute;
+    display: none;
+    pointer-events: none;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 1px solid #000;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+    transform: translate(-50%, -50%);
+    z-index: 5;
+  }
   canvas.tool-picker {
     cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'><circle cx='11' cy='11' r='3' fill='none' stroke='white' stroke-width='2'/><circle cx='11' cy='11' r='3' fill='none' stroke='black' stroke-width='1'/><circle cx='11' cy='11' r='0.8' fill='black'/></svg>") 11 11, auto;
   }
@@ -1688,6 +1698,8 @@
     <div class="canvas-wrapper" id="canvas-wrapper">
       <canvas id="canvas" width="900" height="600"></canvas>
       <canvas id="preview-canvas" width="900" height="600"></canvas>
+      <!-- Кружок размера кисти, см. updateBrushCursor (1.18.0). -->
+      <div class="brush-ring" id="brush-ring"></div>
       <div class="selection-overlay" id="selection-overlay">
         <div class="resize-handle nw" data-handle="nw" data-on="selection"></div>
         <div class="resize-handle n"  data-handle="n"  data-on="selection"></div>
@@ -2597,37 +2609,66 @@ const toolNames = {
 const SHAPE_TOOLS = ['line','rect','ellipse','triangle','right-triangle','star','arrow','heart'];
 const DRAWING_TOOLS = ['pencil','brush','marker','eraser', ...SHAPE_TOOLS];
 
-// Фактическая толщина мазка в пикселях холста. Заданный размер - не то же самое,
-// что ляжет на холст: карандаш рисует вдвое тоньше, маркер - в полтора раза
-// толще. Одна функция на все места, где эта толщина нужна (стиль пера и курсор),
-// иначе кружок курсора показывает не тот диаметр, каким рисует инструмент.
+// Фактическая толщина мазка в пикселях холста. С 1.18.0 она равна размеру у всех
+// инструментов: «300 px» у карандаша, кисти, маркера и ластика - одна и та же полоса.
+// До того карандаш рисовал вдвое тоньше, а маркер в полтора раза толще заданного, и одно
+// число на ползунке значило у разных инструментов разное. Функция осталась одна на все
+// места, где толщина нужна (перо, повтор ленты, кружок размера), - чтобы они не разошлись.
 function strokeWidthFor(tool, size) {
-  if (tool === 'pencil') return Math.max(1, size * 0.5);
-  if (tool === 'marker') return size * 1.5;
-  return size;
+  return Math.max(1, size);
 }
 
-// Генерируем SVG-курсор-круг по размеру кисти. Радиус учитывает зум, потому
-// что пользователь видит мазок именно в экранных пикселях. У браузерных
-// курсоров есть потолок (~128px в Chromium) - выше клампим, чтобы курсор не
-// пропал. Минимум 8px - чтобы при размере 1 круг был видим.
+// Кружок размера кисти. До 1.18.0 это был курсор-картинка, а у курсоров в Chromium
+// потолок около 128 точек: кружок зажимался в 96 и на кисти 300 px был втрое меньше
+// настоящей. Теперь это обычный элемент поверх холста, любого размера; курсор - крестик
+// в центре. Диаметр - толщина инструмента, умноженная на масштаб: пользователь видит мазок
+// в экранных точках.
+const brushRing = document.getElementById('brush-ring');
+let ringPoint = null; // где мышь над холстом, в точках относительно холста; null - не над ним
+
+function brushRingDiameter() {
+  return strokeWidthFor(state.tool, state.size) * (state.zoom || 1);
+}
+
 function updateBrushCursor() {
-  if (!DRAWING_TOOLS.includes(state.tool)) {
-    canvas.style.cursor = '';
+  const on = DRAWING_TOOLS.includes(state.tool);
+  canvas.style.cursor = on ? 'crosshair' : '';
+  if (!on || !ringPoint) {
+    brushRing.style.display = 'none';
     return;
   }
-  const zoom = state.zoom || 1;
-  const screenD = Math.max(8, Math.min(96, strokeWidthFor(state.tool, state.size) * zoom));
-  const pad = 3;
-  const sz = Math.ceil(screenD + pad * 2);
-  const c = sz / 2;
-  const r = (screenD / 2).toFixed(2);
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${sz}' height='${sz}' viewBox='0 0 ${sz} ${sz}'>`
-    + `<circle cx='${c}' cy='${c}' r='${r}' fill='none' stroke='white' stroke-width='2.4'/>`
-    + `<circle cx='${c}' cy='${c}' r='${r}' fill='none' stroke='black' stroke-width='1'/>`
-    + `</svg>`;
-  canvas.style.cursor = `url("data:image/svg+xml;utf8,${svg}") ${c} ${c}, crosshair`;
+  const d = brushRingDiameter();
+  brushRing.style.display = 'block';
+  brushRing.style.width = d + 'px';
+  brushRing.style.height = d + 'px';
+  brushRing.style.left = (canvas.offsetLeft + ringPoint.x) + 'px';
+  brushRing.style.top = (canvas.offsetTop + ringPoint.y) + 'px';
 }
+
+function moveBrushRing(e) {
+  const r = canvas.getBoundingClientRect();
+  ringPoint = { x: e.clientX - r.left, y: e.clientY - r.top };
+  updateBrushCursor();
+}
+
+canvas.addEventListener('mousemove', moveBrushRing);
+canvas.addEventListener('mouseenter', moveBrushRing);
+canvas.addEventListener('mouseleave', () => {
+  // Кисть тянут за край, не отпуская кнопку: кружок идёт за мышью до отпускания.
+  if (state.drawing) return;
+  ringPoint = null;
+  updateBrushCursor();
+});
+document.addEventListener('mousemove', (e) => { if (state.drawing && ringPoint) moveBrushRing(e); });
+document.addEventListener('mouseup', () => {
+  // Отпустили за краем холста - кружок там больше не нужен.
+  if (!ringPoint) return;
+  const r = canvas.getBoundingClientRect();
+  if (ringPoint.x < 0 || ringPoint.y < 0 || ringPoint.x > r.width || ringPoint.y > r.height) {
+    ringPoint = null;
+    updateBrushCursor();
+  }
+});
 
 document.querySelectorAll('[data-tool]').forEach(btn => {
   btn.addEventListener('click', () => {

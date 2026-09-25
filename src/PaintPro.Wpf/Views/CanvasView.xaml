@@ -77,6 +77,16 @@
                         Background="{x:Null}"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"/>
+                <!-- Кружок размера кисти (1.32.0): диаметр - толщина инструмента на экране,
+                     центр - под курсором. Отдельный слой, а не Overlay: тот пересобирается
+                     каждый кадр, а кружок двигается на каждое движение мыши. Мышь не ловит. -->
+                <Canvas x:Name="RingLayer"
+                        IsHitTestVisible="False"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top">
+                    <Ellipse x:Name="BrushRingOuter" Stroke="#E6FFFFFF" StrokeThickness="3" Visibility="Collapsed"/>
+                    <Ellipse x:Name="BrushRing" Stroke="Black" StrokeThickness="1" Visibility="Collapsed"/>
+                </Canvas>
             </Grid>
         </ScrollViewer>
     </Grid>

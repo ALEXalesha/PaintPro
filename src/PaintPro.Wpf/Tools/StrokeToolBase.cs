@@ -207,7 +207,9 @@ public sealed class PencilTool : StrokeToolBase
     protected override void ConfigurePaint(SKPaint paint, ToolContext ctx)
     {
         paint.Color = ctx.PrimaryColor.WithAlpha((byte)(255 * ctx.Opacity));
-        paint.StrokeWidth = MathF.Max(1f, ctx.ToolSize * 0.5f);
+        // Толщина - сам размер, как у кисти и ластика (1.32.0). Был половина размера, и
+        // «300 px» у карандаша было вдвое тоньше тех же 300 у ластика.
+        paint.StrokeWidth = MathF.Max(1f, ctx.ToolSize);
     }
 }
 

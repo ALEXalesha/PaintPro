@@ -81,8 +81,8 @@ public class LiveToolSizeTests
     }
 
     [Fact]
-    // у карандаша толщина - половина размера, и колесо меняет её так же
-    public void the_pencil_follows_the_wheel_at_half_width()
+    // карандаш тоже следует за колесом; толщина у него - сам размер (1.32.0)
+    public void the_pencil_follows_the_wheel()
     {
         WpfRunner.Run(() =>
         {
@@ -90,9 +90,8 @@ public class LiveToolSizeTests
             int size = ThinThenThick(vm);
             var b = Paper(vm);
             Assert.False(Inked(b, 200, 306));
-            int half = size / 2;
-            Assert.True(Inked(b, 400, 300 + half / 2 - 1));
-            Assert.False(Inked(b, 400, 300 + half));
+            Assert.True(Inked(b, 400, 300 + size / 2 - 2));
+            Assert.False(Inked(b, 400, 300 + size / 2 + 3));
         });
     }
 
