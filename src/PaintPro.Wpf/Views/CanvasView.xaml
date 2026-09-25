@@ -10,19 +10,45 @@
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
                       Background="Transparent">
+            <!-- Холст, который меньше окна, стоит посередине по ширине и у верхнего края, как
+                 в Electron-версии (там justify-content: safe center). Было Left: уменьшенный
+                 холст съезжал в левый верхний угол. Когда холст шире окна, ScrollViewer
+                 отдаёт ему ровно его ширину, и выравнивать уже нечего - прокрутка та же. -->
             <Grid x:Name="ContentRoot"
-                  HorizontalAlignment="Left"
+                  HorizontalAlignment="Center"
                   VerticalAlignment="Top">
-                <!-- Drop shadow & checkered alpha background behind the canvas. -->
-                <Border x:Name="CanvasFrame"
-                        Background="#181425"
-                        BorderBrush="{DynamicResource GlassBorder}"
-                        BorderThickness="1"
-                        CornerRadius="4">
-                    <Border.Effect>
-                        <DropShadowEffect BlurRadius="32" ShadowDepth="0" Opacity="0.6" Color="Black"/>
-                    </Border.Effect>
-                </Border>
+                <!-- Тени под холстом. Лежат в своём кэше: холст перерисовывается каждый кадр,
+                     пока по нему рисуют, а тени от этого не меняются, и размывать их заново
+                     незачем. До 1.29.0 размытие шло на каждом кадре и было главной причиной
+                     медленного рисования. Разрешение кэша ставит CanvasView (не больше
+                     ShadowCacheSide по длинной стороне): под холстом с восьмикратным увеличением
+                     кэш во всю величину занял бы сотни мегабайт, а размытой тени хватает и
+                     меньшего. Видна от них только тень - сами подложки закрыты холстом. -->
+                <Grid x:Name="CanvasShadow"
+                      IsHitTestVisible="False"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Top">
+                    <Grid.CacheMode>
+                        <BitmapCache SnapsToDevicePixels="True"/>
+                    </Grid.CacheMode>
+                    <!-- Тень со сдвигом вниз. До 1.29.0 её давала панель вокруг холста. -->
+                    <Border x:Name="CanvasDropShadow"
+                            Background="#181425"
+                            CornerRadius="4">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="32" ShadowDepth="8" Opacity="0.35" Color="Black"/>
+                        </Border.Effect>
+                    </Border>
+                    <Border x:Name="CanvasFrame"
+                            Background="#181425"
+                            BorderBrush="{DynamicResource GlassBorder}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="32" ShadowDepth="0" Opacity="0.6" Color="Black"/>
+                        </Border.Effect>
+                    </Border>
+                </Grid>
                 <!-- SkiaSharp viewport — renders the entire document (all layers + floating pickup). -->
                 <skia:SKElement x:Name="Skia"
                                 IgnorePixelScaling="False"

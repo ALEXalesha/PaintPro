@@ -3,17 +3,84 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
-    <!-- Glass panel = translucent rounded rectangle with subtle border and drop shadow. -->
-    <Style x:Key="GlassPanel" TargetType="Border">
-        <Setter Property="Background"      Value="{DynamicResource GlassBg}"/>
-        <Setter Property="BorderBrush"     Value="{DynamicResource GlassBorder}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius"    Value="18"/>
+    <!-- Glass panel = translucent rounded rectangle with subtle border and drop shadow.
+
+         Тень лежит внутри BitmapCache. Без него DropShadowEffect размывался заново на
+         каждом кадре окна, у всех четырёх панелей сразу, - неважно, менялось в панели что-то
+         или нет. Холст, пока по нему рисуют, перерисовывается каждый кадр, и до 1.29.0 он
+         обновлялся 15-18 раз в секунду даже на холсте 900x600: кисть заметно отставала от
+         мыши. С кэшем панель, в которой ничего не поменялось, отдаёт готовую картинку, а
+         размывается только та, что правда изменилась. Выглядит всё так же - в кэш попадает
+         та же тень, что рисовалась раньше.
+
+         Был стиль для Border, стал для ContentControl: у Border нет шаблона, и обернуть его
+         кэшем изнутри стиля нельзя. -->
+    <Style x:Key="GlassPanel" TargetType="ContentControl">
         <Setter Property="Margin"          Value="8"/>
         <Setter Property="Padding"         Value="10"/>
-        <Setter Property="Effect">
+        <Setter Property="Focusable"       Value="False"/>
+        <Setter Property="IsTabStop"       Value="False"/>
+        <Setter Property="Template">
             <Setter.Value>
-                <DropShadowEffect BlurRadius="32" ShadowDepth="8" Opacity="0.35" Color="Black"/>
+                <ControlTemplate TargetType="ContentControl">
+                    <Grid>
+                        <Grid.CacheMode>
+                            <BitmapCache SnapsToDevicePixels="True"/>
+                        </Grid.CacheMode>
+                        <Border x:Name="Panel"
+                                Background="{DynamicResource GlassBg}"
+                                BorderBrush="{DynamicResource GlassBorder}"
+                                BorderThickness="1"
+                                CornerRadius="18"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="32" ShadowDepth="8" Opacity="0.35" Color="Black"/>
+                            </Border.Effect>
+                            <ContentPresenter/>
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Та же панель для содержимого, которое меняется каждый кадр: холст и статусбар.
+
+         В GlassPanel тень отбрасывает всё, что внутри, и кэш приходится пересобирать при
+         каждом изменении содержимого - вместе с размытием. Здесь тень отбрасывает только
+         подложка, она лежит в своём кэше отдельно от содержимого, а содержимое рисуется
+         поверх и тень не трогает. Подложка почти прозрачная, и тень от неё слабее, чем от
+         кнопок и текста, - поэтому этот стиль только для двух панелей, где содержимое
+         меняется постоянно. Тень самого холста рисует холст (CanvasView), так что она не
+         пропадает. -->
+    <Style x:Key="GlassPanelLive" TargetType="ContentControl">
+        <Setter Property="Margin"          Value="8"/>
+        <Setter Property="Padding"         Value="10"/>
+        <Setter Property="Focusable"       Value="False"/>
+        <Setter Property="IsTabStop"       Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContentControl">
+                    <Grid>
+                        <Grid IsHitTestVisible="False">
+                            <Grid.CacheMode>
+                                <BitmapCache SnapsToDevicePixels="True"/>
+                            </Grid.CacheMode>
+                            <Border x:Name="Panel"
+                                    Background="{DynamicResource GlassBg}"
+                                    BorderBrush="{DynamicResource GlassBorder}"
+                                    BorderThickness="1"
+                                    CornerRadius="18">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="32" ShadowDepth="8" Opacity="0.35" Color="Black"/>
+                                </Border.Effect>
+                            </Border>
+                        </Grid>
+                        <Border Background="Transparent" BorderThickness="1" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
             </Setter.Value>
         </Setter>
     </Style>
@@ -201,11 +268,17 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
-                    <Ellipse x:Name="Knob" Fill="White" Stroke="{DynamicResource Accent}" StrokeThickness="3">
-                        <Ellipse.Effect>
-                            <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.4" Color="Black"/>
-                        </Ellipse.Effect>
-                    </Ellipse>
+                    <!-- Тень ручки - в кэше, по той же причине, что у GlassPanel. -->
+                    <Grid>
+                        <Grid.CacheMode>
+                            <BitmapCache SnapsToDevicePixels="True"/>
+                        </Grid.CacheMode>
+                        <Ellipse x:Name="Knob" Fill="White" Stroke="{DynamicResource Accent}" StrokeThickness="3">
+                            <Ellipse.Effect>
+                                <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.4" Color="Black"/>
+                            </Ellipse.Effect>
+                        </Ellipse>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Knob" Property="StrokeThickness" Value="4"/>
@@ -314,14 +387,20 @@
             <Popup x:Name="PART_Popup" AllowsTransparency="True" Placement="Bottom"
                    IsOpen="{TemplateBinding IsSubmenuOpen}" Focusable="False"
                    PopupAnimation="Fade" HorizontalOffset="-4">
-                <Border Background="{DynamicResource MenuBg}"
-                        BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
-                        CornerRadius="10" Padding="4" Margin="0,4,10,10">
-                    <Border.Effect>
-                        <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
-                    </Border.Effect>
-                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
-                </Border>
+                <!-- Тень - в кэше, как у GlassPanel: иначе она размывается заново на каждом кадре. -->
+                <Grid>
+                    <Grid.CacheMode>
+                        <BitmapCache SnapsToDevicePixels="True"/>
+                    </Grid.CacheMode>
+                    <Border Background="{DynamicResource MenuBg}"
+                            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                            CornerRadius="10" Padding="4" Margin="0,4,10,10">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
+                        </Border.Effect>
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                    </Border>
+                </Grid>
             </Popup>
         </Grid>
         <ControlTemplate.Triggers>
@@ -385,14 +464,20 @@
                 <Popup x:Name="PART_Popup" AllowsTransparency="True" Placement="Right"
                        IsOpen="{TemplateBinding IsSubmenuOpen}" Focusable="False"
                        PopupAnimation="Fade" HorizontalOffset="-2" VerticalOffset="-6">
-                    <Border Background="{DynamicResource MenuBg}"
-                            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
-                            CornerRadius="10" Padding="4" Margin="0,4,10,10">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
-                        </Border.Effect>
-                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
-                    </Border>
+                    <!-- Тень - в кэше, как у GlassPanel: иначе она размывается заново на каждом кадре. -->
+                    <Grid>
+                        <Grid.CacheMode>
+                            <BitmapCache SnapsToDevicePixels="True"/>
+                        </Grid.CacheMode>
+                        <Border Background="{DynamicResource MenuBg}"
+                                BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                                CornerRadius="10" Padding="4" Margin="0,4,10,10">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
+                            </Border.Effect>
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                        </Border>
+                    </Grid>
                 </Popup>
             </Grid>
         </Border>
@@ -448,24 +533,30 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToolTip">
-                    <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="8" Padding="{TemplateBinding Padding}">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.5" Color="Black"/>
-                        </Border.Effect>
-                        <ContentPresenter>
-                            <ContentPresenter.Resources>
-                                <!-- Длинные объяснения переносятся, а не уезжают за край. -->
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
-                                    <Setter Property="FontFamily" Value="Segoe UI"/>
-                                    <Setter Property="TextWrapping" Value="Wrap"/>
-                                </Style>
-                            </ContentPresenter.Resources>
-                        </ContentPresenter>
-                    </Border>
+                    <!-- Тень - в кэше, как у GlassPanel: иначе она размывается заново на каждом кадре. -->
+                    <Grid>
+                        <Grid.CacheMode>
+                            <BitmapCache SnapsToDevicePixels="True"/>
+                        </Grid.CacheMode>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.5" Color="Black"/>
+                            </Border.Effect>
+                            <ContentPresenter>
+                                <ContentPresenter.Resources>
+                                    <!-- Длинные объяснения переносятся, а не уезжают за край. -->
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                                        <Setter Property="FontFamily" Value="Segoe UI"/>
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </Border>
+                    </Grid>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -532,15 +623,21 @@
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
                         <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True"
                                Focusable="False" PopupAnimation="Fade">
-                            <Border Margin="0,4,10,10" Padding="4" CornerRadius="10" MinWidth="{TemplateBinding ActualWidth}"
-                                    Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1">
-                                <Border.Effect>
-                                    <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
-                                </Border.Effect>
-                                <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
-                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
-                                </ScrollViewer>
-                            </Border>
+                            <!-- Тень - в кэше, как у GlassPanel: иначе она размывается заново на каждом кадре. -->
+                            <Grid>
+                                <Grid.CacheMode>
+                                    <BitmapCache SnapsToDevicePixels="True"/>
+                                </Grid.CacheMode>
+                                <Border Margin="0,4,10,10" Padding="4" CornerRadius="10" MinWidth="{TemplateBinding ActualWidth}"
+                                        Background="{DynamicResource MenuBg}" BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
+                                    </Border.Effect>
+                                    <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Grid>
                         </Popup>
                     </Grid>
                 </ControlTemplate>

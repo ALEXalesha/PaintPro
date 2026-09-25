@@ -42,52 +42,58 @@
             </Setter>
         </Style>
     </Window.Resources>
-    <Border Margin="14" Padding="20,18" CornerRadius="14"
-            Background="{DynamicResource MenuBg}"
-            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
-            MouseLeftButtonDown="OnBackgroundDown">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" Color="Black"/>
-        </Border.Effect>
-        <StackPanel>
-            <TextBlock Text="Текст" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
+    <!-- Тень окна - в кэше, как у GlassPanel в главном окне: иначе она размывается заново на каждом кадре. -->
+    <Grid>
+        <Grid.CacheMode>
+            <BitmapCache SnapsToDevicePixels="True"/>
+        </Grid.CacheMode>
+        <Border Margin="14" Padding="20,18" CornerRadius="14"
+                Background="{DynamicResource MenuBg}"
+                BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                MouseLeftButtonDown="OnBackgroundDown">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+            </Border.Effect>
+            <StackPanel>
+                <TextBlock Text="Текст" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
 
-            <DockPanel>
-                <ToggleButton x:Name="UnderlineToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
-                              ToolTip="Подчёркнутый" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
-                    <TextBlock Text="U" TextDecorations="Underline" FontSize="14"/>
-                </ToggleButton>
-                <ToggleButton x:Name="ItalicToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
-                              ToolTip="Курсив" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
-                    <TextBlock Text="I" FontStyle="Italic" FontSize="14" FontFamily="Georgia"/>
-                </ToggleButton>
-                <ToggleButton x:Name="BoldToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
-                              ToolTip="Жирный" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
-                    <TextBlock Text="B" FontWeight="Bold" FontSize="14"/>
-                </ToggleButton>
-                <TextBox x:Name="SizeBox" DockPanel.Dock="Right" Width="56" Margin="8,0,0,0" MaxLength="3"
-                         FontSize="13" Padding="6,5" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                         ToolTip="Размер, 8–200"
+                <DockPanel>
+                    <ToggleButton x:Name="UnderlineToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
+                                  ToolTip="Подчёркнутый" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
+                        <TextBlock Text="U" TextDecorations="Underline" FontSize="14"/>
+                    </ToggleButton>
+                    <ToggleButton x:Name="ItalicToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
+                                  ToolTip="Курсив" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
+                        <TextBlock Text="I" FontStyle="Italic" FontSize="14" FontFamily="Georgia"/>
+                    </ToggleButton>
+                    <ToggleButton x:Name="BoldToggle" DockPanel.Dock="Right" Style="{DynamicResource StyleToggle}"
+                                  ToolTip="Жирный" Checked="OnStyleChanged" Unchecked="OnStyleChanged">
+                        <TextBlock Text="B" FontWeight="Bold" FontSize="14"/>
+                    </ToggleButton>
+                    <TextBox x:Name="SizeBox" DockPanel.Dock="Right" Width="56" Margin="8,0,0,0" MaxLength="3"
+                             FontSize="13" Padding="6,5" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                             ToolTip="Размер, 8–200"
+                             Background="{DynamicResource GlassBgStrong}" Foreground="{DynamicResource TextPrimary}"
+                             BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                             CaretBrush="{DynamicResource TextPrimary}"
+                             TextChanged="OnSizeChanged" LostFocus="OnSizeLostFocus"/>
+                    <ComboBox x:Name="FontBox" FontSize="13" SelectionChanged="OnStyleChanged" ToolTip="Шрифт"/>
+                </DockPanel>
+
+                <TextBox x:Name="Input" Margin="0,12,0,0" MinHeight="90" MaxHeight="220"
+                         AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                         FontSize="16" Padding="8,6"
                          Background="{DynamicResource GlassBgStrong}" Foreground="{DynamicResource TextPrimary}"
                          BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
-                         CaretBrush="{DynamicResource TextPrimary}"
-                         TextChanged="OnSizeChanged" LostFocus="OnSizeLostFocus"/>
-                <ComboBox x:Name="FontBox" FontSize="13" SelectionChanged="OnStyleChanged" ToolTip="Шрифт"/>
-            </DockPanel>
+                         CaretBrush="{DynamicResource TextPrimary}"/>
+                <TextBlock Text="Enter - новая строка, Ctrl+Enter - готово" FontSize="11" Opacity="0.6" Margin="0,6,0,0"/>
 
-            <TextBox x:Name="Input" Margin="0,12,0,0" MinHeight="90" MaxHeight="220"
-                     AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                     FontSize="16" Padding="8,6"
-                     Background="{DynamicResource GlassBgStrong}" Foreground="{DynamicResource TextPrimary}"
-                     BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
-                     CaretBrush="{DynamicResource TextPrimary}"/>
-            <TextBlock Text="Enter - новая строка, Ctrl+Enter - готово" FontSize="11" Opacity="0.6" Margin="0,6,0,0"/>
-
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
-                <Button Content="Отмена" Style="{DynamicResource GhostButton}" MinWidth="84" IsCancel="True" Click="OnCancel"/>
-                <Button Content="Готово" Style="{DynamicResource GhostButton}" MinWidth="84" Click="OnOk"
-                        Background="{DynamicResource AccentGrad}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                    <Button Content="Отмена" Style="{DynamicResource GhostButton}" MinWidth="84" IsCancel="True" Click="OnCancel"/>
+                    <Button Content="Готово" Style="{DynamicResource GhostButton}" MinWidth="84" Click="OnOk"
+                            Background="{DynamicResource AccentGrad}"/>
+                </StackPanel>
             </StackPanel>
-        </StackPanel>
-    </Border>
+        </Border>
+    </Grid>
 </Window>

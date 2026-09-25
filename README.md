@@ -26,8 +26,8 @@
 | Folder | [`paint-pro-electron/`](paint-pro-electron/README.md) | [`src/`](docs/CSHARP.md), [`tests/`](tests/PaintPro.Tests) |
 | Stack | one HTML file, canvas, vanilla JS; Electron adds the window, menu and file dialogs | C# 12, WPF, .NET 8, SkiaSharp, MVVM, Command pattern |
 | Builds | installer, portable, and a single `.html` that runs offline in any browser | installer and a self-contained single `.exe` |
-| Version | 1.16.1 | 1.28.1 |
-| Tests | 376 Playwright checks in Chromium + 17 against the real app | 708 xUnit tests, including two fuzzers |
+| Version | 1.16.1 | 1.29.0 |
+| Tests | 376 Playwright checks in Chromium + 17 against the real app | 840 xUnit tests, including two fuzzers |
 | Docs | [README](paint-pro-electron/README.md), [architecture](paint-pro-electron/docs/ARCHITECTURE.md) | [README](docs/CSHARP.md) ([русский](docs/CSHARP.ru.md)) |
 
 Both have nineteen tools (freehand, fill and eyedropper, text, eight shapes, rectangular and four-point selection, crop, hand), layers with opacity, five themes, a floating object you can drag, resize and rotate, and a history where any single edit in the middle can be switched off and the document is rebuilt without it.

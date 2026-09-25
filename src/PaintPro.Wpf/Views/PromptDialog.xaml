@@ -9,26 +9,32 @@
         ResizeMode="NoResize" ShowInTaskbar="False"
         Foreground="{DynamicResource TextPrimary}"
         FontFamily="Segoe UI">
-    <Border Margin="14" Padding="20,18" CornerRadius="14"
-            Background="{DynamicResource MenuBg}"
-            BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
-            MouseLeftButtonDown="OnBackgroundDown">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" Color="Black"/>
-        </Border.Effect>
-        <StackPanel>
-            <TextBlock x:Name="TitleText" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,10"/>
-            <TextBlock x:Name="PromptText" Text="" FontSize="13" Margin="0,0,0,8" TextWrapping="Wrap"/>
-            <TextBox  x:Name="Input" FontSize="14" Padding="8,6"
-                      Background="{DynamicResource GlassBgStrong}"
-                      Foreground="{DynamicResource TextPrimary}"
-                      BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
-                      CaretBrush="{DynamicResource TextPrimary}"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                <Button Content="Отмена" Style="{DynamicResource GhostButton}" MinWidth="84" IsCancel="True" Click="OnCancel"/>
-                <Button Content="OK" Style="{DynamicResource GhostButton}" MinWidth="84" IsDefault="True" Click="OnOk"
-                        Background="{DynamicResource AccentGrad}"/>
+    <!-- Тень окна - в кэше, как у GlassPanel в главном окне: иначе она размывается заново на каждом кадре. -->
+    <Grid>
+        <Grid.CacheMode>
+            <BitmapCache SnapsToDevicePixels="True"/>
+        </Grid.CacheMode>
+        <Border Margin="14" Padding="20,18" CornerRadius="14"
+                Background="{DynamicResource MenuBg}"
+                BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                MouseLeftButtonDown="OnBackgroundDown">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" Color="Black"/>
+            </Border.Effect>
+            <StackPanel>
+                <TextBlock x:Name="TitleText" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                <TextBlock x:Name="PromptText" Text="" FontSize="13" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                <TextBox  x:Name="Input" FontSize="14" Padding="8,6"
+                          Background="{DynamicResource GlassBgStrong}"
+                          Foreground="{DynamicResource TextPrimary}"
+                          BorderBrush="{DynamicResource GlassBorder}" BorderThickness="1"
+                          CaretBrush="{DynamicResource TextPrimary}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                    <Button Content="Отмена" Style="{DynamicResource GhostButton}" MinWidth="84" IsCancel="True" Click="OnCancel"/>
+                    <Button Content="OK" Style="{DynamicResource GhostButton}" MinWidth="84" IsDefault="True" Click="OnOk"
+                            Background="{DynamicResource AccentGrad}"/>
+                </StackPanel>
             </StackPanel>
-        </StackPanel>
-    </Border>
+        </Border>
+    </Grid>
 </Window>

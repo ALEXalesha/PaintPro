@@ -163,6 +163,58 @@ public static class ViewGeometry
         return (Math.Round(canvasWidth * z), Math.Round(canvasHeight * z));
     }
 
+    /// <summary>
+    /// Наибольшая сторона кэша теней под холстом, в пикселях.
+    ///
+    /// Тени лежат в BitmapCache, чтобы не размываться на каждом кадре (1.29.0). Кэш во всю
+    /// величину поверхности на восьмикратном увеличении - это до 64 млн пикселей, четверть
+    /// гигабайта видеопамяти и сторона больше, чем умеет видеокарта. Тень и так размыта на
+    /// 32 пикселя, и уменьшенная копия выглядит так же.
+    /// </summary>
+    public const double ShadowCacheSide = 2048;
+
+    /// <summary>
+    /// Во сколько раз уменьшить кэш теней, чтобы его длинная сторона не превысила
+    /// <see cref="ShadowCacheSide"/>. Поверхность меньше - кэш в полную величину.
+    /// </summary>
+    public static double ShadowCacheScale(double surfaceWidth, double surfaceHeight)
+    {
+        double side = Math.Max(surfaceWidth, surfaceHeight);
+        if (!(side > ShadowCacheSide)) return 1.0;
+        return ShadowCacheSide / side;
+    }
+
+    /// <summary>
+    /// Та часть поверхности холста, которую сейчас видно в окне, в пикселях поверхности
+    /// (то есть уже в пикселях растра SKElement), с запасом в пару пикселей на округление.
+    /// Null - ничего не видно.
+    ///
+    /// SKElement растрирует себя во всю величину, и до 1.29.0 документ каждый кадр
+    /// собирался на всей поверхности, хотя видна из неё часть: картинка 1920x1080 на
+    /// двукратном увеличении - это 8 млн пикселей на кадр при окне в полтора. Рисуется
+    /// теперь только видимое; остальное досчитывается, когда до него докрутят.
+    /// </summary>
+    /// <param name="viewLeft">Левый край окна просмотра в координатах поверхности, DIP.</param>
+    /// <param name="deviceScale">Пикселей растра на DIP: масштаб экрана Windows.</param>
+    public static SKRectI? VisibleSurfaceRect(
+        double viewLeft, double viewTop, double viewWidth, double viewHeight,
+        double surfaceWidth, double surfaceHeight, double deviceScale, int pixelWidth, int pixelHeight)
+    {
+        if (!(viewWidth > 0) || !(viewHeight > 0) || !(deviceScale > 0)) return null;
+        double left = Math.Max(0, viewLeft), top = Math.Max(0, viewTop);
+        double right = Math.Min(surfaceWidth, viewLeft + viewWidth);
+        double bottom = Math.Min(surfaceHeight, viewTop + viewHeight);
+        if (right <= left || bottom <= top) return null;
+
+        const int pad = 2;
+        var r = new SKRectI(
+            Math.Max(0, (int)Math.Floor(left * deviceScale) - pad),
+            Math.Max(0, (int)Math.Floor(top * deviceScale) - pad),
+            Math.Min(pixelWidth, (int)Math.Ceiling(right * deviceScale) + pad),
+            Math.Min(pixelHeight, (int)Math.Ceiling(bottom * deviceScale) + pad));
+        return r.Width > 0 && r.Height > 0 ? r : null;
+    }
+
     /// <summary>Размер подложки: поверхность плюс поле с каждой стороны.</summary>
     public static (double Width, double Height) ContentSize(double surfaceWidth, double surfaceHeight)
         => (surfaceWidth + CanvasMargin * 2, surfaceHeight + CanvasMargin * 2);

@@ -276,7 +276,7 @@
             </Grid>
 
             <!-- ───── Status bar (bottom) ───── -->
-            <Border DockPanel.Dock="Bottom" Style="{DynamicResource GlassPanel}" Margin="8,4,8,8" Padding="14,6">
+            <ContentControl DockPanel.Dock="Bottom" Style="{DynamicResource GlassPanelLive}" Margin="8,4,8,8" Padding="14,6">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -321,10 +321,10 @@
                                Text="{Binding VersionLabel}"
                                Foreground="{DynamicResource TextDim}"/>
                 </Grid>
-            </Border>
+            </ContentControl>
 
             <!-- ───── Left toolbar ───── -->
-            <Border x:Name="LeftPanel" DockPanel.Dock="Left" Style="{DynamicResource GlassPanel}" Padding="6" Width="142">
+            <ContentControl x:Name="LeftPanel" DockPanel.Dock="Left" Style="{DynamicResource GlassPanel}" Padding="6" Width="142">
               <Grid>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <!-- Инструменты по группам. Столбцов столько, сколько влезает в ширину панели:
@@ -448,10 +448,10 @@
                        DragDelta="OnLeftGripDrag" DragCompleted="OnGripDragCompleted"
                        MouseDoubleClick="OnLeftGripReset"/>
               </Grid>
-            </Border>
+            </ContentControl>
 
             <!-- ───── Right side panel: color, size, opacity, layers, quick actions ───── -->
-            <Border x:Name="RightPanel" DockPanel.Dock="Right" Style="{DynamicResource GlassPanel}" Width="290" Padding="14,14,6,14">
+            <ContentControl x:Name="RightPanel" DockPanel.Dock="Right" Style="{DynamicResource GlassPanel}" Width="290" Padding="14,14,6,14">
               <Grid>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <!-- Отступ до полосы прокрутки: значения справа («12 px») упирались в неё. -->
@@ -745,10 +745,10 @@
                        DragDelta="OnRightGripDrag" DragCompleted="OnGripDragCompleted"
                        MouseDoubleClick="OnRightGripReset"/>
               </Grid>
-            </Border>
+            </ContentControl>
 
             <!-- ───── Centre canvas ───── -->
-            <Border Style="{DynamicResource GlassPanel}" Padding="0">
+            <ContentControl Style="{DynamicResource GlassPanelLive}" Padding="0">
                 <Grid>
                     <views:CanvasView x:Name="Canvas" />
                     <!-- Кадрирование ждёт подтверждения, как в Electron-версии. -->
@@ -773,7 +773,7 @@
                         </StackPanel>
                     </Border>
                 </Grid>
-            </Border>
+            </ContentControl>
         </DockPanel>
     </Grid>
 </Window>

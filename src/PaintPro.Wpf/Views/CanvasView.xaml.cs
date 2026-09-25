@@ -55,6 +55,11 @@ public partial class CanvasView : UserControl
         // otherwise ScrollViewer would scroll instead of letting us zoom.
         PreviewMouseWheel += OnPreviewMouseWheel;
 
+        // Растр собирается только в видимой части (OnPaintSurface). Прокрутили - открылось
+        // то, что не рисовали; перерисовать сразу, в этом же кадре, а не через QueueRender:
+        // тот ждёт следующего кадра, и край на кадр показывал бы старое.
+        Scroll.ScrollChanged += (_, _) => Skia.InvalidateVisual();
+
         // Перетаскивание ручек слушает Overlay, а не сами ручки. DrawOverlay каждый кадр
         // делает Children.Clear() и пересоздаёт ручки заново, а WPF снимает захват мыши с
         // элемента, который убрали из дерева. Ручка, за которую тянули, исчезала на первом
@@ -112,11 +117,14 @@ public partial class CanvasView : UserControl
         // Счёт живёт в ViewGeometry: здесь остаётся только разложить его по элементам.
         var (w, h) = ViewGeometry.SurfaceSize(_vm.Document.CanvasWidth, _vm.Document.CanvasHeight, _vm.Zoom);
         var (contentW, contentH) = ViewGeometry.ContentSize(w, h);
-        CanvasFrame.Width = Skia.Width = Overlay.Width = w;
-        CanvasFrame.Height = Skia.Height = Overlay.Height = h;
+        CanvasFrame.Width = CanvasDropShadow.Width = Skia.Width = Overlay.Width = w;
+        CanvasFrame.Height = CanvasDropShadow.Height = Skia.Height = Overlay.Height = h;
         ContentRoot.Width  = contentW;
         ContentRoot.Height = contentH;
-        CanvasFrame.Margin = Skia.Margin = Overlay.Margin = new Thickness(ViewGeometry.CanvasMargin);
+        CanvasFrame.Margin = CanvasDropShadow.Margin = Skia.Margin = Overlay.Margin = new Thickness(ViewGeometry.CanvasMargin);
+        // Кэш теней - не больше ShadowCacheSide по длинной стороне, см. CanvasView.xaml.
+        // Свойство у замороженного кэша не поменять, поэтому каждый раз новый.
+        CanvasShadow.CacheMode = new BitmapCache(ViewGeometry.ShadowCacheScale(w, h)) { SnapsToDevicePixels = true };
         DrawOverlay();
     }
 
@@ -154,6 +162,14 @@ public partial class CanvasView : UserControl
     {
         if (_vm is null) return;
         var canvas = e.Surface.Canvas;
+        // Собираем только видимую часть поверхности - см. ViewGeometry.VisibleSurfaceRect.
+        // Clear тоже подчиняется обрезке, так что за краем окна остаётся прежний кадр; туда
+        // рисуют заново, как только докрутят (ScrollChanged в конструкторе).
+        if (VisiblePixels(e.Info) is { } visible)
+        {
+            if (visible.IsEmpty) return;
+            canvas.ClipRect(visible);
+        }
         canvas.Clear(SKColors.White);
 
         // Compute device-pixel scale from element size vs document size — this preserves
@@ -176,6 +192,30 @@ public partial class CanvasView : UserControl
             _vm.ActiveToolInstance.PreviewAlpha,
             sx > 1f ? SKFilterQuality.None : SKFilterQuality.Low,
             _vm.ActiveToolInstance.PreviewBlendMode);
+    }
+
+    /// <summary>
+    /// Видимая часть растра SKElement. Null - окна просмотра ещё нет (вид не разложен или
+    /// не в дереве): тогда рисуем всё, как раньше. Пустой прямоугольник - холст целиком
+    /// за краем окна, рисовать нечего.
+    /// </summary>
+    private SKRect? VisiblePixels(SKImageInfo info)
+    {
+        if (Scroll.ViewportWidth <= 0 || Scroll.ViewportHeight <= 0 || Skia.ActualWidth <= 0) return null;
+        System.Windows.Rect view;
+        try
+        {
+            view = Scroll.TransformToDescendant(Skia)
+                .TransformBounds(new System.Windows.Rect(0, 0, Scroll.ViewportWidth, Scroll.ViewportHeight));
+        }
+        catch (InvalidOperationException)
+        {
+            return null; // не в одном дереве - обрезать не по чему
+        }
+        var r = ViewGeometry.VisibleSurfaceRect(
+            view.Left, view.Top, view.Width, view.Height,
+            Skia.ActualWidth, Skia.ActualHeight, info.Width / Skia.ActualWidth, info.Width, info.Height);
+        return r is { } px ? SKRect.Create(px.Left, px.Top, px.Width, px.Height) : SKRect.Empty;
     }
 
     // ───────── Overlay (selection / handles) ─────────
