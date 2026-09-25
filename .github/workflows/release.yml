@@ -120,6 +120,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Короткое описание выпуска - что поменялось - лежит в docs/release-notes/<тег>.md и
+      # пишется вместе с выпуском (с 1.31.0). До того описание собирал GitHub сам, и в нём
+      # была одна ссылка «Full Changelog»: что изменилось, из выпуска понять было нельзя.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: docs/release-notes
+
       - uses: actions/download-artifact@v4
         with:
           path: files
@@ -129,5 +136,5 @@ jobs:
         with:
           name: Paint Pro ${{ needs.csharp.outputs.version }} · Electron ${{ needs.electron.outputs.version }}
           draft: false
-          generate_release_notes: true
+          body_path: docs/release-notes/${{ github.ref_name }}.md
           files: files/*

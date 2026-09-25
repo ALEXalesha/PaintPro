@@ -413,7 +413,9 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Границы размера. Ползунок в разметке берёт их отсюда, а не из своих чисел:
     /// разойдись они - колесо и ползунок стали бы упираться в разные пределы.</summary>
     public const int MinToolSize = 1;
-    public const int MaxToolSize = 100;
+    // 300 с 1.31.0 (было 100): Алексей попросил втрое больше - широкой кистью и ластиком
+    // закрашивают фон. Тот же предел в Electron-версии (size-input max), сверяет тест.
+    public const int MaxToolSize = 300;
 
     public int ToolSizeMin => MinToolSize;
     public int ToolSizeMax => MaxToolSize;

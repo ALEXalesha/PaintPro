@@ -1778,7 +1778,8 @@
 
     <div class="sidebar-section">
       <div class="side-row"><span class="sidebar-title">Размер</span><span id="size-display">4 px</span></div>
-      <input type="range" id="size-input" min="1" max="100" value="4">
+      <!-- max 300 с 1.17.0 (было 100); тот же предел в C#-версии (MaxToolSize), сверяет тест. -->
+      <input type="range" id="size-input" min="1" max="300" value="4">
       <div class="side-row"><span class="sidebar-title">Прозрачность</span><span id="opacity-display">100%</span></div>
       <input type="range" id="opacity-input" min="1" max="100" value="100">
       <label class="side-check" data-tip="Прямоугольник, эллипс, треугольник, звезда, сердце">
@@ -1905,6 +1906,8 @@ let state = {
   // Точки текущего жеста в координатах холста. Нужны, чтобы правку можно было
   // ПОВТОРИТЬ, а не только отменить: на этом стоит выключатель записи в ленте.
   strokePoints: null,
+  // Размер у каждой точки штриха: колесо меняет его посреди штриха (1.17.0).
+  strokeSizes: null,
   // Слой, под который сейчас подкладывается превью мазка (см. composite).
   previewLayerId: null,
   history: [],
@@ -2842,6 +2845,7 @@ function onDown(e) {
   }
   state.strokeLayerId = activeLayer().id;
   state.strokePoints = [x, y];
+  state.strokeSizes = [state.size];
 
   state.drawing = true;
   // На время рисования bbox прячем handles в selection-overlay — иначе при tiny drag
@@ -2973,6 +2977,11 @@ function onMove(e) {
   const t = state.tool;
 
   if (t === 'pencil' || t === 'brush' || t === 'marker') {
+    // Толщина - заново на каждом движении: колесо посреди штриха меняет размер, и до
+    // 1.17.0 линия шла прежней толщиной до отпускания кнопки. Цвет остаётся тем, что
+    // снят на нажатии. Размер записывается у каждой точки - по нему штрих повторяется
+    // при пересборке ленты.
+    previewCtx.lineWidth = strokeWidthFor(t, state.size);
     previewCtx.beginPath();
     previewCtx.moveTo(state.lastX, state.lastY);
     previewCtx.lineTo(x, y);
@@ -2980,6 +2989,7 @@ function onMove(e) {
     state.lastX = x;
     state.lastY = y;
     if (state.strokePoints) state.strokePoints.push(x, y);
+    if (state.strokeSizes) state.strokeSizes.push(state.size);
     composite();
   } else if (t === 'eraser') {
     // Плавное "стирание" - рисуем белой линией между предыдущей и текущей точкой
@@ -3001,6 +3011,9 @@ function onMove(e) {
     g.stroke();
     g.restore();
     if (state.strokePoints) state.strokePoints.push(x, y);
+    // Ластик толщину на экране менял и раньше, но в запись уходил один размер, и
+    // пересборка ленты рисовала такой штрих иначе, чем он был нарисован.
+    if (state.strokeSizes) state.strokeSizes.push(state.size);
     composite();
     state.lastX = x;
     state.lastY = y;
@@ -3042,13 +3055,15 @@ function onUp(e) {
     if (state.opacity <= 0) hint(INK_HINT);
     saveHistory(t === 'marker' ? 'Маркер' : 'Штрих', {
       kind: 'stroke', tool: t, points: state.strokePoints.slice(),
-      color: state.color, size: state.size, opacity: state.opacity,
+      sizes: state.strokeSizes.slice(),
+      color: state.color, size: state.strokeSizes[0], opacity: state.opacity,
       layerId: state.strokeLayerId
     });
   } else if (t === 'eraser') {
     saveHistory('Ластик', {
       kind: 'erase', points: state.strokePoints.slice(),
-      size: state.size, layerId: state.strokeLayerId
+      sizes: state.strokeSizes.slice(),
+      size: state.strokeSizes[0], layerId: state.strokeLayerId
     });
   } else if (SHAPE_TOOLS.includes(t)) {
     const {x, y} = getPos(e);
@@ -3607,6 +3622,14 @@ function applyStack(entry) {
  * подложка стала другой, и заливка обязана растечься по-новому. Сохранённая заплатка
  * этого не умеет и соврала бы.
  */
+/**
+ * Размер у k-й точки записанного штриха. С 1.17.0 он записан у каждой точки (колесо
+ * меняет размер посреди штриха); у записей постарше - один на весь штрих.
+ */
+function sizeAtPoint(r, k) {
+  return r.sizes && r.sizes.length > k ? r.sizes[k] : r.size;
+}
+
 function replayEntry(r) {
   if (!r) return;
   const layer = state.layers.find((x) => x.id === r.layerId);
@@ -3632,11 +3655,14 @@ function replayEntry(r) {
       // пикселей в начале штриха. «Почти» здесь недопустимо: на пересборке стоит
       // обещание «выключить и включить обратно возвращает документ ДО ПИКСЕЛЯ».
       const p = r.points;
+      tg.lineWidth = strokeWidthFor(r.tool, sizeAtPoint(r, 0));
       tg.beginPath();
       tg.moveTo(p[0], p[1]);
       tg.lineTo(p[0] + 0.01, p[1] + 0.01);
       tg.stroke();
       for (let i = 2; i < p.length; i += 2) {
+        // Отрезок до точки i/2 нарисован тем размером, что был у неё (колесо посреди штриха).
+        tg.lineWidth = strokeWidthFor(r.tool, sizeAtPoint(r, i / 2));
         tg.beginPath();
         tg.moveTo(p[i - 2], p[i - 1]);
         tg.lineTo(p[i], p[i + 1]);
@@ -3684,9 +3710,10 @@ function replayEntry(r) {
     // Сплошной путь давал почти то же самое, расходясь на стыках.
     const p = r.points;
     g.beginPath();
-    g.arc(p[0], p[1], r.size / 2, 0, Math.PI * 2);
+    g.arc(p[0], p[1], sizeAtPoint(r, 0) / 2, 0, Math.PI * 2);
     g.fill();
     for (let i = 2; i < p.length; i += 2) {
+      g.lineWidth = sizeAtPoint(r, i / 2);
       g.beginPath();
       g.moveTo(p[i - 2], p[i - 1]);
       g.lineTo(p[i], p[i + 1]);

@@ -106,6 +106,11 @@ public abstract class StrokeToolBase : ITool
     public void OnPointerMove(SKPoint position, ToolContext ctx)
     {
         if (!_drawing || _strokeCanvas is null || _path is null || _paint is null) return;
+        // Толщина - заново на каждом движении, а не только на нажатии: колесо посреди
+        // штриха меняет размер, и до 1.31.0 линия шла прежней толщиной до отпускания
+        // кнопки. Цвет и прозрачность остаются снятыми на нажатии: колесо трогает только
+        // размер. Отрезки с круглыми концами стыкуются сами, ступеньки на смене нет.
+        _paint.StrokeWidth = CurrentStrokeWidth(ctx);
         _path.LineTo(position);
         _strokeCanvas.DrawLine(_last, position, _paint);
         _last = position;
@@ -171,6 +176,16 @@ public abstract class StrokeToolBase : ITool
 
     /// <summary>Subclasses set Color, StrokeWidth, BlendMode here.</summary>
     protected abstract void ConfigurePaint(SKPaint paint, ToolContext ctx);
+
+    /// <summary>Краска для замера толщины: ConfigurePaint пишет и цвет, а штрих его менять не должен.</summary>
+    private readonly SKPaint _widthProbe = new();
+
+    /// <summary>Толщина, которую инструмент дал бы сейчас, при нынешнем размере.</summary>
+    private float CurrentStrokeWidth(ToolContext ctx)
+    {
+        ConfigurePaint(_widthProbe, ctx);
+        return _widthProbe.StrokeWidth;
+    }
 
     /// <summary>
     /// Blend mode used when the finished stroke is merged into the layer. Separate from
