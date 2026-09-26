@@ -328,22 +328,29 @@
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
-                        <Border x:Name="Box" Width="16" Height="16" CornerRadius="5" VerticalAlignment="Center"
-                                Background="{DynamicResource GlassBg}" BorderBrush="{DynamicResource GlassBorderStrong}" BorderThickness="1">
-                            <Path x:Name="Mark" Data="M3,8 L6.5,11.5 L13,4.5" Stroke="White" StrokeThickness="2"
+                        <!-- Фон, рамка и галочка - порознь, всё в координатах внешнего края 16x16.
+                             WPF-овский Border красит фон только внутри рамки: с одним Border
+                             включённый флажок (рамка прозрачная) сжимался до 14 px, а галочка,
+                             отсчитанная от внутреннего края, сидела на пиксель правее и ниже
+                             середины («исправь галочки», Алексей, 26.09.2026). Проверяет
+                             CheckBoxLookTests в натуральную величину. -->
+                        <Grid Width="16" Height="16" VerticalAlignment="Center">
+                            <Border x:Name="Box" CornerRadius="5" Background="{DynamicResource GlassBg}"/>
+                            <Border x:Name="Frame" CornerRadius="5" BorderBrush="{DynamicResource GlassBorderStrong}" BorderThickness="1"/>
+                            <Path x:Name="Mark" Data="M2.75,7.5 L6.25,11 L12.75,4" Stroke="White" StrokeThickness="2"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                                   Visibility="Collapsed"/>
-                        </Border>
+                        </Grid>
                         <ContentPresenter x:Name="Text" Margin="8,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True"/>
                     </StackPanel>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentGrad}"/>
-                            <Setter TargetName="Box" Property="BorderBrush" Value="Transparent"/>
+                            <Setter TargetName="Frame" Property="BorderBrush" Value="Transparent"/>
                             <Setter TargetName="Mark" Property="Visibility" Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Accent}"/>
                         </Trigger>
                         <Trigger Property="Content" Value="{x:Null}">
                             <Setter TargetName="Text" Property="Margin" Value="0"/>
