@@ -270,3 +270,55 @@ test('масштаб держится в разумных границах и н
   await app.page.evaluate(() => { resetPan(); zoomReset(); });
   expect((await app.history()).index).toBe(n);
 });
+
+// ─────────── Отражение и поворот не оставляют преобразование в слое ───────────
+// Алексей 09.10.2026: «нажал отразить, Ctrl+Z - на холсте ничего не поменялось, а ластик
+// стирает противоположную сторону». transformLayers рисовал новый слой через зеркальное
+// (или повёрнутое) преобразование и не сбрасывал его: холст слоя помнил его навсегда, и
+// отмена, ластик и все инструменты рисовали в слой отражённо.
+async function inkHalves(app) {
+  return app.page.evaluate(() => {
+    const c = state.layers[0].canvas, d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let l = 0, r = 0;
+    for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+      if (d[(y * c.width + x) * 4] < 128) { if (x < c.width / 2) l++; else r++; }
+    }
+    return { l, r };
+  });
+}
+for (const op of ['flipH', 'flipV', 'rotateCanvas', 'rotateCanvasCCW']) {
+  test(`${op}: отмена возвращает картинку, слой рисуется без преобразования`, async ({ page }) => {
+    const app = await openApp(page);
+    await app.pickTool('pencil');
+    await app.setColor('#000000');
+    await app.setSize(30);
+    await app.drag(40, 100, 200, 100);
+    const before = await app.fingerprint();
+    await app.page.evaluate((f) => window[f](), op);
+    await app.settle();
+    expect(await app.page.evaluate(() => {
+      const t = state.layers.map((l) => l.canvas.getContext('2d').getTransform());
+      return t.every((m) => m.isIdentity);
+    }), 'у слоёв не осталось преобразования').toBe(true);
+    await app.undo();
+    await app.page.evaluate(() => restorePending);
+    expect(await app.fingerprint(), 'отмена вернула картинку до пикселя').toBe(before);
+  });
+}
+
+test('после отражения и отмены ластик стирает там, где курсор', async ({ page }) => {
+  const app = await openApp(page);
+  await app.pickTool('pencil');
+  await app.setColor('#000000');
+  await app.setSize(30);
+  await app.drag(40, 100, 200, 100);              // штрих слева
+  await app.page.evaluate(() => flipH()); await app.settle();
+  await app.undo(); await app.page.evaluate(() => restorePending);
+  const ink0 = await inkHalves(app);
+  expect(ink0.l).toBeGreaterThan(0);
+  expect(ink0.r).toBe(0);
+  await app.pickTool('eraser');
+  await app.drag(30, 100, 210, 100);              // стираем там же, слева
+  const ink1 = await inkHalves(app);
+  expect(ink1.l, 'стёрлось слева, где вели ластик').toBeLessThan(ink0.l * 0.6);
+});

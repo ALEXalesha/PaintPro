@@ -137,6 +137,7 @@ This approach is not a matter of taste. It is where the defects actually came fr
 | 1.18.0 | a remark from the user | the size circle was a cursor image capped at 96 points, a third of a 300 px brush; the pencil drew half its size and the marker one and a half |
 | 1.19.0 | a remark from the user | the size circle trailed the crosshair by a frame; a selected object stopped where the pointer left the canvas; the brush drew exactly what the pencil did |
 | 1.20.0 | a remark from the user | Ctrl+P printed the whole window with menus and panels instead of the picture |
+| 1.21.0 | a remark from the user | after a flip or a rotation the layers kept the mirror: Ctrl+Z seemed to do nothing and the eraser erased the opposite side |
 
 The last one is the clearest example of why reading the code does not find these. The selection frame and its eight handles are overlay elements, not part of the canvas, so the cursor crossing a handle raises the same "pointer left" event as leaving the canvas entirely - and end-of-gesture hung on that event. Drawing perfectly along the path kept the handle under the cursor and hid the bug. Now a gesture ends when the button is released, and a stroke that runs off the edge of the canvas continues when you come back.
 

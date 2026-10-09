@@ -2366,7 +2366,13 @@ function composite() {
 function transformLayers(w, h, paint) {
   for (const l of state.layers) {
     const next = makeLayerCanvas(w, h);
-    paint(next.getContext('2d'), l.canvas, w, h);
+    const g = next.getContext('2d');
+    // Преобразование отражения или поворота - только на время перерисовки. Холст слоя
+    // помнит его навсегда: без restore отмена, ластик и все инструменты рисовали в слой
+    // отражённо (Алексей 09.10.2026: «Ctrl+Z ничего не меняет, а ластик стирает с другой стороны»).
+    g.save();
+    paint(g, l.canvas, w, h);
+    g.restore();
     l.canvas = next;
   }
 }
