@@ -104,7 +104,7 @@ Node.js 18 or newer. The first `npm install` pulls Electron, about 150 MB.
 ```bash
 npm install
 npm start                 # run in development
-npm test                  # 469 checks in Chromium, ~4 minutes
+npm test                  # 474 checks in Chromium, ~4 minutes
 npm run test:app          # 14 checks against the real app, ~40 seconds
 npm run build:web         # single-file browser build into dist/
 npm run build             # portable .exe
@@ -118,7 +118,7 @@ The version number lives in exactly one place, the `version` field of `package.j
 
 ## About the tests
 
-469 Playwright checks plus 17 against the packaged application. They are not unit tests around the functions; the page is opened in Chromium, the mouse really moves across the canvas, and the assertions read pixels back with `getImageData` or compare whole frames through `toDataURL`. Only the Electron bridge is stubbed. The 17 slow ones launch the real Electron binary and run code inside the main process, replacing native dialogs, because file writing and the close-without-saving question live there and nothing else reaches them.
+474 Playwright checks plus 17 against the packaged application. They are not unit tests around the functions; the page is opened in Chromium, the mouse really moves across the canvas, and the assertions read pixels back with `getImageData` or compare whole frames through `toDataURL`. Only the Electron bridge is stubbed. The 17 slow ones launch the real Electron binary and run code inside the main process, replacing native dialogs, because file writing and the close-without-saving question live there and nothing else reaches them.
 
 Two of the files are fuzzers rather than examples. `fuzz.spec.js` generates random sequences of edits from a seed and checks four invariants of the history tape over them; the strongest is that *the cursor position alone determines the document, whatever path led there*. That one law covers more ground than any list of hand-written undo cases.
 
