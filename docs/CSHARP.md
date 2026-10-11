@@ -20,7 +20,7 @@ A raster image editor in the Apple Liquid Glass style, the native twin of the El
 - `installer/PaintPro.iss`: Inno Setup.
 - `tools/PaintPro.Screenshots/`: the README frames.
 
-The full design, with the seven anti-patterns of the original Electron code and how each is handled here, is in [`REWRITE_PROMPT_CSHARP.md`](../REWRITE_PROMPT_CSHARP.md). The running list of invariants (ninety-one so far, most with the bug that produced them) is in the [Russian README](CSHARP.ru.md#ключевые-инварианты).
+The full design, with the seven anti-patterns of the original Electron code and how each is handled here, is in [`REWRITE_PROMPT_CSHARP.md`](../REWRITE_PROMPT_CSHARP.md). The running list of invariants (ninety-eight so far, most with the bug that produced them) is in [INVARIANTS.ru.md](INVARIANTS.ru.md), in Russian.
 
 ## Tests
 
