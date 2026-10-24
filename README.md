@@ -8,17 +8,13 @@
 
 [**Try it in your browser →**](https://alexalesha.github.io/PaintPro/) &nbsp;·&nbsp; [Download for Windows](https://github.com/ALEXalesha/PaintPro/releases/latest) &nbsp;·&nbsp; [Русская версия этого файла](README.ru.md)
 
-[![CI](https://github.com/ALEXalesha/PaintPro/actions/workflows/ci.yml/badge.svg)](https://github.com/ALEXalesha/PaintPro/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/ALEXalesha/PaintPro?color=6c5ce7)](https://github.com/ALEXalesha/PaintPro/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/ALEXalesha/PaintPro/total?color=22a7e0)](https://github.com/ALEXalesha/PaintPro/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Status](https://img.shields.io/badge/status-stable-brightgreen)](#) [![Release](https://img.shields.io/github/v/release/ALEXalesha/PaintPro)](https://github.com/ALEXalesha/PaintPro/releases/latest) [![CI](https://github.com/ALEXalesha/PaintPro/actions/workflows/ci.yml/badge.svg)](https://github.com/ALEXalesha/PaintPro/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Downloads](https://img.shields.io/github/downloads/ALEXalesha/PaintPro/total?color=22a7e0)](https://github.com/ALEXalesha/PaintPro/releases) [![WPF](https://img.shields.io/badge/.NET_WPF-512BD4?logo=dotnet&logoColor=white)](https://learn.microsoft.com/dotnet/desktop/wpf/) [![Electron](https://img.shields.io/badge/Electron-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/) [![Website](https://img.shields.io/badge/Website-open-0A84FF?logo=googlechrome&logoColor=white)](https://alexalesha.github.io/PaintPro/) [![Built with Claude Code](https://img.shields.io/badge/Built_with-Claude_Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
+
+Code, tests and docs are written by Claude (Anthropic) in Claude Code. Ideas, testing and decisions - Alexey.
 
 <img src="paint-pro-electron/docs/screenshots/hero.png" width="900" alt="Paint Pro, Electron version">
 
 </div>
-
-[![Built with Claude Code](https://img.shields.io/badge/Built_with-Claude_Code-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
-Code, tests and docs are written by Claude (Anthropic) in Claude Code. Ideas, testing and decisions - Alexey.
 
 > **The interface is in Russian only**, in both versions. The browser demo is the fastest way to see whether the thing is any good.
 
