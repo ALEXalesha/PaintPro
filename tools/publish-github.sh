@@ -78,6 +78,19 @@ if git grep -I -q -E "$PATTERN" $(git rev-list github-main) -- 2>/dev/null; then
   echo "личное осталось в файлах публикуемой истории - пуш отменён" >&2
   exit 1
 fi
+# Путь к папке Drive (C:\Drive\<имя> в любом написании) - ревизия GitHub 25.10: этот скрипт его не чистил.
+# Имя склеено из кусков, чтобы строки пути не было в самом скрипте. Нашёлся - пуш отменён (чистить руками),
+# сломалась проверка (код не 0 и не 1) - тоже отменён.
+_pn=Ale; _pn="${_pn}xey"; DRIVE_RE='drive([\\/]+|-+)'"$_pn"
+rc=0; git grep -I -q -i -E "$DRIVE_RE" $(git rev-list github-main) -- 2>/dev/null || rc=$?
+if [ "$rc" -ne 1 ]; then
+  echo "путь к папке Drive в файлах публикуемой истории (или проверка сломалась, код $rc) - пуш отменён" >&2
+  exit 1
+fi
+if git log github-main --format=%B | grep -q -i -E "$DRIVE_RE"; then
+  echo "путь к папке Drive в сообщениях коммитов - пуш отменён" >&2
+  exit 1
+fi
 
 echo "ветка github-main: $(git rev-list --count github-main) коммитов, $(git log -1 --format=%h github-main)"
 gh auth setup-git
