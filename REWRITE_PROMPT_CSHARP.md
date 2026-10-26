@@ -1,9 +1,9 @@
 # Задача
 
-Напиши Windows-приложение «Paint Pro» — растровый графический редактор с GUI в
+Напиши Windows-приложение «Paint Pro» - растровый графический редактор с GUI в
 стиле Apple Liquid Glass (iOS 26 / macOS Tahoe 26) на **C# 12 + WPF (.NET 8) + SkiaSharp**.
 Это перенос существующего Electron-приложения (HTML/JS, ~3500 строк в одном файле)
-на нативный стек, с архитектурной переработкой — слои, MVVM, Command Pattern для
+на нативный стек, с архитектурной переработкой - слои, MVVM, Command Pattern для
 undo, чистая state-machine.
 
 Цель: меньший размер (~15-30 МБ вместо 71 МБ), нативная производительность,
@@ -13,19 +13,19 @@ undo, чистая state-machine.
 
 # Почему C# + WPF + SkiaSharp
 
-- **SkiaSharp** — тот же graphics engine что в Chrome (Skia). API очень похож
+- **SkiaSharp** - тот же graphics engine что в Chrome (Skia). API очень похож
   на HTML5 Canvas (MoveTo/LineTo/Stroke/Fill/clip/setTransform), миграция
   алгоритмов прямая.
-- **WPF** — мощный native UI, поддержка blur/acrylic, hardware-accelerated.
-- **C#** — strong typing помогает избежать ошибок типа «забыл сбросить state-флаг».
-- **MVVM** — обязательная архитектура для WPF, разделение View/Logic.
+- **WPF** - мощный native UI, поддержка blur/acrylic, hardware-accelerated.
+- **C#** - strong typing помогает избежать ошибок типа «забыл сбросить state-флаг».
+- **MVVM** - обязательная архитектура для WPF, разделение View/Logic.
 - **Self-contained publish** дает single .exe ~15-30 МБ против 71 МБ Electron.
 
 NuGet packages (минимум):
-- `SkiaSharp` + `SkiaSharp.Views.WPF` — рендеринг через `SKElement` или `SKCanvasView`.
-- `Wpf.Ui` — для AcrylicBrush, glass-эффектов.
-- `CommunityToolkit.Mvvm` — `ObservableObject`, `[ObservableProperty]`, `[RelayCommand]`
-  атрибуты — драматически сокращают MVVM boilerplate.
+- `SkiaSharp` + `SkiaSharp.Views.WPF` - рендеринг через `SKElement` или `SKCanvasView`.
+- `Wpf.Ui` - для AcrylicBrush, glass-эффектов.
+- `CommunityToolkit.Mvvm` - `ObservableObject`, `[ObservableProperty]`, `[RelayCommand]`
+  атрибуты - драматически сокращают MVVM boilerplate.
 
 ---
 
@@ -37,41 +37,41 @@ PaintPro.Wpf/
 ├── MainWindow.xaml + MainWindow.xaml.cs
 │
 ├── Models/
-│   ├── Document.cs              — document = stack of layers + selection + history
-│   ├── Layer.cs                 — abstract layer; PixelLayer : Layer (raster pixels)
-│   ├── Selection.cs             — rectangle | polygon | none
-│   ├── FloatingPickup.cs        — temporary "pickup" layer (rotated, scaled, warped)
-│   └── HistoryEntry.cs          — command-based undo entry
+│   ├── Document.cs - document = stack of layers + selection + history
+│   ├── Layer.cs - abstract layer; PixelLayer : Layer (raster pixels)
+│   ├── Selection.cs - rectangle | polygon | none
+│   ├── FloatingPickup.cs - temporary "pickup" layer (rotated, scaled, warped)
+│   └── HistoryEntry.cs - command-based undo entry
 │
 ├── ViewModels/
-│   ├── MainViewModel.cs         — root, owns Document, ActiveTool, etc.
-│   ├── LayerListViewModel.cs    — справа: список слоёв с visibility/opacity
-│   ├── ColorPickerViewModel.cs  — палитра + recent colors + custom color
-│   └── ToolPanelViewModel.cs    — левая панель: список инструментов
+│   ├── MainViewModel.cs - root, owns Document, ActiveTool, etc.
+│   ├── LayerListViewModel.cs - справа: список слоёв с visibility/opacity
+│   ├── ColorPickerViewModel.cs - палитра + recent colors + custom color
+│   └── ToolPanelViewModel.cs - левая панель: список инструментов
 │
 ├── Views/
-│   ├── CanvasView.xaml          — SKElement + overlay для selection-frame
-│   ├── ToolPanel.xaml           — левая стеклянная панель
-│   ├── LayerPanel.xaml          — правая стеклянная панель
+│   ├── CanvasView.xaml - SKElement + overlay для selection-frame
+│   ├── ToolPanel.xaml - левая стеклянная панель
+│   ├── LayerPanel.xaml - правая стеклянная панель
 │   ├── ColorPalette.xaml
 │   └── StatusBar.xaml
 │
 ├── Tools/
-│   ├── ITool.cs                 — OnPointerDown/Move/Up, OnActivate/Deactivate
+│   ├── ITool.cs - OnPointerDown/Move/Up, OnActivate/Deactivate
 │   ├── PencilTool.cs
 │   ├── BrushTool.cs
 │   ├── MarkerTool.cs
 │   ├── EraserTool.cs
-│   ├── FillTool.cs              — flood fill
-│   ├── PickerTool.cs            — eyedropper
+│   ├── FillTool.cs - flood fill
+│   ├── PickerTool.cs - eyedropper
 │   ├── TextTool.cs
-│   ├── ShapeTool.cs             — общая база для Line/Rect/Ellipse/Triangle/...
-│   ├── SelectTool.cs            — rectangle selection
-│   ├── QuadTool.cs              — 4-point polygon selection
+│   ├── ShapeTool.cs - общая база для Line/Rect/Ellipse/Triangle/...
+│   ├── SelectTool.cs - rectangle selection
+│   ├── QuadTool.cs - 4-point polygon selection
 │   └── CropTool.cs
 │
-├── Commands/                    — Command Pattern для undo/redo
-│   ├── ICommand.cs              — { Execute(); Undo(); }
+├── Commands/ - Command Pattern для undo/redo
+│   ├── ICommand.cs - { Execute(); Undo(); }
 │   ├── DrawStrokeCommand.cs
 │   ├── FillCommand.cs
 │   ├── PasteCommand.cs
@@ -81,24 +81,24 @@ PaintPro.Wpf/
 │   └── ResizeCanvasCommand.cs
 │
 ├── Services/
-│   ├── HistoryManager.cs        — Undo()/Redo()/Push() стек
-│   ├── ClipboardService.cs      — read/write image clipboard
-│   ├── FileService.cs           — open/save PNG/JPEG/BMP/WEBP
-│   └── GeometryMath.cs          — anchor-based resize math, rotation, polygon clip
+│   ├── HistoryManager.cs - Undo()/Redo()/Push() стек
+│   ├── ClipboardService.cs - read/write image clipboard
+│   ├── FileService.cs - open/save PNG/JPEG/BMP/WEBP
+│   └── GeometryMath.cs - anchor-based resize math, rotation, polygon clip
 │
-├── Converters/                  — XAML value converters
+├── Converters/ - XAML value converters
 │
 ├── Resources/
-│   ├── Themes.xaml              — цветовые токены
-│   ├── GlassStyles.xaml         — .panel, .btn, .tool кнопки
-│   └── Icons/                   — SVG → XAML path data для инструментов
+│   ├── Themes.xaml - цветовые токены
+│   ├── GlassStyles.xaml - .panel, .btn, .tool кнопки
+│   └── Icons/ - SVG → XAML path data для инструментов
 │
 └── Tests/
     └── PaintPro.Tests/
-        ├── GeometryMathTests.cs        — rotated resize math, anchor calculations
-        ├── HistoryManagerTests.cs      — undo/redo invariants
+        ├── GeometryMathTests.cs - rotated resize math, anchor calculations
+        ├── HistoryManagerTests.cs - undo/redo invariants
         ├── FloodFillTests.cs
-        └── ClearCanvasTests.cs         — все state-слои сбрасываются
+        └── ClearCanvasTests.cs - все state-слои сбрасываются
 ```
 
 ---
@@ -124,7 +124,7 @@ public partial class MainViewModel : ObservableObject
 }
 ```
 
-## 2. Document — это stack of layers
+## 2. Document - это stack of layers
 
 Не один canvas + ad-hoc flags «floating», «selection». Document содержит:
 
@@ -140,13 +140,13 @@ public class Document
 }
 ```
 
-`FloatingPickup` — это **отдельный лёгкий слой** который рендерится поверх Document
+`FloatingPickup` - это **отдельный лёгкий слой** который рендерится поверх Document
 во время трансформации (move/scale/rotate). При commit его pixels сливаются в
 active layer.
 
 ## 3. Command Pattern для undo
 
-НЕ snapshot всего canvas в PNG (как в Electron). Каждое действие — это команда:
+НЕ snapshot всего canvas в PNG (как в Electron). Каждое действие - это команда:
 
 ```csharp
 public interface IDocumentCommand
@@ -181,13 +181,13 @@ public interface ITool
     void OnPointerMove(SKPoint pos, ToolContext ctx);
     void OnPointerUp(SKPoint pos, ToolContext ctx);
     void OnActivate(ToolContext ctx);
-    void OnDeactivate(ToolContext ctx);   // при смене tool — может закоммитить floating и т.п.
+    void OnDeactivate(ToolContext ctx);   // при смене tool - может закоммитить floating и т.п.
     SKBitmap? PreviewBitmap { get; }      // что показывать поверх canvas во время drag
     Cursor? GetCursor(SKPoint pos);
 }
 ```
 
-`ToolContext` — это «view» в Document/state, безопасный для инструмента.
+`ToolContext` - это «view» в Document/state, безопасный для инструмента.
 Никаких global mutable variables.
 
 ## 5. State-машина для selection / floating
@@ -206,7 +206,7 @@ public enum DocumentMode
 }
 ```
 
-Каждый переход — явный метод (`EnterFloating()`, `ExitFloating()`).
+Каждый переход - явный метод (`EnterFloating()`, `ExitFloating()`).
 Никаких `state.draggingFloating + state.resizingFloating + state.warpingQuad`.
 
 ---
@@ -236,44 +236,44 @@ public enum DocumentMode
 # Функциональные требования (всё что есть в текущем Paint Pro Electron)
 
 ## Инструменты рисования
-- **Pencil** — тонкая линия, `lineWidth = size * 0.5`, `lineCap = round`.
-- **Brush** — толстая мягкая линия, `lineWidth = size`, round caps/joins.
-- **Marker** — полупрозрачный (`alpha = 0.4`), рисуется на отдельный bitmap при
+- **Pencil** - тонкая линия, `lineWidth = size * 0.5`, `lineCap = round`.
+- **Brush** - толстая мягкая линия, `lineWidth = size`, round caps/joins.
+- **Marker** - полупрозрачный (`alpha = 0.4`), рисуется на отдельный bitmap при
   `alpha=1` (чтобы overlapping не накапливался), потом merge'ится через
   `SaveLayerAlpha`.
-- **Eraser** — рисует белым (в Paint классически, не透ность).
-- **Fill** — flood fill, классический BFS/scanline algorithm.
-- **Picker** — eyedropper, читает `SKBitmap.GetPixel()`.
-- **Text** — отдельный editable text box overlay (XAML TextBox), при commit
+- **Eraser** - рисует белым (в Paint классически, не透ность).
+- **Fill** - flood fill, классический BFS/scanline algorithm.
+- **Picker** - eyedropper, читает `SKBitmap.GetPixel()`.
+- **Text** - отдельный editable text box overlay (XAML TextBox), при commit
   растрируется на bitmap через `SKCanvas.DrawText`.
 
 ## Фигуры (все рисуются drag)
-- **Line** — прямая
-- **Rect** — прямоугольник (outline и/или fill)
-- **Ellipse** — эллипс
-- **Triangle** — треугольник
-- **Star** — 5-конечная звезда
-- **Arrow** — стрелка
-- **Heart** — сердце
+- **Line** - прямая
+- **Rect** - прямоугольник (outline и/или fill)
+- **Ellipse** - эллипс
+- **Triangle** - треугольник
+- **Star** - 5-конечная звезда
+- **Arrow** - стрелка
+- **Heart** - сердце
 
 ## Выделение
-### Select (S) — прямоугольное
-- Drag → bbox с **2px dashed border** (anti-marching-ants для стабильности —
+### Select (S) - прямоугольное
+- Drag → bbox с **2px dashed border** (anti-marching-ants для стабильности - 
   не делай background-image-keyframe animation).
 - Внутри drag → move pixels (через `SKBitmap.Extract` + `Canvas.DrawBitmap`).
 - 8 resize-handles по углам/сторонам + 1 rotate-handle сверху.
   **СКРЫВАЙ handles во время drawing/move** (т.е. пока зажата кнопка мыши и
-  выделение растёт) — иначе при tiny drag mouse попадает на handle, события
+  выделение растёт) - иначе при tiny drag mouse попадает на handle, события
   не доходят до canvas. Через `IsHitTestVisible = false` или CSS-эквивалент.
 - Сlick на handle → promote во floating с anchor-based resize math.
 
-### Quad (Q) — полигон 4 точками
+### Quad (Q) - полигон 4 точками
 - Drag → bbox (как у Select), потом 4 угла превращаются в drag-targets.
 - Каждый угол можно тащить независимо → меняется ФОРМА clip-маски (НЕ warp/scale).
 - 4 угла = 4 крупные круглые точки (18×18).
 - Плюс 8 bbox-handles по периметру → uniform scale всего полигона.
 - Плюс 1 rotate-handle.
-- Содержимое НЕ деформируется — pickup рисуется в исходных координатах,
+- Содержимое НЕ деформируется - pickup рисуется в исходных координатах,
   quad работает как `SKCanvas.ClipPath`.
 
 ### Photoshop-like polygon-selection
@@ -312,12 +312,12 @@ public enum DocumentMode
 - Кнопки `+`/`-`, `1:1`. `Ctrl+wheel` = zoom.
 - Сохраняй центр под курсором при zoom (не упрощённое scale-from-origin).
 - Discrete steps: [0.1, 0.25, 0.5, 0.67, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0].
-- Hand tool (`H`) — pan через drag.
+- Hand tool (`H`) - pan через drag.
 
 ## Холст (canvas)
 - Default 900×600.
-- Resize: edge-handles справа/снизу/угол. При drag — preview-rect с tooltip
-  `WxH`. На mouseup — реальный resize с белой заливкой пустых областей.
+- Resize: edge-handles справа/снизу/угол. При drag - preview-rect с tooltip
+  `WxH`. На mouseup - реальный resize с белой заливкой пустых областей.
 - Sidebar: ширина/высота как input fields + Apply button.
 
 ## Быстрые действия (sidebar)
@@ -326,16 +326,16 @@ public enum DocumentMode
 - Отразить вертикально
 
 ## File I/O
-- Open: `OpenFileDialog` PNG/JPG/BMP/GIF/WEBP. Если изображение больше canvas
-  — спросить «расширить?» или «вписать?». Если меньше — paste в (0,0).
-- Save: `SaveFileDialog`. Если был открыт файл — `Ctrl+S` пишет в него.
+- Open: `OpenFileDialog` PNG/JPG/BMP/GIF/WEBP. Если изображение больше canvas -
+  спросить «расширить?» или «вписать?». Если меньше - paste в (0,0).
+- Save: `SaveFileDialog`. Если был открыт файл - `Ctrl+S` пишет в него.
 - File associations (через app.manifest): `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif`, `.webp`.
-- Drag-and-drop файлов на окно — открывает.
+- Drag-and-drop файлов на окно - открывает.
 
 ## Clipboard
-- `Ctrl+C` — копирует selection (или весь canvas если нет selection).
-- `Ctrl+X` — вырезает.
-- `Ctrl+V` — вставляет как FloatingPickup в (20, 20).
+- `Ctrl+C` - копирует selection (или весь canvas если нет selection).
+- `Ctrl+X` - вырезает.
+- `Ctrl+V` - вставляет как FloatingPickup в (20, 20).
 
 ## Меню (Menu Bar)
 - Файл: Создать / Открыть / Сохранить / Сохранить как / Экспорт / Выход
@@ -344,18 +344,18 @@ public enum DocumentMode
 - Изображение: Resize canvas / Rotate / Flip / Crop to selection
 - Справка: О программе
 
-## Хоткеи (КРИТИЧНО — все должны работать СТАБИЛЬНО)
-- `S` — select, `Q` — quad, `H` — hand, `P` — pencil, `B` — brush, `M` — marker,
-  `E` — eraser, `G` — fill, `I` — picker, `T` — text
-- `Ctrl+Z` — undo, `Ctrl+Y` / `Ctrl+Shift+Z` — redo
-- `Ctrl+S` — save, `Ctrl+O` — open
-- `Ctrl+C/X/V` — clipboard
-- `Ctrl+A` — select all
-- `Delete` — clear selection contents / cancel floating
-- `Escape` — commit / cancel
-- `Enter` — commit floating
-- `[` / `]` — rotate ±90° (Shift = ±15°)
-- `Ctrl+=` / `Ctrl+-` / `Ctrl+0` — zoom in/out/reset
+## Хоткеи (КРИТИЧНО - все должны работать СТАБИЛЬНО)
+- `S` - select, `Q` - quad, `H` - hand, `P` - pencil, `B` - brush, `M` - marker,
+  `E` - eraser, `G` - fill, `I` - picker, `T` - text
+- `Ctrl+Z` - undo, `Ctrl+Y` / `Ctrl+Shift+Z` - redo
+- `Ctrl+S` - save, `Ctrl+O` - open
+- `Ctrl+C/X/V` - clipboard
+- `Ctrl+A` - select all
+- `Delete` - clear selection contents / cancel floating
+- `Escape` - commit / cancel
+- `Enter` - commit floating
+- `[` / `]` - rotate ±90° (Shift = ±15°)
+- `Ctrl+=` / `Ctrl+-` / `Ctrl+0` - zoom in/out/reset
 - В WPF используй `InputBindings` на Window-уровне + `Focusable=false` на
   кнопках, чтобы хоткеи не перехватывались focus-ом кнопок.
 
@@ -369,7 +369,7 @@ public enum DocumentMode
 
 ---
 
-# Визуальный язык — Apple Liquid Glass (iOS 26 / macOS Tahoe 26)
+# Визуальный язык - Apple Liquid Glass (iOS 26 / macOS Tahoe 26)
 
 ## Цветовые токены (как XAML resources)
 
@@ -390,7 +390,7 @@ public enum DocumentMode
 ## Window background (обязательно цветной)
 
 Используй `<RadialGradientBrush>` накладкой 4-5 цветных пятен поверх базового
-LinearGradient `#0E0C1A → #1A1330 → #0C1024` (135°). Если просто чёрный фон —
+LinearGradient `#0E0C1A → #1A1330 → #0C1024` (135°). Если просто чёрный фон - 
 acrylic blur будет визуально серым.
 
 Пятна (примерно):
@@ -420,7 +420,7 @@ multi-stop multiple radial gradients как CSS.
 </Style>
 ```
 
-Если используешь `Wpf.Ui` — пакет имеет `AcrylicBrush` который даёт настоящий
+Если используешь `Wpf.Ui` - пакет имеет `AcrylicBrush` который даёт настоящий
 blur+saturate. Иначе fallback на полупрозрачный + `BlurEffect` на снапшоте
 фона (медленнее).
 
@@ -433,12 +433,12 @@ blur+saturate. Иначе fallback на полупрозрачный + `BlurEffe
 - `EasingFunction`: `SineEase` или `QuadraticEase`
 - `RepeatBehavior=Forever`
 
-Не делай через `DispatcherTimer` и manual Update — это лагает и съедает CPU.
+Не делай через `DispatcherTimer` и manual Update - это лагает и съедает CPU.
 WPF Storyboard работает на compositor thread, идеально 60 fps.
 
 ## Анимация ripple на клике
 
-При MouseDown на любой `.btn`/`.tool` — `<Ellipse>` за курсором, scale 0 → 2.6,
+При MouseDown на любой `.btn`/`.tool` - `<Ellipse>` за курсором, scale 0 → 2.6,
 opacity 0.9 → 0. Через `Storyboard` 650ms. Управляй через behavior или
 attached property.
 
@@ -446,7 +446,7 @@ attached property.
 
 # КРИТИЧНЫЕ АНТИПАТТЕРНЫ из Electron-версии (НЕ ПОВТОРЯТЬ)
 
-Эти баги мы прошли в HTML-версии после ~30 итераций фиксов. **Каждый из них —
+Эти баги мы прошли в HTML-версии после ~30 итераций фиксов. **Каждый из них - 
 прямой указатель на архитектурное решение в C#**.
 
 ## 1. Сlear на одном слое visible state НЕ сбрасывает все state-слои
@@ -454,7 +454,7 @@ attached property.
 В Electron `clearCanvas()` заливал основной `<canvas>` белым, но игнорировал
 `previewCanvas` (для floating pickup), `state.selectionData` (ImageData),
 `state.originalBeforeMove` (backup). Визуально пользователь видел «ничего
-не очистилось» — старый floating оставался поверх.
+не очистилось» - старый floating оставался поверх.
 
 **В C# фикс**: `ClearCanvasCommand.Execute(doc)` должен:
 ```csharp
@@ -464,7 +464,7 @@ doc.Selection = null;
 doc.ActiveLayer.Clear(SKColors.White);
 doc.Mode = DocumentMode.Idle;
 ```
-И **unit-test**: «после Clear с активным floating, нажми Pencil + рисуй —
+И **unit-test**: «после Clear с активным floating, нажми Pencil + рисуй - 
 floating не появляется поверх, рисую на чистом холсте».
 
 ## 2. Handles внутри overlay перехватывают mousemove во время drag
@@ -486,7 +486,7 @@ drawing (привязано к флагу `IsDrawing` через PropertyChanged
 </Style.Triggers>
 ```
 
-ИЛИ используй `CaptureMouse()` на canvas в `PointerDown` — это берёт capture,
+ИЛИ используй `CaptureMouse()` на canvas в `PointerDown` - это берёт capture,
 все events идут только на canvas пока pointer не released. **Правильный
 WPF-way**.
 
@@ -540,8 +540,8 @@ public FloatingPickup? FloatingPickup
 
 ## 5. PNG-snapshot для undo
 
-В Electron `state.history` = `[canvas.toDataURL(), ...]` — каждый snapshot
-~3 МБ. Через 30 операций — 90 МБ памяти и медленный restore.
+В Electron `state.history` = `[canvas.toDataURL(), ...]` - каждый snapshot
+~3 МБ. Через 30 операций - 90 МБ памяти и медленный restore.
 
 **В C# фикс**: Command Pattern. Каждая команда хранит только diff
 (bitmap размером со stroke, не размером с canvas):
@@ -565,7 +565,7 @@ public sealed class DrawStrokeCommand : IDocumentCommand
 
 ## 6. Pickup для polygon-selection стирает bbox вместо polygon
 
-В Electron при создании quad-selection я сразу стирал весь bbox — поэтому
+В Electron при создании quad-selection я сразу стирал весь bbox - поэтому
 если ты делал треугольник corner-drag'ом, вокруг треугольника был белый
 прямоугольник на canvas.
 
@@ -574,7 +574,7 @@ public sealed class DrawStrokeCommand : IDocumentCommand
 `OriginalQuadErased` и метод `EnsureOriginalQuadErased()`. См. полный код
 в существующем `paint-pro.html` (функция с тем же именем).
 
-## 7. State.drawing + state.draggingFloating + state.movingSelection — 6 разных bool флагов
+## 7. State.drawing + state.draggingFloating + state.movingSelection - 6 разных bool флагов
 
 Это race conditions в чистом виде. Один сбросил, другой нет.
 
@@ -608,7 +608,7 @@ public void Clear_resets_all_layers_including_floating()
 public void Rotated_resize_anchor_math_preserves_opposite_corner()
 {
     // floating 100x100 в (50,50), rotation = 30°
-    // тащим SE handle на (200,200) — newCorner = (200,200)
+    // тащим SE handle на (200,200) - newCorner = (200,200)
     // ожидаем что NW corner (anchor) остался в world coords (50,50) после resize
     var floating = new FloatingPickup { X=50, Y=50, W=100, H=100, Rotation=Math.PI/6 };
     var math = new ResizeMath(floating, "se");
@@ -625,7 +625,7 @@ public void Quad_corner_drag_does_NOT_erase_canvas()
     new PromoteQuadCommand().Execute(doc);  // создаёт floating с quad
     var canvasBefore = doc.ActiveLayer.Snapshot();
 
-    // Тащим один corner — НЕ должно менять active layer canvas
+    // Тащим один corner - НЕ должно менять active layer canvas
     doc.FloatingPickup!.Quad[0] = new SKPoint(20, 20);
     var canvasAfter = doc.ActiveLayer.Snapshot();
     Assert.True(canvasBefore.Equals(canvasAfter));
@@ -655,7 +655,7 @@ public void Hotkey_works_even_after_clicking_button()
     // Симулируем клик на кнопке Brush
     window.BrushToolButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     Assert.Equal(ToolKind.Brush, vm.ActiveTool);
-    // Теперь нажимаем "S" — должен переключиться на Select
+    // Теперь нажимаем "S" - должен переключиться на Select
     window.RaiseEvent(new KeyEventArgs(... Key.S ...));
     Assert.Equal(ToolKind.Select, vm.ActiveTool);  // фокус не блокирует
 }
@@ -700,14 +700,14 @@ public void Selection_and_floating_are_mutually_exclusive()
 
 # Reference материалы
 
-Если есть доступ к существующему `paint-pro-electron/paint-pro.html` —
+Если есть доступ к существующему `paint-pro-electron/paint-pro.html` - 
 там ~3500 строк HTML/CSS/JS со всей логикой. Это твой "spec". НЕ переноси
-дословно — это монолит. Переноси **поведение и hot-key set**, но архитектуру
+дословно - это монолит. Переноси **поведение и hot-key set**, но архитектуру
 строй с нуля по принципам выше.
 
 Особенно полезные файлы для reference:
-- `DEV_CONTEXT.md` — описание визуального языка, токенов, антипаттернов.
-- `paint-pro.html` — функция `resizeFloating()` (anchor-based math),
+- `DEV_CONTEXT.md` - описание визуального языка, токенов, антипаттернов.
+- `paint-pro.html` - функция `resizeFloating()` (anchor-based math),
   `drawClippedQuad()` (polygon clip), `ensureOriginalQuadErased()`
   (lazy erase для polygon).
 
@@ -715,16 +715,16 @@ public void Selection_and_floating_are_mutually_exclusive()
 
 1. Solution skeleton с пустыми классами (Document, Layer, ITool, IDocumentCommand)
    и unit-тестами на математику (GeometryMath).
-2. CanvasView с SkiaSharp — нарисовать тестовый rect, проверить что рендеринг
+2. CanvasView с SkiaSharp - нарисовать тестовый rect, проверить что рендеринг
    работает.
-3. PencilTool как самый простой — реализовать полный цикл PointerDown/Move/Up
+3. PencilTool как самый простой - реализовать полный цикл PointerDown/Move/Up
    с DrawStrokeCommand → HistoryManager.Push.
 4. Undo/Redo на тестах.
 5. Selection tool с rect + handles + lazy promote во FloatingPickup.
 6. Quad tool с polygon clip.
 7. Все остальные tools.
-8. Стилизация Liquid Glass — в самом конце, когда логика отлажена.
+8. Стилизация Liquid Glass - в самом конце, когда логика отлажена.
 
 **Не пытайся всё сделать в один файл MainWindow.xaml.cs. Не используй только
-code-behind. Цель — код который через 6 месяцев легко расширить новым tool
-(нарисовал ITool, добавил кнопку — работает) без рефакторинга всего проекта.**
+code-behind. Цель - код который через 6 месяцев легко расширить новым tool
+(нарисовал ITool, добавил кнопку - работает) без рефакторинга всего проекта.**
