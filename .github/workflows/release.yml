@@ -29,9 +29,9 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -54,7 +54,7 @@ jobs:
       - name: Один файл для браузера
         run: npm run build:web
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: electron
           if-no-files-found: error
@@ -71,9 +71,9 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
 
@@ -108,7 +108,7 @@ jobs:
           Copy-Item dist/PaintPro.exe "out/PaintPro-WPF-$v-portable.exe"
           Copy-Item "dist/PaintPro-Setup-$v.exe" "out/PaintPro-WPF-Setup-$v.exe"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: csharp
           path: out/*.exe
@@ -123,11 +123,11 @@ jobs:
       # Короткое описание выпуска - что поменялось - лежит в docs/release-notes/<тег>.md и
       # пишется вместе с выпуском (с 1.31.0). До того описание собирал GitHub сам, и в нём
       # была одна ссылка «Full Changelog»: что изменилось, из выпуска понять было нельзя.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           sparse-checkout: docs/release-notes
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: files
           merge-multiple: true

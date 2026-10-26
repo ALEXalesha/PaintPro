@@ -21,9 +21,9 @@ jobs:
         working-directory: paint-pro-electron
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -48,7 +48,7 @@ jobs:
         run: npm run test:app
 
       - name: Забрать собранный файл
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: paint-pro-web
           path: paint-pro-electron/dist/paint-pro-*-web.html
@@ -58,7 +58,7 @@ jobs:
       # шаге и с какой картинкой.
       - name: Отчёт, если упало
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-report
           path: paint-pro-electron/playwright-report/
@@ -71,9 +71,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
 
